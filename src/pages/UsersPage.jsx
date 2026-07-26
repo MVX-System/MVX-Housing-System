@@ -1200,6 +1200,25 @@ export default function UsersPage() {
 
             <button
               type="button"
+              onClick={() => {
+                setStatusUser(
+                  editingUser
+                );
+                setEditingUser(
+                  null
+                );
+              }}
+              style={{
+                ...secondarySmallButtonStyle,
+                gridColumn:
+                  "1 / -1",
+              }}
+            >
+              {text.changeStatus}
+            </button>
+
+            <button
+              type="button"
               onClick={
                 handleUpdate
               }
@@ -1335,24 +1354,6 @@ export default function UsersPage() {
               }
             />
 
-            <button
-              type="button"
-              onClick={() => {
-                setStatusUser(
-                  selectedUser
-                );
-                setSelectedUser(
-                  null
-                );
-              }}
-              style={{
-                ...secondarySmallButtonStyle,
-                width: "100%",
-                marginTop: 6,
-              }}
-            >
-              {text.changeStatus}
-            </button>
           </div>
         )}
       </Modal>
