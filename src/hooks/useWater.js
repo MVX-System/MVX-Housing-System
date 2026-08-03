@@ -1123,6 +1123,68 @@ export default function useWater() {
       }
     };
 
+  const updateWaterMeter =
+    async ({
+      meterId,
+      apartmentId,
+      apartmentRiserId = null,
+      type,
+      serialNumber,
+      manufacturer = "",
+      model = "",
+      installedAt = null,
+      initialReading = null,
+      initialReadingDate = null,
+      correctionReason = "",
+    }) => {
+
+      if (!meterId) {
+        alert("Water meter not selected");
+        return false;
+      }
+
+      try {
+        const result = await api(
+          "/api/admin/update-water-meter",
+          {
+            method: "POST",
+            body: JSON.stringify({
+              meter_id: Number(meterId),
+              apartment_id: Number(apartmentId),
+              apartment_riser_id: apartmentRiserId ? Number(apartmentRiserId) : null,
+              type: String(type || "").trim().toLowerCase(),
+              serial_number: String(serialNumber || "").trim(),
+              manufacturer: String(manufacturer || "").trim() || null,
+              model: String(model || "").trim() || null,
+              installed_at: installedAt || null,
+              initial_reading: initialReading,
+              initial_reading_date: initialReadingDate || null,
+              correction_reason: String(correctionReason || "").trim(),
+            }),
+          }
+        );
+
+        if (result?.ok) {
+          return result;
+        }
+
+        const messages = {
+          correction_reason_required: "Enter a reason for changing the initial reading.",
+          water_meter_not_found: "Water meter not found.",
+          apartment_riser_not_allowed: "The selected riser does not belong to this apartment.",
+          invalid_initial_reading: "Invalid initial reading.",
+          invalid_initial_reading_date: "Invalid initial reading date.",
+        };
+
+        alert(messages[result?.error] || result?.error || "Update water meter failed");
+        return false;
+      } catch (error) {
+        console.error("Update water meter failed:", error);
+        alert("Update water meter failed");
+        return false;
+      }
+    };
+
   const loadApartmentRisers =
     async (
       apartmentId
@@ -1618,6 +1680,7 @@ export default function useWater() {
     correctReading,
 
     addWaterMeter,
+    updateWaterMeter,
 
     loadApartmentRisers,
     uploadCalibrationDocument,
