@@ -19,6 +19,7 @@ export default function WaterMetersPage() {
     adminWaterMeters,
     loadAdminWaterMeters,
     addWaterMeter,
+    updateWaterMeter,
     loadApartmentRisers,
     uploadCalibrationDocument,
     loadWaterMeterCalibrations,
@@ -77,6 +78,38 @@ export default function WaterMetersPage() {
   ] = useState(false);
 
   const [
+    editOpen,
+    setEditOpen
+  ] = useState(false);
+
+  const [
+    editSubmitting,
+    setEditSubmitting
+  ] = useState(false);
+
+  const [
+    editRisers,
+    setEditRisers
+  ] = useState([]);
+
+  const [
+    editForm,
+    setEditForm
+  ] = useState({
+    id: null,
+    apartmentId: "",
+    apartmentRiserId: "",
+    type: "cold",
+    serialNumber: "",
+    manufacturer: "",
+    model: "",
+    installedAt: "",
+    initialReading: "",
+    initialReadingDate: "",
+    correctionReason: "",
+  });
+
+  const [
     addForm,
     setAddForm
   ] = useState({
@@ -96,6 +129,7 @@ export default function WaterMetersPage() {
     calibrationLaboratory: "",
     calibrationNotes: "",
     calibrationDocument: null,
+    certificateAvailable: true,
   });
 
   const [
@@ -421,11 +455,19 @@ export default function WaterMetersPage() {
       apartmentRiserId: "",
       type: "cold",
       serialNumber: "",
+      manufacturer: "",
+      model: "",
       installedAt: "",
+      initialReading: "",
+      calibrationSameAsInstallation: true,
       calibrationDate: "",
+      validityPreset: "12",
       validityMonths: "12",
+      certificateNumber: "",
+      calibrationLaboratory: "",
       calibrationNotes: "",
       calibrationDocument: null,
+      certificateAvailable: true,
     });
 
     setApartmentRisers([]);
@@ -466,6 +508,127 @@ export default function WaterMetersPage() {
       } finally {
 
         setRisersLoading(false);
+      }
+    };
+
+  const openEditMeter =
+    async (meter) => {
+
+      const risers =
+        await loadApartmentRisers(
+          meter.apartment_id
+        );
+
+      setEditRisers(
+        Array.isArray(risers)
+          ? risers
+          : []
+      );
+
+      setEditForm({
+        id: meter.id,
+        apartmentId:
+          String(meter.apartment_id),
+        apartmentRiserId:
+          meter.apartment_riser_id
+            ? String(
+                meter.apartment_riser_id
+              )
+            : "",
+        type: meter.type || "cold",
+        serialNumber:
+          meter.serial_number || "",
+        manufacturer:
+          meter.manufacturer || "",
+        model: meter.model || "",
+        installedAt:
+          meter.installed_at
+            ? String(
+                meter.installed_at
+              ).slice(0, 10)
+            : "",
+        initialReading:
+          meter.initial_reading === null ||
+          meter.initial_reading === undefined
+            ? ""
+            : (
+                Number(
+                  meter.initial_reading
+                ) / 1000
+              )
+                .toFixed(3)
+                .replace(".", ","),
+        initialReadingDate:
+          meter.initial_reading_date
+            ? String(
+                meter.initial_reading_date
+              ).slice(0, 10)
+            : "",
+        correctionReason: "",
+      });
+
+      setEditOpen(true);
+    };
+
+  const handleEditMeter =
+    async () => {
+
+      if (editSubmitting) {
+        return;
+      }
+
+      const initialReading =
+        parseReadingValue(
+          editForm.initialReading
+        );
+
+      if (
+        editForm.initialReading &&
+        initialReading === null
+      ) {
+        alert(
+          "Enter initial reading in m³ with up to 3 decimal places"
+        );
+        return;
+      }
+
+      setEditSubmitting(true);
+
+      try {
+        const result =
+          await updateWaterMeter({
+            meterId: editForm.id,
+            apartmentId:
+              editForm.apartmentId,
+            apartmentRiserId:
+              editForm.apartmentRiserId ||
+              null,
+            type: editForm.type,
+            serialNumber:
+              editForm.serialNumber,
+            manufacturer:
+              editForm.manufacturer,
+            model: editForm.model,
+            installedAt:
+              editForm.installedAt ||
+              null,
+            initialReading,
+            initialReadingDate:
+              editForm.initialReadingDate ||
+              null,
+            correctionReason:
+              editForm.correctionReason,
+          });
+
+        if (result?.ok) {
+          setEditOpen(false);
+          await loadAdminWaterMeters();
+          alert(
+            "Water meter updated"
+          );
+        }
+      } finally {
+        setEditSubmitting(false);
       }
     };
 
@@ -598,6 +761,7 @@ export default function WaterMetersPage() {
         }
 
         if (
+          addForm.certificateAvailable &&
           !addForm.calibrationDate
         ) {
 
@@ -609,6 +773,7 @@ export default function WaterMetersPage() {
         }
 
         if (
+          addForm.certificateAvailable &&
           !addForm.calibrationDocument
         ) {
 
@@ -616,6 +781,15 @@ export default function WaterMetersPage() {
             "Select calibration document"
           );
 
+          return;
+        }
+
+        if (
+          !addForm.certificateAvailable &&
+          !window.confirm(
+            "The calibration certificate is unavailable. Add this water meter without a calibration document?"
+          )
+        ) {
           return;
         }
 
@@ -663,7 +837,10 @@ export default function WaterMetersPage() {
 
             initialReadingDate:
               addForm.installedAt ||
-              addForm.calibrationDate,
+              addForm.calibrationDate ||
+              new Date()
+                .toISOString()
+                .slice(0, 10),
 
             options: {
               suppressSuccessAlert:
@@ -678,8 +855,16 @@ export default function WaterMetersPage() {
           return;
         }
 
-        const calibrationResult =
-          await uploadCalibrationDocument({
+        let calibrationResult = {
+          ok: true,
+          skipped: true,
+        };
+
+        if (
+          addForm.certificateAvailable
+        ) {
+          calibrationResult =
+            await uploadCalibrationDocument({
             meterId:
               meterResult.meter_id,
 
@@ -712,6 +897,9 @@ export default function WaterMetersPage() {
             },
           });
 
+
+        }
+
         await loadAdminWaterMeters();
 
         if (
@@ -722,7 +910,9 @@ export default function WaterMetersPage() {
           resetAddForm();
 
           alert(
-            "Water meter and calibration document added"
+            addForm.certificateAvailable
+              ? "Water meter and calibration document added"
+              : "Water meter added without calibration document"
           );
 
         } else {
@@ -1472,6 +1662,9 @@ export default function WaterMetersPage() {
                           onOpenCalibrationHistory={
                             openCalibrationHistory
                           }
+                          onEdit={
+                            openEditMeter
+                          }
                         />
 
                       )
@@ -1531,6 +1724,7 @@ export default function WaterMetersPage() {
                   "Last Reading",
                   "Last Date",
                   "Status",
+                  "Actions",
                 ].map(
                   (heading) => (
 
@@ -1773,6 +1967,20 @@ export default function WaterMetersPage() {
                           "active"
                         }
                       />
+                    </td>
+
+                    <td style={tableCell}>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          openEditMeter(
+                            meter
+                          )
+                        }
+                        style={secondaryButton}
+                      >
+                        Edit
+                      </button>
                     </td>
 
                   </tr>
@@ -2146,6 +2354,58 @@ export default function WaterMetersPage() {
               Calibration
             </SectionHeading>
 
+            <FormField
+              label="Calibration Certificate Available?"
+            >
+              <select
+                value={
+                  addForm.certificateAvailable
+                    ? "yes"
+                    : "no"
+                }
+                disabled={
+                  addSubmitting
+                }
+                onChange={(event) =>
+                  setAddForm(
+                    (current) => ({
+                      ...current,
+                      certificateAvailable:
+                        event.target.value ===
+                        "yes",
+                    })
+                  )
+                }
+                style={fieldStyle}
+              >
+                <option value="yes">
+                  Yes
+                </option>
+                <option value="no">
+                  No / unavailable
+                </option>
+              </select>
+            </FormField>
+
+            {!addForm.certificateAvailable && (
+              <div
+                style={{
+                  padding: 10,
+                  border:
+                    "1px solid #f59e0b",
+                  borderRadius: 9,
+                  background: "#fffbeb",
+                  color: "#92400e",
+                  fontSize: 12,
+                  lineHeight: 1.45,
+                }}
+              >
+                The meter can be registered without a calibration document. A separate confirmation will be requested before saving.
+              </div>
+            )}
+
+            {addForm.certificateAvailable && (
+              <>
             <label
               style={{
                 display: "flex",
@@ -2454,6 +2714,8 @@ export default function WaterMetersPage() {
               </FormField>
 
             </div>
+              </>
+            )}
 
           </div>
 
@@ -2506,6 +2768,121 @@ export default function WaterMetersPage() {
 
         </div>
 
+      </Modal>
+
+
+      <Modal
+        open={editOpen}
+        title="Edit Water Meter"
+        onClose={() => {
+          if (!editSubmitting) {
+            setEditOpen(false);
+          }
+        }}
+      >
+        <div
+          style={{
+            display: "grid",
+            gap: 12,
+          }}
+        >
+          <FormField label="Type">
+            <select
+              value={editForm.type}
+              disabled={editSubmitting}
+              onChange={(event) =>
+                setEditForm((current) => ({
+                  ...current,
+                  type: event.target.value,
+                  apartmentRiserId: "",
+                }))
+              }
+              style={fieldStyle}
+            >
+              <option value="cold">Cold Water</option>
+              <option value="hot">Hot Water</option>
+            </select>
+          </FormField>
+
+          <FormField label="Riser">
+            <select
+              value={editForm.apartmentRiserId}
+              disabled={editSubmitting}
+              onChange={(event) =>
+                setEditForm((current) => ({
+                  ...current,
+                  apartmentRiserId: event.target.value,
+                }))
+              }
+              style={fieldStyle}
+            >
+              <option value="">Not assigned</option>
+              {editRisers
+                .filter((riser) => {
+                  const value = `${riser.system_type || ""} ${riser.riser_code || ""}`.toLowerCase();
+                  const isCold = /(^|[^a-z])(cw|cold|cold_water|cold-water)([^a-z]|$)/.test(value);
+                  const isHot = /(^|[^a-z])(hw|hot|hot_water|hot-water)([^a-z]|$)/.test(value);
+                  return editForm.type === "cold" ? isCold : isHot;
+                })
+                .map((riser) => (
+                  <option
+                    key={riser.apartment_riser_id}
+                    value={riser.apartment_riser_id}
+                  >
+                    {riser.riser_code}
+                    {riser.local_label ? ` · ${riser.local_label}` : ""}
+                  </option>
+                ))}
+            </select>
+          </FormField>
+
+          <FormField label="Serial Number">
+            <input
+              type="text"
+              value={editForm.serialNumber}
+              disabled={editSubmitting}
+              onChange={(event) =>
+                setEditForm((current) => ({
+                  ...current,
+                  serialNumber: event.target.value,
+                }))
+              }
+              style={fieldStyle}
+            />
+          </FormField>
+
+          <FormField label="Manufacturer">
+            <input type="text" value={editForm.manufacturer} disabled={editSubmitting} onChange={(event) => setEditForm((current) => ({...current, manufacturer: event.target.value}))} style={fieldStyle} />
+          </FormField>
+
+          <FormField label="Model">
+            <input type="text" value={editForm.model} disabled={editSubmitting} onChange={(event) => setEditForm((current) => ({...current, model: event.target.value}))} style={fieldStyle} />
+          </FormField>
+
+          <FormField label="Installed Date (optional)">
+            <input type="date" value={editForm.installedAt} disabled={editSubmitting} onChange={(event) => setEditForm((current) => ({...current, installedAt: event.target.value}))} style={fieldStyle} />
+          </FormField>
+
+          <FormField label="Initial Reading, m³">
+            <input type="text" inputMode="decimal" placeholder="0,000" value={editForm.initialReading} disabled={editSubmitting} onChange={(event) => setEditForm((current) => ({...current, initialReading: event.target.value}))} style={fieldStyle} />
+          </FormField>
+
+          <FormField label="Initial Reading Date">
+            <input type="date" value={editForm.initialReadingDate} disabled={editSubmitting} onChange={(event) => setEditForm((current) => ({...current, initialReadingDate: event.target.value}))} style={fieldStyle} />
+          </FormField>
+
+          <FormField label="Reason for correction">
+            <textarea rows={3} value={editForm.correctionReason} disabled={editSubmitting} onChange={(event) => setEditForm((current) => ({...current, correctionReason: event.target.value}))} style={{...fieldStyle, resize: "vertical"}} />
+            <span style={{color: "var(--text)", fontSize: 11}}>Required when the initial reading or its date is changed.</span>
+          </FormField>
+
+          <div style={{display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8}}>
+            <button type="button" onClick={() => setEditOpen(false)} disabled={editSubmitting} style={secondaryButton}>Cancel</button>
+            <button type="button" onClick={handleEditMeter} disabled={editSubmitting} style={{...primaryButton, opacity: editSubmitting ? 0.65 : 1}}>
+              {editSubmitting ? "Saving..." : "Save Changes"}
+            </button>
+          </div>
+        </div>
       </Modal>
 
       <Modal
@@ -3326,6 +3703,7 @@ function MeterCard({
   getCalibrationStatus,
   onOpenDocument,
   onOpenCalibrationHistory,
+  onEdit,
 }) {
 
   return (
@@ -3511,6 +3889,20 @@ function MeterCard({
         )}
 
       </div>
+
+      <button
+        type="button"
+        onClick={() =>
+          onEdit(meter)
+        }
+        style={{
+          ...secondaryButton,
+          width: "100%",
+          marginTop: 10,
+        }}
+      >
+        Edit Meter
+      </button>
 
       <button
         type="button"
