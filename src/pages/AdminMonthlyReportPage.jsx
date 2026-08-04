@@ -40,6 +40,21 @@ export default function AdminMonthlyReportPage() {
   ] = useState("");
 
   const [
+    receiveReadingDate,
+    setReceiveReadingDate
+  ] = useState("");
+
+  const [
+    confirmClosedPeriodEntry,
+    setConfirmClosedPeriodEntry
+  ] = useState(false);
+
+  const [
+    selectedPeriodId,
+    setSelectedPeriodId
+  ] = useState("");
+
+  const [
     receiveReadingsSubmitting,
     setReceiveReadingsSubmitting
   ] = useState(false);
@@ -50,6 +65,11 @@ export default function AdminMonthlyReportPage() {
     currentWaterReportingPeriodLoading,
     currentWaterReportingPeriodError,
     loadCurrentWaterReportingPeriod,
+
+    adminReadingEntryPeriods,
+    adminReadingEntryPeriodsLoading,
+    adminReadingEntryPeriodsError,
+    loadAdminReadingEntryPeriods,
 
     adminMonthlyReport,
     adminMonthlyReportLoading,
@@ -85,22 +105,32 @@ export default function AdminMonthlyReportPage() {
 
     const loadReport = async () => {
 
-      const periodData =
+      const periods =
+        await loadAdminReadingEntryPeriods();
+
+      const defaultPeriod =
+        periods.find(
+          (item) =>
+            item.status === "open"
+        ) ||
+        periods.find(
+          (item) =>
+            item.status === "closed"
+        ) ||
+        null;
+
+      if (!defaultPeriod) {
         await loadCurrentWaterReportingPeriod();
-
-      const period =
-        periodData?.period;
-
-      if (
-        !period?.period_year ||
-        !period?.period_month
-      ) {
         return;
       }
 
+      setSelectedPeriodId(
+        String(defaultPeriod.id)
+      );
+
       await loadAdminMonthlyReport(
-        period.period_year,
-        period.period_month
+        defaultPeriod.period_year,
+        defaultPeriod.period_month
       );
     };
 
@@ -114,6 +144,19 @@ export default function AdminMonthlyReportPage() {
   const period =
     adminMonthlyReport?.period ||
     currentWaterReportingPeriod?.period;
+
+  const selectedEntryPeriod =
+    adminReadingEntryPeriods.find(
+      (item) =>
+        String(item.id) ===
+        String(selectedPeriodId)
+    ) ||
+    period ||
+    null;
+
+  const isClosedEntryPeriod =
+    selectedEntryPeriod?.status ===
+    "closed";
 
   const missingApartments =
     Array.isArray(
@@ -177,10 +220,12 @@ export default function AdminMonthlyReportPage() {
 
   const isLoading =
     currentWaterReportingPeriodLoading ||
+    adminReadingEntryPeriodsLoading ||
     adminMonthlyReportLoading;
 
   const errorMessage =
     currentWaterReportingPeriodError ||
+    adminReadingEntryPeriodsError ||
     adminMonthlyReportError;
 
   const formatMonth = (
@@ -977,6 +1022,89 @@ export default function AdminMonthlyReportPage() {
     );
   };
 
+  const getLastDayOfPeriodMonth =
+    (periodValue) => {
+
+      if (
+        !periodValue?.period_year ||
+        !periodValue?.period_month
+      ) {
+        return "";
+      }
+
+      const lastDay =
+        new Date(
+          Date.UTC(
+            Number(
+              periodValue.period_year
+            ),
+            Number(
+              periodValue.period_month
+            ),
+            0
+          )
+        )
+          .getUTCDate();
+
+      return `${periodValue.period_year}-${String(
+        periodValue.period_month
+      ).padStart(2, "0")}-${String(
+        lastDay
+      ).padStart(2, "0")}`;
+    };
+
+  const getPeriodDateLimits =
+    (periodValue) => {
+
+      if (
+        !periodValue?.period_year ||
+        !periodValue?.period_month
+      ) {
+        return {
+          min: "",
+          max: "",
+        };
+      }
+
+      const prefix =
+        `${periodValue.period_year}-${String(
+          periodValue.period_month
+        ).padStart(2, "0")}`;
+
+      return {
+        min: `${prefix}-01`,
+        max:
+          getLastDayOfPeriodMonth(
+            periodValue
+          ),
+      };
+    };
+
+  const handlePeriodChange =
+    async (value) => {
+
+      const nextPeriod =
+        adminReadingEntryPeriods.find(
+          (item) =>
+            String(item.id) ===
+            String(value)
+        );
+
+      if (!nextPeriod) {
+        return;
+      }
+
+      closeReceiveReadings();
+      setSelectedPeriodId(
+        String(nextPeriod.id)
+      );
+
+      await loadAdminMonthlyReport(
+        nextPeriod.period_year,
+        nextPeriod.period_month
+      );
+    };
+
   const openReceiveReadings =
     (
       apartmentId,
@@ -1009,6 +1137,16 @@ export default function AdminMonthlyReportPage() {
       setReceiveReadingNote(
         ""
       );
+
+      setReceiveReadingDate(
+        getLastDayOfPeriodMonth(
+          selectedEntryPeriod
+        )
+      );
+
+      setConfirmClosedPeriodEntry(
+        false
+      );
     };
 
   const closeReceiveReadings =
@@ -1030,6 +1168,14 @@ export default function AdminMonthlyReportPage() {
 
       setReceiveReadingNote(
         ""
+      );
+
+      setReceiveReadingDate(
+        ""
+      );
+
+      setConfirmClosedPeriodEntry(
+        false
       );
     };
 
@@ -1093,6 +1239,32 @@ export default function AdminMonthlyReportPage() {
         return;
       }
 
+      if (!receiveReadingDate) {
+        alert(
+          "Select reading date"
+        );
+        return;
+      }
+
+      if (
+        !selectedEntryPeriod?.id
+      ) {
+        alert(
+          "Select reporting period"
+        );
+        return;
+      }
+
+      if (
+        isClosedEntryPeriod &&
+        !confirmClosedPeriodEntry
+      ) {
+        alert(
+          "Confirm the late entry for the closed reporting period"
+        );
+        return;
+      }
+
       setReceiveReadingsSubmitting(
         true
       );
@@ -1118,6 +1290,12 @@ export default function AdminMonthlyReportPage() {
                   true,
                 suppressReload:
                   true,
+                reportingPeriodId:
+                  selectedEntryPeriod.id,
+                readingDate:
+                  receiveReadingDate,
+                confirmClosedPeriod:
+                  confirmClosedPeriodEntry,
               }
             );
 
@@ -1153,6 +1331,14 @@ export default function AdminMonthlyReportPage() {
 
           setReceiveReadingNote(
             ""
+          );
+
+          setReceiveReadingDate(
+            ""
+          );
+
+          setConfirmClosedPeriodEntry(
+            false
           );
 
           alert(
@@ -1358,17 +1544,64 @@ export default function AdminMonthlyReportPage() {
                   Reporting period
                 </div>
 
-                <h2
-                  style={{
-                    margin: 0,
-                    fontSize: 22,
-                  }}
-                >
-                  {formatMonth(
-                    period.period_year,
-                    period.period_month
-                  )}
-                </h2>
+                {adminReadingEntryPeriods.length > 1 ? (
+
+                  <select
+                    value={
+                      selectedPeriodId
+                    }
+                    onChange={(event) =>
+                      handlePeriodChange(
+                        event.target.value
+                      )
+                    }
+                    style={{
+                      minWidth: 220,
+                      padding: "8px 10px",
+                      border:
+                        "1px solid #d1d5db",
+                      borderRadius: 8,
+                      background:
+                        "#ffffff",
+                      color: "#111827",
+                      fontSize: 14,
+                      fontWeight: 700,
+                    }}
+                  >
+                    {adminReadingEntryPeriods.map(
+                      (item) => (
+                        <option
+                          key={item.id}
+                          value={item.id}
+                        >
+                          {formatMonth(
+                            item.period_year,
+                            item.period_month
+                          )}
+                          {" · "}
+                          {formatStatus(
+                            item.status
+                          )}
+                        </option>
+                      )
+                    )}
+                  </select>
+
+                ) : (
+
+                  <h2
+                    style={{
+                      margin: 0,
+                      fontSize: 22,
+                    }}
+                  >
+                    {formatMonth(
+                      period.period_year,
+                      period.period_month
+                    )}
+                  </h2>
+
+                )}
 
               </div>
 
@@ -2144,6 +2377,110 @@ export default function AdminMonthlyReportPage() {
                                       </label>
 
                                     )
+                                  )}
+
+                                  <label
+                                    style={{
+                                      display: "grid",
+                                      gap: 5,
+                                    }}
+                                  >
+
+                                    <span
+                                      style={{
+                                        color:
+                                          "#374151",
+                                        fontSize: 12,
+                                        fontWeight: 600,
+                                      }}
+                                    >
+                                      Reading date
+                                    </span>
+
+                                    <input
+                                      type="date"
+                                      value={
+                                        receiveReadingDate
+                                      }
+                                      min={
+                                        getPeriodDateLimits(
+                                          selectedEntryPeriod
+                                        ).min
+                                      }
+                                      max={
+                                        getPeriodDateLimits(
+                                          selectedEntryPeriod
+                                        ).max
+                                      }
+                                      disabled={
+                                        receiveReadingsSubmitting
+                                      }
+                                      onChange={(event) =>
+                                        setReceiveReadingDate(
+                                          event.target.value
+                                        )
+                                      }
+                                      style={{
+                                        width: "100%",
+                                        boxSizing:
+                                          "border-box",
+                                        padding:
+                                          "9px 10px",
+                                        border:
+                                          "1px solid #d1d5db",
+                                        borderRadius: 8,
+                                        background:
+                                          "#ffffff",
+                                        color:
+                                          "#111827",
+                                        fontSize: 13,
+                                      }}
+                                    />
+
+                                  </label>
+
+                                  {isClosedEntryPeriod && (
+
+                                    <label
+                                      style={{
+                                        display: "flex",
+                                        alignItems:
+                                          "flex-start",
+                                        gap: 8,
+                                        padding: 10,
+                                        border:
+                                          "1px solid #f59e0b",
+                                        borderRadius: 8,
+                                        background:
+                                          "#fffbeb",
+                                        color:
+                                          "#92400e",
+                                        fontSize: 12,
+                                        lineHeight: 1.4,
+                                        cursor:
+                                          "pointer",
+                                      }}
+                                    >
+                                      <input
+                                        type="checkbox"
+                                        checked={
+                                          confirmClosedPeriodEntry
+                                        }
+                                        disabled={
+                                          receiveReadingsSubmitting
+                                        }
+                                        onChange={(event) =>
+                                          setConfirmClosedPeriodEntry(
+                                            event.target.checked
+                                          )
+                                        }
+                                      />
+
+                                      <span>
+                                        This reporting period is closed. I confirm this late administrative entry.
+                                      </span>
+                                    </label>
+
                                   )}
 
                                   <label
