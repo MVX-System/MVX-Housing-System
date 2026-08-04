@@ -73,6 +73,25 @@ export default function useWater() {
   ] = useState(false);
 
   // =====================================
+  // ADMIN READING ENTRY PERIODS
+  // =====================================
+
+  const [
+    adminReadingEntryPeriods,
+    setAdminReadingEntryPeriods
+  ] = useState([]);
+
+  const [
+    adminReadingEntryPeriodsLoading,
+    setAdminReadingEntryPeriodsLoading
+  ] = useState(false);
+
+  const [
+    adminReadingEntryPeriodsError,
+    setAdminReadingEntryPeriodsError
+  ] = useState("");
+
+  // =====================================
   // ADMIN MONTHLY REPORT
   // =====================================
 
@@ -419,6 +438,69 @@ export default function useWater() {
       );
     };
 
+  const loadAdminReadingEntryPeriods =
+    async () => {
+
+      setAdminReadingEntryPeriodsLoading(
+        true
+      );
+
+      setAdminReadingEntryPeriodsError(
+        ""
+      );
+
+      try {
+
+        const result = await api(
+          "/api/admin/water-reading-entry-periods"
+        );
+
+        if (result?.error) {
+          const message =
+            result.error ||
+            "Reading periods load failed";
+
+          setAdminReadingEntryPeriodsError(
+            message
+          );
+
+          setAdminReadingEntryPeriods([]);
+          return [];
+        }
+
+        const periods =
+          Array.isArray(result?.periods)
+            ? result.periods
+            : [];
+
+        setAdminReadingEntryPeriods(
+          periods
+        );
+
+        return periods;
+
+      } catch (error) {
+
+        console.error(
+          "Load admin reading entry periods failed:",
+          error
+        );
+
+        setAdminReadingEntryPeriodsError(
+          "Reading periods load failed"
+        );
+
+        setAdminReadingEntryPeriods([]);
+        return [];
+
+      } finally {
+
+        setAdminReadingEntryPeriodsLoading(
+          false
+        );
+      }
+    };
+
   const loadAdminMonthlyReport =
     async (
       year,
@@ -748,6 +830,9 @@ export default function useWater() {
       const {
         suppressSuccessAlert = false,
         suppressReload = false,
+        reportingPeriodId = null,
+        readingDate = "",
+        confirmClosedPeriod = false,
       } = options;
 
       if (
@@ -788,6 +873,12 @@ export default function useWater() {
                 normalizedSource,
               source_note:
                 normalizedNote,
+              reporting_period_id:
+                reportingPeriodId,
+              reading_date:
+                readingDate,
+              confirm_closed_period:
+                confirmClosedPeriod,
             }),
           }
         );
@@ -842,8 +933,16 @@ export default function useWater() {
             "Enter a source note.",
           meter_not_found_or_inactive:
             "Water meter not found or inactive.",
-          water_collection_period_closed:
-            "Water reading collection is currently closed.",
+          invalid_reporting_period_id:
+            "Select an available reporting period.",
+          reporting_period_not_available_for_admin_entry:
+            "Only the current open period or the latest closed period is available.",
+          invalid_reading_date:
+            "Select a valid reading date.",
+          reading_date_outside_reporting_month:
+            "The reading date must belong to the selected reporting month.",
+          closed_period_confirmation_required:
+            "Confirm the late entry for the closed reporting period.",
           reading_already_submitted_for_period:
             "A reading has already been submitted for this meter and reporting period.",
         };
@@ -1647,6 +1746,10 @@ export default function useWater() {
     adminWater,
     adminWaterMeters,
 
+    adminReadingEntryPeriods,
+    adminReadingEntryPeriodsLoading,
+    adminReadingEntryPeriodsError,
+
     meterCalibrations,
     meterCalibrationsLoading,
 
@@ -1669,6 +1772,7 @@ export default function useWater() {
     loadAdminWater,
     loadAdminWaterMeters,
 
+    loadAdminReadingEntryPeriods,
     loadAdminMonthlyReport,
     clearAdminMonthlyReport,
 
