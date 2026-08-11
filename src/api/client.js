@@ -1,5 +1,5 @@
 const API =
-  "https://noisy-band-27a3.jevgenijs-anosovs.workers.dev/";
+  "https://mvx-housing-api.mvx-system.workers.dev/";
 
 export async function api(
   token,
