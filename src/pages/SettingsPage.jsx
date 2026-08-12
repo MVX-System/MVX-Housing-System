@@ -25,7 +25,7 @@ import {
 
 
 const API_BASE_URL =
-  "https://noisy-band-27a3.jevgenijs-anosovs.workers.dev";
+  "https://mvx-housing-api.mvx-system.workers.dev";
 
 async function workerApi(
   path,
