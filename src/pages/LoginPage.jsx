@@ -15,11 +15,11 @@ export default function LoginPage() {
 
   const navigate = useNavigate();
 
-  const [email, setEmail] = useState("");
+  const [nick, setNick] = useState("");
   const [password, setPassword] = useState("");
 
   const submit = async () => {
-    const ok = await login(email, password);
+    const ok = await login(nick, password);
 
     if (!ok) {
       return;
@@ -59,10 +59,11 @@ export default function LoginPage() {
         </h1>
 
         <input
-          placeholder={t("login.placeholders.email")}
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
+          placeholder="Nick"
+          value={nick}
+          onChange={(e) => setNick(e.target.value)}
           style={inputStyle}
+          autoComplete="username"
         />
 
         <input
@@ -71,6 +72,12 @@ export default function LoginPage() {
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           style={inputStyle}
+          autoComplete="current-password"
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              submit();
+            }
+          }}
         />
 
         <button

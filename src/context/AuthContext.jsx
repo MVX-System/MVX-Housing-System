@@ -122,7 +122,7 @@ export function AuthProvider({
 
   const login =
     async (
-      email,
+      nick,
       password
     ) => {
       const res =
@@ -133,7 +133,7 @@ export function AuthProvider({
 
             body:
               JSON.stringify({
-                email,
+                nick,
                 password,
               }),
           }
