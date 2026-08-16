@@ -7,6 +7,7 @@ import {
 } from "../services/api";
 
 const EMPTY_USER = {
+  nick: "",
   first_name: "",
   last_name: "",
   personal_code: "",
@@ -203,6 +204,8 @@ export function useUsers() {
                 JSON.stringify({
                   id:
                     userData.id,
+                  nick:
+                    userData.nick,
                   first_name:
                     userData.first_name,
                   last_name:

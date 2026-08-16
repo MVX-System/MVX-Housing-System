@@ -27,13 +27,14 @@ import {
 const TEXT = {
   en: {
     title: "Users",
-    search: "Search by name, email, phone or apartment",
+    search: "Search by nickname, name, email, phone or apartment",
     add: "+ Add User",
     loading: "Loading users...",
     all: "All",
     active: "Active",
     inactive: "Inactive",
     name: "Name",
+    nick: "Nick",
     email: "Email",
     phone: "Phone",
     apartments: "Apartments",
@@ -75,13 +76,14 @@ const TEXT = {
   },
   lv: {
     title: "Lietotāji",
-    search: "Meklēt pēc vārda, e-pasta, tālruņa vai dzīvokļa",
+    search: "Meklēt pēc segvārda, vārda, e-pasta, tālruņa vai dzīvokļa",
     add: "+ Pievienot lietotāju",
     loading: "Notiek lietotāju ielāde...",
     all: "Visi",
     active: "Aktīvs",
     inactive: "Neaktīvs",
     name: "Vārds",
+    nick: "Nick",
     email: "E-pasts",
     phone: "Tālrunis",
     apartments: "Dzīvokļi",
@@ -123,13 +125,14 @@ const TEXT = {
   },
   ru: {
     title: "Пользователи",
-    search: "Поиск по имени, email, телефону или квартире",
+    search: "Поиск по Nick, имени, email, телефону или квартире",
     add: "+ Добавить пользователя",
     loading: "Загрузка пользователей...",
     all: "Все",
     active: "Активный",
     inactive: "Неактивный",
     name: "Имя",
+    nick: "Nick",
     email: "Email",
     phone: "Телефон",
     apartments: "Квартиры",
@@ -416,6 +419,7 @@ export default function UsersPage() {
           }
 
           return [
+            user.nick,
             user.first_name,
             user.last_name,
             user.email,
@@ -548,7 +552,7 @@ export default function UsersPage() {
 
           .users-table {
             width: 100%;
-            min-width: 920px;
+            min-width: 980px;
             border-collapse: collapse;
           }
 
@@ -726,6 +730,7 @@ export default function UsersPage() {
           <thead>
             <tr>
               <th>ID</th>
+              <th>{text.nick}</th>
               <th>{text.name}</th>
               <th>{text.email}</th>
               <th>{text.phone}</th>
@@ -740,6 +745,8 @@ export default function UsersPage() {
               (user) => (
                 <tr key={user.id}>
                   <td>{user.id}</td>
+
+                  <td>{user.nick || "—"}</td>
 
                   <td>
                     <button
@@ -898,6 +905,13 @@ export default function UsersPage() {
               <div
                 style={mobileMetaStyle}
               >
+                <strong>{text.nick}:</strong>{" "}
+                {user.nick || "—"}
+              </div>
+
+              <div
+                style={mobileMetaStyle}
+              >
                 {user.email ? (
                   <a
                     href={`mailto:${user.email}`}
@@ -997,6 +1011,20 @@ export default function UsersPage() {
           className="users-form-grid"
           style={formGridStyle}
         >
+          <Field
+            label={text.nick}
+            required
+            value={
+              newUser.nick
+            }
+            onChange={(value) =>
+              setNewUser({
+                ...newUser,
+                nick: value,
+              })
+            }
+          />
+
           <Field
             label={text.firstName}
             required
@@ -1120,6 +1148,22 @@ export default function UsersPage() {
             className="users-form-grid"
             style={formGridStyle}
           >
+            <Field
+              label={
+                text.nick
+              }
+              required
+              value={
+                editingUser.nick
+              }
+              onChange={(value) =>
+                setEditingUser({
+                  ...editingUser,
+                  nick: value,
+                })
+              }
+            />
+
             <Field
               label={
                 text.firstName
@@ -1309,6 +1353,11 @@ export default function UsersPage() {
               gap: 8,
             }}
           >
+            <InfoRow
+              label={text.nick}
+              value={selectedUser.nick}
+            />
+
             <InfoRow
               label={text.name}
               value={`${selectedUser.first_name} ${selectedUser.last_name}`}
