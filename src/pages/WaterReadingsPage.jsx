@@ -80,6 +80,10 @@ export default function WaterReadingsPage() {
 
   }, []);
 
+  // Stage 2I-2C1:
+  // prefer Nick for submitter/corrector identity and stop
+  // displaying/exporting email in Water Reading History.
+  // Legacy name fields remain only as temporary compatibility fallback.
   const normalizedRows =
     useMemo(
       () =>
@@ -107,6 +111,7 @@ export default function WaterReadingsPage() {
                 : "No period",
 
             submitted_by_name:
+              row.submitted_by_nick ||
               [
                 row
                   .submitted_by_first_name,
@@ -118,6 +123,7 @@ export default function WaterReadingsPage() {
               "System / Unknown",
 
             corrected_by_name:
+              row.corrected_by_nick ||
               [
                 row
                   .corrected_by_first_name,
@@ -336,11 +342,6 @@ export default function WaterReadingsPage() {
             "Submitted By":
               row.submitted_by_name,
 
-            "Submitted By Email":
-              row
-                .submitted_by_email ||
-              "",
-
             "Status":
               row.status_label,
 
@@ -392,7 +393,6 @@ export default function WaterReadingsPage() {
         { wch: 18 },
         { wch: 28 },
         { wch: 22 },
-        { wch: 28 },
         { wch: 14 },
         { wch: 30 },
         { wch: 22 },
@@ -895,18 +895,6 @@ export default function WaterReadingsPage() {
 
                     <td style={tableCell}>
                       {row.submitted_by_name}
-
-                      {row
-                        .submitted_by_email && (
-
-                        <div style={subText}>
-                          {
-                            row
-                              .submitted_by_email
-                          }
-                        </div>
-
-                      )}
                     </td>
 
                     <td style={tableCell}>
