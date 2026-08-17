@@ -2473,6 +2473,7 @@ function getAnnouncementTargetAccessSql() {
 
 // =========================
 // RESIDENT ANNOUNCEMENTS
+// Stage 2I-2A: no author PII is decrypted or returned.
 // =========================
 Router.register(
   "GET",
@@ -2501,10 +2502,7 @@ Router.register(
           a.publish_until,
           a.published_at,
           a.created_at,
-          a.updated_at,
-
-          a.created_by
-            AS author_user_id
+          a.updated_at
 
         FROM announcements a
 
@@ -2549,15 +2547,18 @@ Router.register(
         )
         .all();
 
-    return await hydrateAnnouncementAuthors(
-      ctx.env,
-      result.results || []
+    return (result.results || []).map(
+      (announcement) => ({
+        ...announcement,
+        author_label: "DzĪKS Irlava 20",
+      })
     );
   }
 );
 
 // =========================
 // RESIDENT ANNOUNCEMENT DETAILS
+// Stage 2I-2A: no author PII is decrypted or returned.
 // =========================
 Router.register(
   "GET",
@@ -2605,10 +2606,7 @@ Router.register(
           a.publish_until,
           a.published_at,
           a.created_at,
-          a.updated_at,
-
-          a.created_by
-            AS author_user_id
+          a.updated_at
 
         FROM announcements a
 
@@ -2647,13 +2645,10 @@ Router.register(
       };
     }
 
-    const hydrated =
-      await hydrateAnnouncementAuthors(
-        ctx.env,
-        [announcement]
-      );
-
-    return hydrated[0];
+    return {
+      ...announcement,
+      author_label: "DzĪKS Irlava 20",
+    };
   }
 );
 
