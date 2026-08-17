@@ -438,6 +438,60 @@ export default function AdminAnnouncementsPage() {
       });
     };
 
+  const getUserTargetLabel =
+    (item) => {
+      const nick =
+        String(
+          item?.nick || ""
+        ).trim();
+
+      const apartmentNumbers =
+        (
+          Array.isArray(
+            item?.apartment_numbers
+          )
+            ? item.apartment_numbers
+            : []
+        )
+          .map(
+            (value) =>
+              String(
+                value || ""
+              ).trim()
+          )
+          .filter(Boolean);
+
+      if (
+        nick &&
+        apartmentNumbers.length > 0
+      ) {
+        return `${nick} — ${t(
+          "announcements.admin.recipients.apartment"
+        )} ${apartmentNumbers.join(", ")}`;
+      }
+
+      if (nick) {
+        return nick;
+      }
+
+      // Stage 2I-2B1 compatibility:
+      // keep the legacy PII fallback until the backend
+      // switches announcement target options to Nick + Apartment.
+      const legacyName =
+        [
+          item?.first_name,
+          item?.last_name,
+        ]
+          .filter(Boolean)
+          .join(" ");
+
+      return (
+        legacyName ||
+        item?.email ||
+        `#${item?.id ?? ""}`
+      );
+    };
+
   const getTargetOptions =
     () => {
       if (
@@ -506,13 +560,9 @@ export default function AdminAnnouncementsPage() {
             value:
               String(item.id),
             label:
-              [
-                item.first_name,
-                item.last_name,
-              ]
-                .filter(Boolean)
-                .join(" ") ||
-              item.email,
+              getUserTargetLabel(
+                item
+              ),
           })
         );
       }
@@ -581,13 +631,9 @@ export default function AdminAnnouncementsPage() {
 
       const userName =
         user
-          ? [
-              user.first_name,
-              user.last_name,
-            ]
-              .filter(Boolean)
-              .join(" ") ||
-            user.email
+          ? getUserTargetLabel(
+              user
+            )
           : target.value;
 
       return `${t(
