@@ -2257,100 +2257,123 @@ async function hydrateAnnouncementAuthors(
   );
 }
 
-async function hydrateAnnouncementTargetUsers(
-  env,
-  users
+function buildAnnouncementTargetUsers(
+  rows
 ) {
-  const rows =
-    Array.isArray(users)
-      ? users
+  const sourceRows =
+    Array.isArray(rows)
+      ? rows
       : [];
 
-  if (rows.length === 0) {
-    return rows;
-  }
-
-  let piiMap =
+  const usersById =
     new Map();
 
-  try {
-    piiMap =
-      await PiiStore.getUsersPii(
-        rows.map(
-          (row) => row.id
-        ),
-        env
+  for (
+    const row of sourceRows
+  ) {
+    const userId =
+      Number(row.id);
+
+    if (
+      !Number.isFinite(userId)
+    ) {
+      continue;
+    }
+
+    if (
+      !usersById.has(userId)
+    ) {
+      usersById.set(
+        userId,
+        {
+          id:
+            userId,
+
+          nick:
+            String(
+              row.nick || ""
+            ).trim(),
+
+          apartment_numbers:
+            [],
+        }
       );
-  } catch (error) {
-    console.warn(
-      "PII read failed for announcement target users",
-      {
-        error:
-          String(
-            error?.message ||
-            error
-          ),
-      }
-    );
+    }
+
+    const apartmentNumber =
+      String(
+        row.apartment_number || ""
+      ).trim();
+
+    if (
+      apartmentNumber &&
+      !usersById
+        .get(userId)
+        .apartment_numbers
+        .includes(
+          apartmentNumber
+        )
+    ) {
+      usersById
+        .get(userId)
+        .apartment_numbers
+        .push(
+          apartmentNumber
+        );
+    }
   }
 
-  return rows
+  return Array
+    .from(
+      usersById.values()
+    )
     .map(
-      (row) => {
-        const pii =
-          piiMap.get(
-            Number(row.id)
-          );
+      (user) => ({
+        ...user,
 
-        return {
-          id:
-            row.id,
-
-          first_name:
-            pii?.first_name ?? null,
-
-          last_name:
-            pii?.last_name ?? null,
-
-          email:
-            pii?.email ?? null,
-        };
-      }
+        apartment_numbers:
+          [...user.apartment_numbers]
+            .sort(
+              (a, b) =>
+                String(a)
+                  .localeCompare(
+                    String(b),
+                    undefined,
+                    {
+                      numeric: true,
+                      sensitivity:
+                        "base",
+                    }
+                  )
+            ),
+      })
     )
     .sort(
       (a, b) => {
-        const firstName =
+        const nickCompare =
           String(
-            a.first_name || ""
+            a.nick || ""
           ).localeCompare(
             String(
-              b.first_name || ""
-            )
+              b.nick || ""
+            ),
+            undefined,
+            {
+              numeric: true,
+              sensitivity:
+                "base",
+            }
           );
 
-        if (firstName !== 0) {
-          return firstName;
+        if (
+          nickCompare !== 0
+        ) {
+          return nickCompare;
         }
 
-        const lastName =
-          String(
-            a.last_name || ""
-          ).localeCompare(
-            String(
-              b.last_name || ""
-            )
-          );
-
-        if (lastName !== 0) {
-          return lastName;
-        }
-
-        return String(
-          a.email || ""
-        ).localeCompare(
-          String(
-            b.email || ""
-          )
+        return (
+          Number(a.id) -
+          Number(b.id)
         );
       }
     );
@@ -2706,17 +2729,38 @@ Router.register(
         `).all(),
 
         ctx.env.DB.prepare(`
-          SELECT
-            id
-          FROM users
-          WHERE is_active = 1
-          ORDER BY id
+          SELECT DISTINCT
+            u.id,
+            u.nick,
+            a.number
+              AS apartment_number
+
+          FROM users u
+
+          LEFT JOIN user_apartments ua
+            ON ua.user_id = u.id
+
+          LEFT JOIN apartments a
+            ON a.id = ua.apartment_id
+
+          WHERE u.is_active = 1
+
+          ORDER BY
+            u.nick COLLATE NOCASE,
+            u.id,
+            CAST(
+              a.number AS INTEGER
+            ),
+            a.number
         `).all(),
       ]);
 
+    // Stage 2I-2B2:
+    // announcement target selection uses only
+    // pseudonymous Main D1 data (Nick + Apartment).
+    // No PII_DB read or decryption is performed here.
     const users =
-      await hydrateAnnouncementTargetUsers(
-        ctx.env,
+      buildAnnouncementTargetUsers(
         usersResult.results || []
       );
 
