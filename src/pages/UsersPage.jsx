@@ -51,7 +51,6 @@ const TEXT = {
     editTitle: "Edit User",
     firstName: "First name",
     lastName: "Last name",
-    personalCode: "Personal code",
     password: "Temporary password",
     create: "Create User",
     save: "Save changes",
@@ -100,7 +99,6 @@ const TEXT = {
     editTitle: "Rediģēt lietotāju",
     firstName: "Vārds",
     lastName: "Uzvārds",
-    personalCode: "Personas kods",
     password: "Pagaidu parole",
     create: "Izveidot lietotāju",
     save: "Saglabāt izmaiņas",
@@ -149,7 +147,6 @@ const TEXT = {
     editTitle: "Редактировать пользователя",
     firstName: "Имя",
     lastName: "Фамилия",
-    personalCode: "Персональный код",
     password: "Временный пароль",
     create: "Создать пользователя",
     save: "Сохранить изменения",
@@ -1053,22 +1050,6 @@ export default function UsersPage() {
             }
           />
 
-          <Field
-            label={
-              text.personalCode
-            }
-            value={
-              newUser.personal_code ||
-              ""
-            }
-            onChange={(value) =>
-              setNewUser({
-                ...newUser,
-                personal_code:
-                  value,
-              })
-            }
-          />
 <Field
             label={text.phone}
             value={
@@ -1198,22 +1179,6 @@ export default function UsersPage() {
               }
             />
 
-            <Field
-              label={
-                text.personalCode
-              }
-              value={
-                editingUser.personal_code ||
-                ""
-              }
-              onChange={(value) =>
-                setEditingUser({
-                  ...editingUser,
-                  personal_code:
-                    value,
-                })
-              }
-            />
 <Field
               label={text.phone}
               value={

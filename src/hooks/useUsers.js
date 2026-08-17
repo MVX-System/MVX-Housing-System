@@ -10,7 +10,6 @@ const EMPTY_USER = {
   nick: "",
   first_name: "",
   last_name: "",
-  personal_code: "",
   email: "",
   phone: "",
   password: "",
@@ -210,8 +209,6 @@ export function useUsers() {
                     userData.first_name,
                   last_name:
                     userData.last_name,
-                  personal_code:
-                    userData.personal_code,
                   email:
                     userData.email,
                   phone:
