@@ -2166,97 +2166,6 @@ async function attachAnnouncementTargets(
   );
 }
 
-// =========================
-// ANNOUNCEMENT AUTHOR PII READ
-// Stage 2G-1: encrypted PII from PII_DB only.
-// Main D1 is no longer used as an announcement PII fallback.
-// =========================
-async function hydrateAnnouncementAuthors(
-  env,
-  announcements,
-  {
-    includeEmail = false,
-  } = {}
-) {
-  const rows =
-    Array.isArray(announcements)
-      ? announcements
-      : [];
-
-  if (rows.length === 0) {
-    return rows;
-  }
-
-  const authorUserIds =
-    rows
-      .map(
-        (row) =>
-          Number(
-            row.author_user_id
-          )
-      )
-      .filter(
-        (value) =>
-          Number.isInteger(value) &&
-          value > 0
-      );
-
-  let piiMap =
-    new Map();
-
-  try {
-    piiMap =
-      await PiiStore.getUsersPii(
-        authorUserIds,
-        env
-      );
-  } catch (error) {
-    console.warn(
-      "PII read failed for announcement authors",
-      {
-        error:
-          String(
-            error?.message ||
-            error
-          ),
-      }
-    );
-  }
-
-  return rows.map(
-    (row) => {
-      const pii =
-        piiMap.get(
-          Number(
-            row.author_user_id
-          )
-        );
-
-      const {
-        author_user_id,
-        ...announcement
-      } = row;
-
-      const hydrated = {
-        ...announcement,
-
-        author_first_name:
-          pii?.first_name ?? null,
-
-        author_last_name:
-          pii?.last_name ?? null,
-      };
-
-      if (includeEmail) {
-        hydrated.author_email =
-          pii?.email ?? null;
-      }
-
-      return hydrated;
-    }
-  );
-}
-
 function buildAnnouncementTargetUsers(
   rows
 ) {
@@ -2398,10 +2307,14 @@ async function getAnnouncementById(
         a.updated_at,
         a.published_at,
 
-        a.created_by
-          AS author_user_id
+        author.nick
+          AS author_nick
 
       FROM announcements a
+
+      LEFT JOIN users author
+        ON author.id =
+          a.created_by
 
       WHERE a.id = ?
     `)
@@ -2414,17 +2327,11 @@ async function getAnnouncementById(
     return null;
   }
 
-  const hydrated =
-    await hydrateAnnouncementAuthors(
-      env,
-      [announcement],
-      {
-        includeEmail: true,
-      }
-    );
-
+  // Stage 2I-2E:
+  // Admin announcement details use only pseudonymous author identity.
+  // No PII_DB read or decryption is performed here.
   return {
-    ...hydrated[0],
+    ...announcement,
     targets:
       await getAnnouncementTargets(
         env,
@@ -2808,10 +2715,14 @@ Router.register(
           a.updated_at,
           a.published_at,
 
-          a.created_by
-            AS author_user_id
+          author.nick
+            AS author_nick
 
         FROM announcements a
+
+        LEFT JOIN users author
+          ON author.id =
+            a.created_by
 
         ORDER BY
           CASE a.status
@@ -2827,18 +2738,12 @@ Router.register(
       `)
         .all();
 
-    const hydrated =
-      await hydrateAnnouncementAuthors(
-        ctx.env,
-        result.results || [],
-        {
-          includeEmail: true,
-        }
-      );
-
+    // Stage 2I-2E:
+    // Admin announcement list uses only pseudonymous author identity.
+    // No PII_DB read or decryption is performed here.
     return await attachAnnouncementTargets(
       ctx.env,
-      hydrated
+      result.results || []
     );
   }
 );
