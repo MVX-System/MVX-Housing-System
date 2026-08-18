@@ -7832,35 +7832,12 @@ Router.register("GET", "/api/admin/dashboard", async (ctx) => {
 
   const lastUser = await ctx.env.DB.prepare(`
     SELECT
-      id
+      id,
+      nick
     FROM users
     ORDER BY id DESC
     LIMIT 1
   `).first();
-
-  let lastUserPii = null;
-
-  if (lastUser) {
-    try {
-      lastUserPii =
-        await PiiStore.getUserPii(
-          lastUser.id,
-          ctx.env
-        );
-    } catch (error) {
-      console.warn(
-        "PII read failed for /api/admin/dashboard",
-        {
-          user_id:
-            Number(lastUser.id),
-          error:
-            String(
-              error?.message || error
-            ),
-        }
-      );
-    }
-  }
 
   const lastReading = await ctx.env.DB.prepare(`
     SELECT
@@ -7905,16 +7882,14 @@ Router.register("GET", "/api/admin/dashboard", async (ctx) => {
 
     lastApartment,
 
+    // Stage 2I-2D:
+    // Admin Dashboard uses only pseudonymous user identity.
+    // No PII_DB read or decryption is performed here.
     lastUser: lastUser
       ? {
           id: lastUser.id,
-          name:
-            [
-              lastUserPii?.first_name,
-              lastUserPii?.last_name,
-            ]
-              .filter(Boolean)
-              .join(" ")
+          nick:
+            lastUser.nick || null,
         }
       : null,
 
