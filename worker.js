@@ -4473,6 +4473,52 @@ ORDER BY u.id
     );
   }
 
+  if (piiMap.size > 0) {
+    try {
+      await PiiAudit.record(
+        {
+          actorUserId:
+            admin.user_id,
+          subjectUserId:
+            null,
+          action:
+            "read_bulk",
+          endpoint:
+            "/api/admin/users",
+          fields: [
+            "first_name",
+            "last_name",
+            "email",
+            "phone",
+          ],
+          subjectCount:
+            piiMap.size,
+        },
+        ctx.env
+      );
+    } catch (error) {
+      console.error(
+        "PII audit write failed for /api/admin/users",
+        {
+          actor_user_id:
+            admin.user_id,
+          subject_count:
+            piiMap.size,
+          error:
+            String(
+              error?.message ||
+              error
+            ),
+        }
+      );
+
+      return {
+        error:
+          "pii_audit_failed",
+      };
+    }
+  }
+
   return rows
     .map(
       (row) => {
