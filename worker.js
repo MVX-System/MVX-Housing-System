@@ -4326,6 +4326,49 @@ Router.register("GET", "/api/me", async (ctx) => {
     );
   }
 
+  if (pii) {
+    try {
+      await PiiAudit.record(
+        {
+          actorUserId:
+            user.id,
+          subjectUserId:
+            user.id,
+          action:
+            "read_self",
+          endpoint:
+            "/api/me",
+          fields: [
+            "first_name",
+            "last_name",
+            "email",
+          ],
+          subjectCount:
+            1,
+        },
+        ctx.env
+      );
+    } catch (error) {
+      console.error(
+        "PII audit write failed for /api/me",
+        {
+          user_id:
+            user.id,
+          error:
+            String(
+              error?.message ||
+              error
+            ),
+        }
+      );
+
+      return {
+        error:
+          "pii_audit_failed",
+      };
+    }
+  }
+
   return {
     user: {
       ...user,
