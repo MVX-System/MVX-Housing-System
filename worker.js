@@ -6669,7 +6669,10 @@ Router.register(
           wrp.period_month,
 
           wmr.submitted_by AS submitted_by_user_id,
+          submitter.nick AS submitted_by_nick,
+
           wmr.corrected_by AS corrected_by_user_id,
+          corrector.nick AS corrected_by_nick,
 
           replacement.reading_value
             AS replacement_reading_value,
@@ -6700,6 +6703,14 @@ Router.register(
           ON replacement.id =
             wmr.superseded_by_reading_id
 
+        LEFT JOIN users submitter
+          ON submitter.id =
+            wmr.submitted_by
+
+        LEFT JOIN users corrector
+          ON corrector.id =
+            wmr.corrected_by
+
         ORDER BY
           COALESCE(
             wmr.submitted_at,
@@ -6710,77 +6721,10 @@ Router.register(
       `)
         .all();
 
-    const rows =
-      result.results || [];
-
-    const userIds =
-      rows.flatMap(
-        (row) => [
-          row.submitted_by_user_id,
-          row.corrected_by_user_id,
-        ]
-      );
-
-    let piiMap =
-      new Map();
-
-    try {
-      piiMap =
-        await PiiStore.getUsersPii(
-          userIds,
-          ctx.env
-        );
-    } catch (error) {
-      console.warn(
-        "PII read failed for /api/admin/water-readings",
-        {
-          error:
-            String(
-              error?.message || error
-            ),
-        }
-      );
-    }
-
-    return rows.map(
-      (row) => {
-        const submitterPii =
-          piiMap.get(
-            Number(
-              row.submitted_by_user_id
-            )
-          );
-
-        const correctorPii =
-          piiMap.get(
-            Number(
-              row.corrected_by_user_id
-            )
-          );
-
-        return {
-          ...row,
-
-          submitted_by_first_name:
-            submitterPii?.first_name ?? null,
-
-          submitted_by_last_name:
-            submitterPii?.last_name ?? null,
-
-          submitted_by_email:
-            submitterPii?.email ?? null,
-
-          corrected_by_first_name:
-            correctorPii?.first_name ?? null,
-
-          corrected_by_last_name:
-            correctorPii?.last_name ?? null,
-
-          corrected_by_email:
-            correctorPii?.email ?? null,
-        };
-      }
-    );
+    // Stage 2I-2C2:
+    // Water Reading History uses only pseudonymous user identity
+    // from Main D1. No PII_DB read or decryption is performed here.
+    return result.results || [];
   }
 );
 
