@@ -657,6 +657,178 @@ class PiiStore {
 // =========================
 // ROUTER
 // =========================
+
+// =========================
+// PII ACCESS AUDIT
+// Stage 2I-3B: infrastructure only.
+// Routes are not connected to audit yet.
+// =========================
+class PiiAudit {
+  static normalizePositiveInteger(
+    value,
+    { allowNull = false } = {}
+  ) {
+    if (
+      allowNull &&
+      (value === null || value === undefined)
+    ) {
+      return null;
+    }
+
+    const normalized = Number(value);
+
+    if (
+      !Number.isInteger(normalized) ||
+      normalized <= 0
+    ) {
+      throw new Error(
+        "invalid_pii_audit_integer"
+      );
+    }
+
+    return normalized;
+  }
+
+  static normalizeFields(value) {
+    const fields =
+      Array.isArray(value)
+        ? value
+        : String(value || "")
+            .split(",");
+
+    const normalized =
+      Array.from(
+        new Set(
+          fields
+            .map(
+              (field) =>
+                String(field || "")
+                  .trim()
+            )
+            .filter(Boolean)
+        )
+      );
+
+    if (normalized.length === 0) {
+      throw new Error(
+        "missing_pii_audit_fields"
+      );
+    }
+
+    return normalized.join(",");
+  }
+
+  static normalizeText(
+    value,
+    errorCode
+  ) {
+    const normalized =
+      String(value || "").trim();
+
+    if (!normalized) {
+      throw new Error(errorCode);
+    }
+
+    return normalized;
+  }
+
+  static async record(
+    {
+      actorUserId,
+      subjectUserId = null,
+      action,
+      endpoint,
+      fields,
+      subjectCount = null,
+    },
+    env
+  ) {
+    if (!env?.PII_DB) {
+      throw new Error(
+        "missing_pii_database"
+      );
+    }
+
+    const normalizedActorUserId =
+      this.normalizePositiveInteger(
+        actorUserId
+      );
+
+    const normalizedSubjectUserId =
+      this.normalizePositiveInteger(
+        subjectUserId,
+        {
+          allowNull: true,
+        }
+      );
+
+    const normalizedAction =
+      this.normalizeText(
+        action,
+        "missing_pii_audit_action"
+      );
+
+    const normalizedEndpoint =
+      this.normalizeText(
+        endpoint,
+        "missing_pii_audit_endpoint"
+      );
+
+    const normalizedFields =
+      this.normalizeFields(fields);
+
+    let normalizedSubjectCount = null;
+
+    if (
+      subjectCount !== null &&
+      subjectCount !== undefined
+    ) {
+      normalizedSubjectCount =
+        Number(subjectCount);
+
+      if (
+        !Number.isInteger(
+          normalizedSubjectCount
+        ) ||
+        normalizedSubjectCount < 0
+      ) {
+        throw new Error(
+          "invalid_pii_audit_subject_count"
+        );
+      }
+    }
+
+    const result =
+      await env.PII_DB.prepare(`
+        INSERT INTO pii_access_audit (
+          actor_user_id,
+          subject_user_id,
+          action,
+          endpoint,
+          fields,
+          subject_count
+        )
+        VALUES (?, ?, ?, ?, ?, ?)
+      `)
+        .bind(
+          normalizedActorUserId,
+          normalizedSubjectUserId,
+          normalizedAction,
+          normalizedEndpoint,
+          normalizedFields,
+          normalizedSubjectCount
+        )
+        .run();
+
+    return {
+      ok: true,
+      audit_id:
+        result?.meta?.last_row_id ??
+        null,
+    };
+  }
+}
+
 class Router {
   static routes = [];
 
