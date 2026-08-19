@@ -513,6 +513,7 @@ export default function ApartmentsPage() {
     setNewApartment,
     createApartment,
     loadApartments,
+    loadApartmentDetails,
   } = useApartments();
 
   const [selectedSection, setSelectedSection] =
@@ -544,30 +545,55 @@ export default function ApartmentsPage() {
       return;
     }
 
-    const apartment =
-      apartments.find(
-        (item) =>
-          String(item.number) ===
-          String(apartmentNumber)
-      );
+    let active = true;
 
-    if (!apartment) {
-      return;
-    }
+    const openApartmentFromUrl =
+      async () => {
+        const apartment =
+          apartments.find(
+            (item) =>
+              String(item.number) ===
+              String(apartmentNumber)
+          );
 
-    setSelectedSection(
-      apartment.section
-    );
-    setSelectedFloor(
-      apartment.floor
-    );
-    setSelectedApartment(
-      apartment
-    );
+        if (!apartment) {
+          return;
+        }
 
-    setSelectionStep(
-      "details"
-    );
+        setSelectedSection(
+          apartment.section
+        );
+        setSelectedFloor(
+          apartment.floor
+        );
+        setSelectedApartment(
+          apartment
+        );
+        setSelectionStep(
+          "details"
+        );
+
+        const detailedApartment =
+          await loadApartmentDetails(
+            apartment.id
+          );
+
+        if (
+          active &&
+          detailedApartment
+        ) {
+          setSelectedApartment({
+            ...apartment,
+            ...detailedApartment,
+          });
+        }
+      };
+
+    openApartmentFromUrl();
+
+    return () => {
+      active = false;
+    };
   }, [
     apartmentNumber,
     apartments,
@@ -704,18 +730,33 @@ export default function ApartmentsPage() {
     setSelectionStep("apartment");
   };
 
-  const selectApartment = (apartment) => {
-    setSelectedSection(
-      apartment.section
-    );
-    setSelectedFloor(
-      apartment.floor
-    );
-    setSelectedApartment(
-      apartment
-    );
-    setSelectionStep("details");
-  };
+  const selectApartment =
+    async (apartment) => {
+      setSelectedSection(
+        apartment.section
+      );
+      setSelectedFloor(
+        apartment.floor
+      );
+      setSelectedApartment(
+        apartment
+      );
+      setSelectionStep(
+        "details"
+      );
+
+      const detailedApartment =
+        await loadApartmentDetails(
+          apartment.id
+        );
+
+      if (detailedApartment) {
+        setSelectedApartment({
+          ...apartment,
+          ...detailedApartment,
+        });
+      }
+    };
 
   const openUser =
     (userId) => {

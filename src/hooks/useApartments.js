@@ -32,9 +32,7 @@ notes: "",
 
 const loadApartments = async () => {
 
-
 try {
-
   setLoading(true);
 
   const d = await api(
@@ -46,13 +44,57 @@ try {
       ? d
       : []
   );
-
 } finally {
-
   setLoading(false);
-
 }
 
+};
+
+// =========================
+// LOAD ONE APARTMENT DETAILS
+// =========================
+
+const loadApartmentDetails =
+async (apartmentId) => {
+
+if (
+  apartmentId === null ||
+  apartmentId === undefined ||
+  apartmentId === ""
+) {
+  return null;
+}
+
+const result = await api(
+  `/api/admin/apartment-details?id=${encodeURIComponent(
+    apartmentId
+  )}`
+);
+
+if (
+  !result ||
+  result.error
+) {
+  console.error(
+    "LOAD APARTMENT DETAILS ERROR:",
+    result?.error ||
+    "unknown_error"
+  );
+
+  return null;
+}
+
+return {
+  ...(result.apartment || {}),
+  owners:
+    Array.isArray(result.owners)
+      ? result.owners
+      : [],
+  residents:
+    Array.isArray(result.residents)
+      ? result.residents
+      : [],
+};
 
 };
 
@@ -61,7 +103,6 @@ try {
 // =========================
 
 const createApartment = async () => {
-
 
 const res = await api(
   "/api/admin/create-apartment",
@@ -75,7 +116,6 @@ const res = await api(
 );
 
 if (res.ok) {
-
   alert(
     "Apartment created"
   );
@@ -95,21 +135,16 @@ if (res.ok) {
   });
 
   await loadApartments();
-
 } else {
-
   alert(
     res.error ||
     "Create failed"
   );
-
 }
-
 
 };
 
 return {
-
 
 apartments,
 setApartments,
@@ -123,8 +158,8 @@ newApartment,
 setNewApartment,
 
 loadApartments,
+loadApartmentDetails,
 createApartment,
-
 
 };
 }
