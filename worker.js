@@ -8296,6 +8296,45 @@ Router.register("POST", "/api/admin/create-user", async (ctx) => {
     };
   }
 
+  try {
+    await PiiAudit.record(
+      {
+        actorUserId:
+          admin.user_id,
+        subjectUserId:
+          userId,
+        action:
+          "create",
+        endpoint:
+          "/api/admin/create-user",
+        fields: [
+          "first_name",
+          "last_name",
+          "email",
+          "phone",
+        ],
+        subjectCount:
+          1,
+      },
+      ctx.env
+    );
+  } catch (error) {
+    console.error(
+      "PII audit write failed for /api/admin/create-user",
+      {
+        actor_user_id:
+          admin.user_id,
+        subject_user_id:
+          userId,
+        error:
+          String(
+            error?.message ||
+            error
+          ),
+      }
+    );
+  }
+
   return {
     ok: true,
     user_id: userId
