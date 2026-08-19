@@ -8535,6 +8535,45 @@ Router.register("POST", "/api/admin/update-user", async (ctx) => {
     };
   }
 
+  try {
+    await PiiAudit.record(
+      {
+        actorUserId:
+          admin.user_id,
+        subjectUserId:
+          userId,
+        action:
+          "update",
+        endpoint:
+          "/api/admin/update-user",
+        fields: [
+          "first_name",
+          "last_name",
+          "email",
+          "phone",
+        ],
+        subjectCount:
+          1,
+      },
+      ctx.env
+    );
+  } catch (error) {
+    console.error(
+      "PII audit write failed for /api/admin/update-user",
+      {
+        actor_user_id:
+          admin.user_id,
+        subject_user_id:
+          userId,
+        error:
+          String(
+            error?.message ||
+            error
+          ),
+      }
+    );
+  }
+
   return {
     ok: true
   };
