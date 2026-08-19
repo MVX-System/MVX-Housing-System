@@ -251,12 +251,7 @@ export default function DashboardPage() {
     );
 
   const userName =
-    [
-      me?.user?.first_name,
-      me?.user?.last_name,
-    ]
-      .filter(Boolean)
-      .join(" ") ||
+    me?.user?.nick ||
     t("dashboard.relations.resident");
 
   const livingArea =

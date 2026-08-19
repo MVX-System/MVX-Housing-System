@@ -378,9 +378,10 @@ export default function Sidebar({
           style={sidebarUser}
         >
           {t("sidebar.user")}:{" "}
-          {me?.user?.first_name}
-          {" "}
-          {me?.user?.last_name}
+          {me?.user?.nick ||
+            t(
+              "dashboard.relations.resident"
+            )}
         </div>
 
         {!mustChangePassword && (
