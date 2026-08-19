@@ -4758,6 +4758,54 @@ Router.register("GET", "/api/admin/apartment-details", async (ctx) => {
     );
   }
 
+  if (piiMap.size > 0) {
+    try {
+      await PiiAudit.record(
+        {
+          actorUserId:
+            admin.user_id,
+          subjectUserId:
+            null,
+          action:
+            "read_group",
+          endpoint:
+            "/api/admin/apartment-details",
+          fields: [
+            "first_name",
+            "last_name",
+            "email",
+            "phone",
+          ],
+          subjectCount:
+            piiMap.size,
+        },
+        ctx.env
+      );
+    } catch (error) {
+      console.error(
+        "PII audit write failed for /api/admin/apartment-details",
+        {
+          actor_user_id:
+            admin.user_id,
+          apartment_id:
+            Number(id),
+          subject_count:
+            piiMap.size,
+          error:
+            String(
+              error?.message ||
+              error
+            ),
+        }
+      );
+
+      return {
+        error:
+          "pii_audit_failed",
+      };
+    }
+  }
+
   const hydratedUsers =
     rows.map(
       (row) => {
