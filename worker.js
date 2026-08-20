@@ -5263,6 +5263,248 @@ Router.register(
   }
 );
 
+// =========================
+// ADMIN PII SEARCH INDEX BACKFILL
+// Stage 2I-5A3D v3:
+// Controlled admin-only backfill for existing encrypted PII.
+// Processes only users that currently have no search tokens.
+// Users with no searchable PII receive a non-searchable HMAC
+// marker so the backfill can complete deterministically.
+// =========================
+Router.register(
+  "POST",
+  "/api/admin/pii-search-backfill",
+  async (ctx) => {
+    const admin =
+      await Auth.requireAdmin(ctx);
+
+    if (!admin) {
+      return {
+        error: "forbidden"
+      };
+    }
+
+    let body = {};
+
+    try {
+      body =
+        await ctx.request.json();
+    } catch {
+      body = {};
+    }
+
+    const requestedLimit =
+      Number(body?.limit ?? 20);
+
+    const limit =
+      Number.isInteger(requestedLimit)
+        ? Math.min(
+            Math.max(
+              requestedLimit,
+              1
+            ),
+            50
+          )
+        : 20;
+
+    const missingResult =
+      await ctx.env.PII_DB.prepare(`
+        SELECT
+          up.user_id
+        FROM user_pii up
+        WHERE NOT EXISTS (
+          SELECT 1
+          FROM pii_search_tokens pst
+          WHERE pst.user_id = up.user_id
+        )
+        ORDER BY up.user_id
+        LIMIT ?
+      `)
+        .bind(limit)
+        .all();
+
+    const userIds =
+      (missingResult.results || [])
+        .map(
+          (row) =>
+            Number(row.user_id)
+        )
+        .filter(
+          (userId) =>
+            Number.isInteger(userId) &&
+            userId > 0
+        );
+
+    if (userIds.length === 0) {
+      return {
+        processed: 0,
+        indexed: 0,
+        remaining: 0,
+        user_ids: [],
+      };
+    }
+
+    const piiMap =
+      await PiiStore.getUsersPii(
+        userIds,
+        ctx.env
+      );
+
+    let indexed = 0;
+    const indexedUserIds = [];
+
+    for (const userId of userIds) {
+      const pii =
+        piiMap.get(userId);
+
+      if (!pii) {
+        continue;
+      }
+
+      let entries =
+        await PiiSearch.buildUserTokens(
+          {
+            firstName:
+              pii.first_name,
+            lastName:
+              pii.last_name,
+            email:
+              pii.email,
+            phone:
+              pii.phone,
+          },
+          ctx.env
+        );
+
+      if (entries.length === 0) {
+        const markerHmac =
+          await PiiCrypto.searchTokenHmac(
+            "__meta__",
+            "indexed-empty",
+            ctx.env
+          );
+
+        entries = [
+          {
+            field: "__meta__",
+            tokenHmac:
+              markerHmac,
+          },
+        ];
+      }
+
+      await ctx.env.PII_DB.prepare(`
+        DELETE FROM pii_search_tokens
+        WHERE user_id = ?
+      `)
+        .bind(userId)
+        .run();
+
+      const statements =
+        entries.map(
+          (entry) =>
+            ctx.env.PII_DB.prepare(`
+              INSERT INTO pii_search_tokens (
+                user_id,
+                field,
+                token_hmac
+              )
+              VALUES (?, ?, ?)
+            `).bind(
+              userId,
+              entry.field,
+              entry.tokenHmac
+            )
+        );
+
+      await ctx.env.PII_DB.batch(
+        statements
+      );
+
+      indexed += 1;
+      indexedUserIds.push(
+        userId
+      );
+    }
+
+    const remainingRow =
+      await ctx.env.PII_DB.prepare(`
+        SELECT COUNT(*) AS count
+        FROM user_pii up
+        WHERE NOT EXISTS (
+          SELECT 1
+          FROM pii_search_tokens pst
+          WHERE pst.user_id = up.user_id
+        )
+      `)
+        .first();
+
+    const remaining =
+      Number(
+        remainingRow?.count ?? 0
+      );
+
+    try {
+      await PiiAudit.record(
+        {
+          actorUserId:
+            admin.user_id,
+          subjectUserId:
+            null,
+          action:
+            "search_index_backfill",
+          endpoint:
+            "/api/admin/pii-search-backfill",
+          fields: [
+            "first_name",
+            "last_name",
+            "email",
+            "phone",
+          ],
+          subjectCount:
+            indexed,
+        },
+        ctx.env
+      );
+    } catch (error) {
+      console.error(
+        "PII audit write failed for /api/admin/pii-search-backfill",
+        {
+          actor_user_id:
+            admin.user_id,
+          subject_count:
+            indexed,
+          error:
+            String(
+              error?.message ||
+              error
+            ),
+        }
+      );
+
+      return {
+        error:
+          "pii_audit_failed",
+        processed:
+          userIds.length,
+        indexed,
+        remaining,
+        user_ids:
+          indexedUserIds,
+      };
+    }
+
+    return {
+      processed:
+        userIds.length,
+      indexed,
+      remaining,
+      user_ids:
+        indexedUserIds,
+    };
+  }
+);
+
 // ADMIN ROLES
 Router.register("GET", "/api/admin/roles", async (ctx) => {
   const admin = await Auth.requireAdmin(ctx);
