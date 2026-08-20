@@ -472,6 +472,248 @@ class PiiSearch {
 
     return entries;
   }
+
+  // =========================
+  // Stage 2I-5A3C:
+  // HMAC search lookup.
+  // Query plaintext exists only in Worker memory.
+  // PII_DB receives deterministic HMAC bigrams only.
+  // =========================
+  static normalizeSearchQuery(value) {
+    const query =
+      String(value ?? "").trim();
+
+    if (!query) {
+      return {
+        ok: false,
+        error: "missing_search_query",
+      };
+    }
+
+    if (query.length > 128) {
+      return {
+        ok: false,
+        error: "search_query_too_long",
+      };
+    }
+
+    const text =
+      this.normalizeText(query);
+
+    const email =
+      PiiCrypto.normalizeEmail(
+        query
+      );
+
+    const phoneLike =
+      /^[+\d\s().-]+$/.test(
+        query
+      );
+
+    const phone =
+      phoneLike
+        ? this.normalizePhone(
+            query
+          )
+        : "";
+
+    const usable =
+      Math.max(
+        text.length,
+        email.length,
+        phone.length
+      ) >= 2;
+
+    if (!usable) {
+      return {
+        ok: false,
+        error: "search_query_too_short",
+      };
+    }
+
+    return {
+      ok: true,
+      raw: query,
+      text,
+      email,
+      phone,
+      phoneLike,
+    };
+  }
+
+  static async findCandidateUserIds(
+    query,
+    env
+  ) {
+    if (!env?.PII_DB) {
+      throw new Error(
+        "missing_pii_database"
+      );
+    }
+
+    const normalized =
+      this.normalizeSearchQuery(
+        query
+      );
+
+    if (!normalized.ok) {
+      return normalized;
+    }
+
+    const sourceByField = {
+      name:
+        normalized.text,
+      email:
+        normalized.email,
+      phone:
+        normalized.phoneLike
+          ? normalized.phone
+          : "",
+    };
+
+    const candidateIds =
+      new Set();
+
+    for (
+      const [
+        field,
+        source,
+      ] of Object.entries(
+        sourceByField
+      )
+    ) {
+      const tokens =
+        this.bigrams(source);
+
+      if (tokens.length === 0) {
+        continue;
+      }
+
+      const tokenHmacs = [];
+
+      for (const token of tokens) {
+        const tokenHmac =
+          await PiiCrypto.searchTokenHmac(
+            field,
+            token,
+            env
+          );
+
+        if (tokenHmac) {
+          tokenHmacs.push(
+            tokenHmac
+          );
+        }
+      }
+
+      if (tokenHmacs.length === 0) {
+        continue;
+      }
+
+      const placeholders =
+        tokenHmacs
+          .map(() => "?")
+          .join(", ");
+
+      const result =
+        await env.PII_DB.prepare(`
+          SELECT user_id
+          FROM pii_search_tokens
+          WHERE field = ?
+            AND token_hmac IN (
+              ${placeholders}
+            )
+          GROUP BY user_id
+          HAVING COUNT(
+            DISTINCT token_hmac
+          ) = ?
+          ORDER BY user_id
+          LIMIT 100
+        `)
+          .bind(
+            field,
+            ...tokenHmacs,
+            tokenHmacs.length
+          )
+          .all();
+
+      for (
+        const row of
+        result.results || []
+      ) {
+        const userId =
+          Number(row.user_id);
+
+        if (
+          Number.isInteger(userId) &&
+          userId > 0
+        ) {
+          candidateIds.add(
+            userId
+          );
+        }
+      }
+    }
+
+    return {
+      ok: true,
+      normalized,
+      user_ids:
+        Array.from(
+          candidateIds
+        ),
+    };
+  }
+
+  static matchesPlaintext(
+    pii,
+    normalized
+  ) {
+    const name =
+      this.normalizeText(
+        [
+          pii?.first_name,
+          pii?.last_name,
+        ]
+          .filter(Boolean)
+          .join(" ")
+      );
+
+    const email =
+      PiiCrypto.normalizeEmail(
+        pii?.email
+      );
+
+    const phone =
+      this.normalizePhone(
+        pii?.phone
+      );
+
+    const nameMatch =
+      normalized.text.length >= 2 &&
+      name.includes(
+        normalized.text
+      );
+
+    const emailMatch =
+      normalized.email.length >= 2 &&
+      email.includes(
+        normalized.email
+      );
+
+    const phoneMatch =
+      normalized.phoneLike &&
+      normalized.phone.length >= 2 &&
+      phone.includes(
+        normalized.phone
+      );
+
+    return (
+      nameMatch ||
+      emailMatch ||
+      phoneMatch
+    );
+  }
 }
 
 // =========================
@@ -4747,6 +4989,279 @@ ORDER BY u.id
     );
 
 });
+
+// =========================
+// ADMIN USER PII SEARCH
+// Stage 2I-5A3C:
+// HMAC bigram lookup first, decrypt candidates only,
+// then verify plaintext substring in Worker memory.
+// =========================
+Router.register(
+  "GET",
+  "/api/admin/search-users",
+  async (ctx) => {
+    const admin =
+      await Auth.requireAdmin(ctx);
+
+    if (!admin) {
+      return {
+        error: "forbidden"
+      };
+    }
+
+    const query =
+      String(
+        ctx.url.searchParams.get(
+          "q"
+        ) || ""
+      ).trim();
+
+    const candidateResult =
+      await PiiSearch.findCandidateUserIds(
+        query,
+        ctx.env
+      );
+
+    if (!candidateResult.ok) {
+      return {
+        error:
+          candidateResult.error
+      };
+    }
+
+    const candidateIds =
+      candidateResult.user_ids;
+
+    if (
+      candidateIds.length === 0
+    ) {
+      return [];
+    }
+
+    const piiMap =
+      await PiiStore.getUsersPii(
+        candidateIds,
+        ctx.env
+      );
+
+    const matchedIds = [];
+
+    for (
+      const [
+        userId,
+        pii,
+      ] of piiMap.entries()
+    ) {
+      if (
+        PiiSearch.matchesPlaintext(
+          pii,
+          candidateResult.normalized
+        )
+      ) {
+        matchedIds.push(
+          Number(userId)
+        );
+      }
+    }
+
+    if (matchedIds.length === 0) {
+      return [];
+    }
+
+    const placeholders =
+      matchedIds
+        .map(() => "?")
+        .join(", ");
+
+    const result =
+      await ctx.env.DB.prepare(`
+        SELECT
+          u.id,
+          u.nick,
+          u.is_active,
+          u.created_at,
+          u.updated_at,
+
+          GROUP_CONCAT(
+            CASE
+              WHEN ua.relation_type =
+                'owner'
+              THEN CAST(
+                a.number AS TEXT
+              )
+            END,
+            ', '
+          ) AS owner_apartments,
+
+          GROUP_CONCAT(
+            CASE
+              WHEN ua.relation_type =
+                'resident'
+              THEN CAST(
+                a.number AS TEXT
+              )
+            END,
+            ', '
+          ) AS resident_apartments
+
+        FROM users u
+
+        LEFT JOIN user_apartments ua
+          ON ua.user_id = u.id
+
+        LEFT JOIN apartments a
+          ON a.id =
+            ua.apartment_id
+
+        WHERE u.id IN (
+          ${placeholders}
+        )
+
+        GROUP BY u.id
+
+        ORDER BY u.id
+      `)
+        .bind(
+          ...matchedIds
+        )
+        .all();
+
+    const rows =
+      result.results || [];
+
+    const response =
+      rows
+        .map(
+          (row) => {
+            const pii =
+              piiMap.get(
+                Number(row.id)
+              );
+
+            return {
+              id:
+                row.id,
+
+              nick:
+                row.nick,
+
+              email:
+                pii?.email ?? null,
+
+              first_name:
+                pii?.first_name ?? null,
+
+              last_name:
+                pii?.last_name ?? null,
+
+              phone:
+                pii?.phone ?? null,
+
+              is_active:
+                row.is_active,
+
+              created_at:
+                row.created_at,
+
+              updated_at:
+                row.updated_at,
+
+              owner_apartments:
+                row.owner_apartments,
+
+              resident_apartments:
+                row.resident_apartments,
+            };
+          }
+        )
+        .sort(
+          (a, b) => {
+            const aKey =
+              [
+                a.first_name,
+                a.last_name,
+                a.email,
+              ]
+                .filter(Boolean)
+                .join(" ")
+                .toLocaleLowerCase();
+
+            const bKey =
+              [
+                b.first_name,
+                b.last_name,
+                b.email,
+              ]
+                .filter(Boolean)
+                .join(" ")
+                .toLocaleLowerCase();
+
+            const byName =
+              aKey.localeCompare(
+                bKey,
+                undefined,
+                {
+                  sensitivity:
+                    "base",
+                }
+              );
+
+            if (byName !== 0) {
+              return byName;
+            }
+
+            return Number(a.id) -
+              Number(b.id);
+          }
+        );
+
+    try {
+      await PiiAudit.record(
+        {
+          actorUserId:
+            admin.user_id,
+          subjectUserId:
+            null,
+          action:
+            "search",
+          endpoint:
+            "/api/admin/search-users",
+          fields: [
+            "first_name",
+            "last_name",
+            "email",
+            "phone",
+          ],
+          subjectCount:
+            response.length,
+        },
+        ctx.env
+      );
+    } catch (error) {
+      console.error(
+        "PII audit write failed for /api/admin/search-users",
+        {
+          actor_user_id:
+            admin.user_id,
+          subject_count:
+            response.length,
+          error:
+            String(
+              error?.message ||
+              error
+            ),
+        }
+      );
+
+      return {
+        error:
+          "pii_audit_failed",
+      };
+    }
+
+    return response;
+  }
+);
 
 // ADMIN ROLES
 Router.register("GET", "/api/admin/roles", async (ctx) => {
