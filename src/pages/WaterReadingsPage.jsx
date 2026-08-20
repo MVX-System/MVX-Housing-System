@@ -80,10 +80,9 @@ export default function WaterReadingsPage() {
 
   }, []);
 
-  // Stage 2I-2C1:
-  // prefer Nick for submitter/corrector identity and stop
-  // displaying/exporting email in Water Reading History.
-  // Legacy name fields remain only as temporary compatibility fallback.
+  // Stage 2I-5B2:
+  // Water Reading History uses only pseudonymous Nick identity.
+  // Legacy first_name / last_name fallbacks have been removed.
   const normalizedRows =
     useMemo(
       () =>
@@ -112,26 +111,10 @@ export default function WaterReadingsPage() {
 
             submitted_by_name:
               row.submitted_by_nick ||
-              [
-                row
-                  .submitted_by_first_name,
-                row
-                  .submitted_by_last_name,
-              ]
-                .filter(Boolean)
-                .join(" ") ||
               "System / Unknown",
 
             corrected_by_name:
               row.corrected_by_nick ||
-              [
-                row
-                  .corrected_by_first_name,
-                row
-                  .corrected_by_last_name,
-              ]
-                .filter(Boolean)
-                .join(" ") ||
               "",
           })
         ),
