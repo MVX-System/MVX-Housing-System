@@ -5612,6 +5612,10 @@ Router.register("GET", "/api/admin/apartments", async (ctx) => {
 });
 
 // GET APARTMENT DETAILS
+// Stage 2I-5B1:
+// Apartment details remain non-PII.
+// Main D1 returns only pseudonymous user identity (Nick + relation).
+// Personal data is loaded only after explicit navigation to one user.
 Router.register("GET", "/api/admin/apartment-details", async (ctx) => {
   const admin = await Auth.requireAdmin(ctx);
   if (!admin) return { error: "forbidden" };
@@ -5625,135 +5629,46 @@ Router.register("GET", "/api/admin/apartment-details", async (ctx) => {
     WHERE id = ?
   `).bind(id).first();
 
+  if (!apartment) {
+    return {
+      error: "apartment_not_found"
+    };
+  }
+
   const users = await ctx.env.DB.prepare(`
     SELECT
       ua.user_id AS id,
+      u.nick,
       ua.relation_type
 
     FROM user_apartments ua
 
+    JOIN users u
+      ON u.id = ua.user_id
+
     WHERE ua.apartment_id = ?
+
+    ORDER BY
+      ua.relation_type,
+      u.nick COLLATE NOCASE,
+      u.id
   `).bind(id).all();
 
   const rows =
     users.results || [];
 
-  let piiMap =
-    new Map();
-
-  try {
-    piiMap =
-      await PiiStore.getUsersPii(
-        rows.map(
-          (row) => row.id
-        ),
-        ctx.env
-      );
-  } catch (error) {
-    console.warn(
-      "PII read failed for /api/admin/apartment-details",
-      {
-        apartment_id:
-          Number(id),
-
-        error:
-          String(
-            error?.message || error
-          ),
-      }
-    );
-  }
-
-  if (piiMap.size > 0) {
-    try {
-      await PiiAudit.record(
-        {
-          actorUserId:
-            admin.user_id,
-          subjectUserId:
-            null,
-          action:
-            "read_group",
-          endpoint:
-            "/api/admin/apartment-details",
-          fields: [
-            "first_name",
-            "last_name",
-            "email",
-            "phone",
-          ],
-          subjectCount:
-            piiMap.size,
-        },
-        ctx.env
-      );
-    } catch (error) {
-      console.error(
-        "PII audit write failed for /api/admin/apartment-details",
-        {
-          actor_user_id:
-            admin.user_id,
-          apartment_id:
-            Number(id),
-          subject_count:
-            piiMap.size,
-          error:
-            String(
-              error?.message ||
-              error
-            ),
-        }
-      );
-
-      return {
-        error:
-          "pii_audit_failed",
-      };
-    }
-  }
-
-  const hydratedUsers =
-    rows.map(
-      (row) => {
-        const pii =
-          piiMap.get(
-            Number(row.id)
-          );
-
-        return {
-          id:
-            row.id,
-
-          email:
-            pii?.email ?? null,
-
-          first_name:
-            pii?.first_name ?? null,
-
-          last_name:
-            pii?.last_name ?? null,
-
-          phone:
-            pii?.phone ?? null,
-
-          relation_type:
-            row.relation_type,
-        };
-      }
-    );
-
   return {
     apartment,
 
     owners:
-      hydratedUsers.filter(
+      rows.filter(
         (user) =>
           user.relation_type ===
           "owner"
       ),
 
     residents:
-      hydratedUsers.filter(
+      rows.filter(
         (user) =>
           user.relation_type ===
           "resident"

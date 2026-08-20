@@ -27,7 +27,7 @@ const TEXT = {
     apartmentCount: "{count} apartments",
     addApartment: "+ Add Apartment",
     loading: "Loading apartments...",
-    searchPlaceholder: "Apartment, owner or resident",
+    searchPlaceholder: "Apartment or user Nick",
     noMatches: "No matching apartments",
     sections: "Sections",
     selectSection: "Select a building section",
@@ -78,7 +78,7 @@ const TEXT = {
     apartmentCount: "{count} dzīvokļi",
     addApartment: "+ Pievienot dzīvokli",
     loading: "Notiek dzīvokļu ielāde...",
-    searchPlaceholder: "Dzīvoklis, īpašnieks vai iedzīvotājs",
+    searchPlaceholder: "Dzīvoklis vai lietotāja Nick",
     noMatches: "Atbilstoši dzīvokļi nav atrasti",
     sections: "Sekcijas",
     selectSection: "Izvēlieties ēkas sekciju",
@@ -129,7 +129,7 @@ const TEXT = {
     apartmentCount: "Квартир: {count}",
     addApartment: "+ Добавить квартиру",
     loading: "Загрузка квартир...",
-    searchPlaceholder: "Квартира, собственник или жилец",
+    searchPlaceholder: "Квартира или Nick пользователя",
     noMatches: "Подходящие квартиры не найдены",
     sections: "Секции",
     selectSection: "Выберите секцию здания",
@@ -383,14 +383,10 @@ function PeopleList({
         <div style={peopleGridStyle}>
           {people.map((person) => {
             const displayName =
-              [
-                person.first_name,
-                person.last_name,
-              ]
-                .filter(Boolean)
-                .join(" ") ||
-              person.email ||
-              "—";
+              String(
+                person.nick || ""
+              ).trim() ||
+              `User #${person.id}`;
 
             return (
               <div
@@ -420,30 +416,6 @@ function PeopleList({
                     >
                       {displayName}
                     </button>
-                  )}
-
-                  <div style={personMetaStyle}>
-                    {person.email ? (
-                      <a
-                        href={`mailto:${person.email}`}
-                      >
-                        {person.email}
-                      </a>
-                    ) : (
-                      "—"
-                    )}
-                  </div>
-                </div>
-
-                <div style={personPhoneStyle}>
-                  {person.phone ? (
-                    <a
-                      href={`tel:${person.phone}`}
-                    >
-                      {person.phone}
-                    </a>
-                  ) : (
-                    "—"
                   )}
                 </div>
               </div>
@@ -688,15 +660,9 @@ export default function ApartmentsPage() {
           ...(apartment.residents || []),
         ]
           .map((person) =>
-            [
-              person.first_name,
-              person.last_name,
-              person.email,
-              person.phone,
-            ]
-              .filter(Boolean)
-              .join(" ")
-              .toLowerCase()
+            String(
+              person.nick || ""
+            ).toLowerCase()
           )
           .join(" ");
 
@@ -1763,19 +1729,6 @@ const personNameStyle = {
   color: "var(--text-h)",
   fontSize: 11,
   fontWeight: 800,
-};
-
-const personMetaStyle = {
-  marginTop: 2,
-  color: "var(--text)",
-  fontSize: 10,
-  overflowWrap: "anywhere",
-};
-
-const personPhoneStyle = {
-  color: "var(--text)",
-  fontSize: 10,
-  whiteSpace: "nowrap",
 };
 
 const countBadgeStyle = {
