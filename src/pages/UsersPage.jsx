@@ -43,6 +43,7 @@ const TEXT = {
     backToApartment: "Back to apartment",
     status: "Status",
     actions: "Actions",
+    view: "View",
     edit: "Edit",
     assign: "Assignments",
     changeStatus: "Change status",
@@ -91,6 +92,7 @@ const TEXT = {
     backToApartment: "Atpakaļ uz dzīvokli",
     status: "Statuss",
     actions: "Darbības",
+    view: "Skatīt",
     edit: "Rediģēt",
     assign: "Piesaistes",
     changeStatus: "Mainīt statusu",
@@ -139,6 +141,7 @@ const TEXT = {
     backToApartment: "Вернуться к квартире",
     status: "Статус",
     actions: "Действия",
+    view: "Просмотр",
     edit: "Редактировать",
     assign: "Связи с квартирами",
     changeStatus: "Изменить статус",
@@ -304,6 +307,21 @@ export default function UsersPage() {
   ] = useState("");
 
   const [
+    piiSearchResults,
+    setPiiSearchResults,
+  ] = useState([]);
+
+  const [
+    piiSearchLoading,
+    setPiiSearchLoading,
+  ] = useState(false);
+
+  const [
+    userDetailLoading,
+    setUserDetailLoading,
+  ] = useState(false);
+
+  const [
     statusFilter,
     setStatusFilter,
   ] = useState("all");
@@ -318,6 +336,8 @@ export default function UsersPage() {
     loading,
     error,
     loadUsers,
+    searchUsers,
+    getUserDetails,
 
     assignmentUser,
     setAssignmentUser,
@@ -356,6 +376,125 @@ export default function UsersPage() {
     loadUsers();
   }, []);
 
+  // Stage 2I-5A3E v4:
+  // View/Edit decrypts PII for one user only.
+  const openUserDetails =
+    async (
+      user,
+      mode = "view"
+    ) => {
+      if (!user?.id) {
+        return;
+      }
+
+      setUserDetailLoading(
+        true
+      );
+
+      try {
+        const detailedUser =
+          await getUserDetails(
+            user.id
+          );
+
+        if (mode === "edit") {
+          setEditingUser({
+            ...detailedUser,
+          });
+        } else {
+          setSelectedUser(
+            detailedUser
+          );
+        }
+      } catch (
+        detailError
+      ) {
+        console.error(
+          "LOAD USER DETAIL ERROR:",
+          detailError
+        );
+
+        window.alert(
+          detailError?.message ||
+            "User details could not be loaded."
+        );
+      } finally {
+        setUserDetailLoading(
+          false
+        );
+      }
+    };
+
+  // Stage 2I-5A3E v4:
+  // PII search is performed only by the Worker.
+  // Nick and apartment matching remain local.
+  useEffect(() => {
+    const query =
+      search.trim();
+
+    if (
+      query.length < 2
+    ) {
+      setPiiSearchResults([]);
+      setPiiSearchLoading(false);
+      return undefined;
+    }
+
+    let cancelled = false;
+
+    const timer =
+      window.setTimeout(
+        async () => {
+          setPiiSearchLoading(
+            true
+          );
+
+          try {
+            const result =
+              await searchUsers(
+                query
+              );
+
+            if (!cancelled) {
+              setPiiSearchResults(
+                result
+              );
+            }
+          } catch (
+            searchError
+          ) {
+            console.error(
+              "SEARCH USERS ERROR:",
+              searchError
+            );
+
+            if (!cancelled) {
+              setPiiSearchResults(
+                []
+              );
+            }
+          } finally {
+            if (!cancelled) {
+              setPiiSearchLoading(
+                false
+              );
+            }
+          }
+        },
+        250
+      );
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(
+        timer
+      );
+    };
+  }, [
+    search,
+    searchUsers,
+  ]);
+
   useEffect(() => {
     if (
       !requestedUserId ||
@@ -372,8 +511,9 @@ export default function UsersPage() {
       );
 
     if (requestedUser) {
-      setSelectedUser(
-        requestedUser
+      openUserDetails(
+        requestedUser,
+        "view"
       );
     }
   }, [
@@ -388,7 +528,7 @@ export default function UsersPage() {
           .trim()
           .toLowerCase();
 
-      return users.filter(
+      const matchesStatus =
         (user) => {
           const active =
             Number(
@@ -411,29 +551,78 @@ export default function UsersPage() {
             return false;
           }
 
-          if (!query) {
-            return true;
-          }
+          return true;
+        };
 
-          return [
+      if (!query) {
+        return users.filter(
+          matchesStatus
+        );
+      }
+
+      if (query.length < 2) {
+        return [];
+      }
+
+      const mergedById =
+        new Map();
+
+      for (
+        const user of
+          piiSearchResults
+      ) {
+        mergedById.set(
+          Number(user.id),
+          user
+        );
+      }
+
+      for (const user of users) {
+        const nonPiiSearchText =
+          [
             user.nick,
-            user.first_name,
-            user.last_name,
-            user.email,
-            user.phone,
             user.owner_apartments,
             user.resident_apartments,
           ]
             .filter(Boolean)
             .join(" ")
-            .toLowerCase()
-            .includes(query);
+            .toLowerCase();
+
+        if (
+          nonPiiSearchText.includes(
+            query
+          )
+        ) {
+          const id =
+            Number(user.id);
+
+          if (
+            !mergedById.has(id)
+          ) {
+            mergedById.set(
+              id,
+              user
+            );
+          }
         }
-      );
+      }
+
+      return Array.from(
+        mergedById.values()
+      )
+        .filter(
+          matchesStatus
+        )
+        .sort(
+          (a, b) =>
+            Number(a.id) -
+            Number(b.id)
+        );
     }, [
       users,
       search,
       statusFilter,
+      piiSearchResults,
     ]);
 
   const openAssignments =
@@ -702,7 +891,7 @@ export default function UsersPage() {
         </div>
       </section>
 
-      {loading && (
+      {(loading || piiSearchLoading || userDetailLoading) && (
         <div
           style={noticeStyle}
         >
@@ -746,25 +935,42 @@ export default function UsersPage() {
                   <td>{user.nick || "—"}</td>
 
                   <td>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setSelectedUser(
-                          user
-                        )
-                      }
-                      style={linkButtonStyle}
-                    >
-                      {user.first_name}{" "}
-                      {user.last_name}
-                    </button>
+                    {(
+                      user.first_name ||
+                      user.last_name
+                    ) ? (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          openUserDetails(
+                            user,
+                            "view"
+                          )
+                        }
+                        style={linkButtonStyle}
+                      >
+                        {[
+                          user.first_name,
+                          user.last_name,
+                        ]
+                          .filter(Boolean)
+                          .join(" ")}
+                      </button>
+                    ) : (
+                      "—"
+                    )}
                   </td>
-<td>
-                    <a
-                      href={`mailto:${user.email}`}
-                    >
-                      {user.email}
-                    </a>
+
+                  <td>
+                    {user.email ? (
+                      <a
+                        href={`mailto:${user.email}`}
+                      >
+                        {user.email}
+                      </a>
+                    ) : (
+                      "—"
+                    )}
                   </td>
 
                   <td>
@@ -825,9 +1031,23 @@ export default function UsersPage() {
                       <button
                         type="button"
                         onClick={() =>
-                          setEditingUser({
-                            ...user,
-                          })
+                          openUserDetails(
+                            user,
+                            "view"
+                          )
+                        }
+                        style={smallButtonStyle}
+                      >
+                        {text.view}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          openUserDetails(
+                            user,
+                            "edit"
+                          )
                         }
                         style={smallButtonStyle}
                       >
@@ -875,14 +1095,27 @@ export default function UsersPage() {
                 <button
                   type="button"
                   onClick={() =>
-                    setSelectedUser(
-                      user
+                    openUserDetails(
+                      user,
+                      "view"
                     )
                   }
                   style={linkButtonStyle}
                 >
-                  {user.first_name}{" "}
-                  {user.last_name}
+                  {(
+                    user.first_name ||
+                    user.last_name
+                  )
+                    ? [
+                        user.first_name,
+                        user.last_name,
+                      ]
+                        .filter(Boolean)
+                        .join(" ")
+                    : (
+                        user.nick ||
+                        `#${user.id}`
+                      )}
                 </button>
 
                 <span
@@ -964,9 +1197,23 @@ export default function UsersPage() {
                 <button
                   type="button"
                   onClick={() =>
-                    setEditingUser({
-                      ...user,
-                    })
+                    openUserDetails(
+                      user,
+                      "view"
+                    )
+                  }
+                  style={smallButtonStyle}
+                >
+                  {text.view}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    openUserDetails(
+                      user,
+                      "edit"
+                    )
                   }
                   style={smallButtonStyle}
                 >

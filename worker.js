@@ -4783,111 +4783,179 @@ Router.register("GET", "/api/my-apartments", async (ctx) => {
 });
 
 // ADMIN USERS
+// Stage 2I-5A3E v4:
+// Main list is deliberately non-PII.
+// No bulk PII decrypt is performed here.
 Router.register("GET", "/api/admin/users", async (ctx) => {
-
   const admin = await Auth.requireAdmin(ctx);
 
   if (!admin) {
-    return { error: "forbidden" };
+    return {
+      error: "forbidden"
+    };
   }
 
-  const r = await ctx.env.DB.prepare(`
+  const r =
+    await ctx.env.DB.prepare(`
+      SELECT
+        u.id,
+        u.nick,
+        u.is_active,
+        u.created_at,
+        u.updated_at,
 
-    SELECT
+        GROUP_CONCAT(
+          CASE
+            WHEN ua.relation_type = 'owner'
+            THEN CAST(a.number AS TEXT)
+          END,
+          ', '
+        ) AS owner_apartments,
 
-  u.id,
-  u.nick,
-  u.is_active,
-  u.created_at,
-  u.updated_at,
+        GROUP_CONCAT(
+          CASE
+            WHEN ua.relation_type = 'resident'
+            THEN CAST(a.number AS TEXT)
+          END,
+          ', '
+        ) AS resident_apartments
 
-  GROUP_CONCAT(
-    CASE
-      WHEN ua.relation_type='owner'
-      THEN CAST(a.number AS TEXT)
-    END,
-    ', '
-  ) AS owner_apartments,
+      FROM users u
 
-  GROUP_CONCAT(
-    CASE
-      WHEN ua.relation_type='resident'
-      THEN CAST(a.number AS TEXT)
-    END,
-    ', '
-  ) AS resident_apartments
+      LEFT JOIN user_apartments ua
+        ON ua.user_id = u.id
 
-FROM users u
+      LEFT JOIN apartments a
+        ON a.id = ua.apartment_id
 
-LEFT JOIN user_apartments ua
-  ON ua.user_id = u.id
+      GROUP BY u.id
+      ORDER BY u.id
+    `)
+      .all();
 
-LEFT JOIN apartments a
-  ON a.id = ua.apartment_id
+  return r.results || [];
+});
 
-GROUP BY u.id
+// ADMIN USER DETAIL
+// Stage 2I-5A3E v4:
+// Decrypt PII for exactly one explicitly requested user.
+Router.register(
+  "GET",
+  "/api/admin/user",
+  async (ctx) => {
+    const admin =
+      await Auth.requireAdmin(ctx);
 
-ORDER BY u.id
+    if (!admin) {
+      return {
+        error: "forbidden"
+      };
+    }
 
-  `).all();
+    const userId =
+      Number(
+        ctx.url.searchParams.get(
+          "id"
+        )
+      );
 
-  const rows =
-    r.results || [];
+    if (
+      !Number.isInteger(userId) ||
+      userId <= 0
+    ) {
+      return {
+        error: "invalid_user_id"
+      };
+    }
 
-  let piiMap =
-    new Map();
+    const row =
+      await ctx.env.DB.prepare(`
+        SELECT
+          u.id,
+          u.nick,
+          u.is_active,
+          u.created_at,
+          u.updated_at,
 
-  try {
-    piiMap =
-      await PiiStore.getUsersPii(
-        rows.map(
-          (row) => row.id
-        ),
+          GROUP_CONCAT(
+            CASE
+              WHEN ua.relation_type = 'owner'
+              THEN CAST(a.number AS TEXT)
+            END,
+            ', '
+          ) AS owner_apartments,
+
+          GROUP_CONCAT(
+            CASE
+              WHEN ua.relation_type = 'resident'
+              THEN CAST(a.number AS TEXT)
+            END,
+            ', '
+          ) AS resident_apartments
+
+        FROM users u
+
+        LEFT JOIN user_apartments ua
+          ON ua.user_id = u.id
+
+        LEFT JOIN apartments a
+          ON a.id = ua.apartment_id
+
+        WHERE u.id = ?
+
+        GROUP BY u.id
+        LIMIT 1
+      `)
+        .bind(userId)
+        .first();
+
+    if (!row) {
+      return {
+        error: "user_not_found"
+      };
+    }
+
+    const pii =
+      await PiiStore.getUserPii(
+        userId,
         ctx.env
       );
-  } catch (error) {
-    console.warn(
-      "PII read failed for /api/admin/users",
-      {
-        error:
-          String(
-            error?.message || error
-          ),
-      }
-    );
-  }
 
-  if (piiMap.size > 0) {
+    if (!pii) {
+      return {
+        error: "user_pii_not_found"
+      };
+    }
+
     try {
       await PiiAudit.record(
         {
           actorUserId:
             admin.user_id,
           subjectUserId:
-            null,
+            userId,
           action:
-            "read_bulk",
+            "read_single",
           endpoint:
-            "/api/admin/users",
+            "/api/admin/user",
           fields: [
             "first_name",
             "last_name",
             "email",
             "phone",
           ],
-          subjectCount:
-            piiMap.size,
+          subjectCount: 1,
         },
         ctx.env
       );
     } catch (error) {
       console.error(
-        "PII audit write failed for /api/admin/users",
+        "PII audit write failed for /api/admin/user",
         {
           actor_user_id:
             admin.user_id,
-          subject_count:
-            piiMap.size,
+          subject_user_id:
+            userId,
           error:
             String(
               error?.message ||
@@ -4901,94 +4969,33 @@ ORDER BY u.id
           "pii_audit_failed",
       };
     }
+
+    return {
+      id:
+        row.id,
+      nick:
+        row.nick,
+      email:
+        pii.email ?? null,
+      first_name:
+        pii.first_name ?? null,
+      last_name:
+        pii.last_name ?? null,
+      phone:
+        pii.phone ?? null,
+      is_active:
+        row.is_active,
+      created_at:
+        row.created_at,
+      updated_at:
+        row.updated_at,
+      owner_apartments:
+        row.owner_apartments,
+      resident_apartments:
+        row.resident_apartments,
+    };
   }
-
-  return rows
-    .map(
-      (row) => {
-        const pii =
-          piiMap.get(
-            Number(row.id)
-          );
-
-        return {
-          id:
-            row.id,
-
-          nick:
-            row.nick,
-
-          email:
-            pii?.email ?? null,
-
-          first_name:
-            pii?.first_name ?? null,
-
-          last_name:
-            pii?.last_name ?? null,
-
-          phone:
-            pii?.phone ?? null,
-
-          is_active:
-            row.is_active,
-
-          created_at:
-            row.created_at,
-
-          updated_at:
-            row.updated_at,
-
-          owner_apartments:
-            row.owner_apartments,
-
-          resident_apartments:
-            row.resident_apartments,
-        };
-      }
-    )
-    .sort(
-      (a, b) => {
-        const aKey =
-          [
-            a.first_name,
-            a.last_name,
-            a.email,
-          ]
-            .filter(Boolean)
-            .join(" ")
-            .toLocaleLowerCase();
-
-        const bKey =
-          [
-            b.first_name,
-            b.last_name,
-            b.email,
-          ]
-            .filter(Boolean)
-            .join(" ")
-            .toLocaleLowerCase();
-
-        const byName =
-          aKey.localeCompare(
-            bKey,
-            undefined,
-            {
-              sensitivity:
-                "base",
-            }
-          );
-
-        if (byName !== 0) {
-          return byName;
-        }
-
-        return Number(a.id) -
-          Number(b.id);
-      }
-    );
-
-});
+);
 
 // =========================
 // ADMIN USER PII SEARCH

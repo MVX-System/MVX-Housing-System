@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useState,
 } from "react";
 
@@ -117,6 +118,91 @@ export function useUsers() {
         setLoading(false);
       }
     };
+
+  // Stage 2I-5A3E v4:
+  // Protected PII search goes through the Worker HMAC index.
+  const searchUsers =
+    useCallback(
+      async (
+        query
+      ) => {
+        const normalizedQuery =
+          String(
+            query ?? ""
+          ).trim();
+
+        if (
+          normalizedQuery.length < 2
+        ) {
+          return [];
+        }
+
+        const result =
+          await api(
+            "/api/admin/search-users?q=" +
+              encodeURIComponent(
+                normalizedQuery
+              )
+          );
+
+        if (
+          result?.error
+        ) {
+          throw new Error(
+            result.error
+          );
+        }
+
+        return Array.isArray(
+          result
+        )
+          ? result
+          : [];
+      },
+      []
+    );
+
+  // Stage 2I-5A3E v4:
+  // Decrypt PII for one explicitly selected user only.
+  const getUserDetails =
+    useCallback(
+      async (
+        userId
+      ) => {
+        const normalizedUserId =
+          Number(userId);
+
+        if (
+          !Number.isInteger(
+            normalizedUserId
+          ) ||
+          normalizedUserId <= 0
+        ) {
+          throw new Error(
+            "invalid_user_id"
+          );
+        }
+
+        const result =
+          await api(
+            "/api/admin/user?id=" +
+              encodeURIComponent(
+                normalizedUserId
+              )
+          );
+
+        if (
+          result?.error
+        ) {
+          throw new Error(
+            result.error
+          );
+        }
+
+        return result;
+      },
+      []
+    );
 
   const loadUserAssignments =
     async (
@@ -385,6 +471,8 @@ export function useUsers() {
     loading,
     error,
     loadUsers,
+    searchUsers,
+    getUserDetails,
 
     assignmentUser,
     setAssignmentUser,
