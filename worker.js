@@ -305,8 +305,174 @@ class PiiCrypto {
       this.bytesToBase64Url(signature),
     ].join(".");
   }
+
+  static async searchTokenHmac(
+    field,
+    token,
+    env
+  ) {
+    if (!env?.PII_HMAC_KEY) {
+      throw new Error(
+        "missing_pii_hmac_key"
+      );
+    }
+
+    const normalizedField =
+      String(field || "")
+        .trim()
+        .toLowerCase();
+
+    const normalizedToken =
+      String(token || "");
+
+    if (
+      !normalizedField ||
+      !normalizedToken
+    ) {
+      return null;
+    }
+
+    const key =
+      await this.importHmacKey(
+        env.PII_HMAC_KEY
+      );
+
+    const signature =
+      new Uint8Array(
+        await crypto.subtle.sign(
+          "HMAC",
+          key,
+          new TextEncoder().encode(
+            `pii-search:${normalizedField}:${normalizedToken}`
+          )
+        )
+      );
+
+    return [
+      this.VERSION,
+      this.bytesToBase64Url(signature),
+    ].join(".");
+  }
 }
 
+
+// =========================
+// PII SEARCH TOKEN INDEX
+// Stage 2I-5A3B:
+// Derived HMAC bigram tokens only.
+// No plaintext PII is stored in the search index.
+// =========================
+class PiiSearch {
+  static normalizeText(value) {
+    return String(value ?? "")
+      .normalize("NFKC")
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, " ");
+  }
+
+  static normalizePhone(value) {
+    return String(value ?? "")
+      .replace(/\D+/g, "");
+  }
+
+  static bigrams(value) {
+    const normalized =
+      String(value || "");
+
+    if (normalized.length < 2) {
+      return [];
+    }
+
+    const tokens =
+      new Set();
+
+    for (
+      let index = 0;
+      index < normalized.length - 1;
+      index += 1
+    ) {
+      tokens.add(
+        normalized.slice(
+          index,
+          index + 2
+        )
+      );
+    }
+
+    return Array.from(tokens);
+  }
+
+  static async buildUserTokens(
+    {
+      firstName,
+      lastName,
+      email,
+      phone,
+    },
+    env
+  ) {
+    const name =
+      this.normalizeText(
+        [
+          firstName,
+          lastName,
+        ]
+          .filter(Boolean)
+          .join(" ")
+      );
+
+    const normalizedEmail =
+      PiiCrypto.normalizeEmail(
+        email
+      );
+
+    const normalizedPhone =
+      this.normalizePhone(
+        phone
+      );
+
+    const sourceByField = {
+      name,
+      email:
+        normalizedEmail,
+      phone:
+        normalizedPhone,
+    };
+
+    const entries = [];
+
+    for (
+      const [
+        field,
+        source,
+      ] of Object.entries(
+        sourceByField
+      )
+    ) {
+      for (
+        const token of
+          this.bigrams(source)
+      ) {
+        const tokenHmac =
+          await PiiCrypto.searchTokenHmac(
+            field,
+            token,
+            env
+          );
+
+        if (tokenHmac) {
+          entries.push({
+            field,
+            tokenHmac,
+          });
+        }
+      }
+    }
+
+    return entries;
+  }
+}
 
 // =========================
 // PII STORE - DUAL READ SUPPORT
@@ -608,43 +774,91 @@ class PiiStore {
       createdAt ||
       nowIso;
 
-    await env.PII_DB.prepare(`
-      INSERT INTO user_pii (
-        user_id,
-        first_name_enc,
-        last_name_enc,
-        email_enc,
-        phone_enc,
-        email_hmac,
-        created_at,
-        updated_at
-      )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(user_id) DO UPDATE SET
-        first_name_enc =
-          excluded.first_name_enc,
-        last_name_enc =
-          excluded.last_name_enc,
-        email_enc =
-          excluded.email_enc,
-        phone_enc =
-          excluded.phone_enc,
-        email_hmac =
-          excluded.email_hmac,
-        updated_at =
-          excluded.updated_at
-    `)
-      .bind(
-        normalizedUserId,
-        firstNameEnc,
-        lastNameEnc,
-        emailEnc,
-        phoneEnc,
-        emailHmac,
-        createdIso,
-        nowIso
-      )
-      .run();
+    const searchTokens =
+      await PiiSearch.buildUserTokens(
+        {
+          firstName:
+            normalizedFirstName,
+          lastName:
+            normalizedLastName,
+          email:
+            normalizedEmail,
+          phone:
+            normalizedPhone,
+        },
+        env
+      );
+
+    const statements = [
+      env.PII_DB.prepare(`
+        INSERT INTO user_pii (
+          user_id,
+          first_name_enc,
+          last_name_enc,
+          email_enc,
+          phone_enc,
+          email_hmac,
+          created_at,
+          updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(user_id) DO UPDATE SET
+          first_name_enc =
+            excluded.first_name_enc,
+          last_name_enc =
+            excluded.last_name_enc,
+          email_enc =
+            excluded.email_enc,
+          phone_enc =
+            excluded.phone_enc,
+          email_hmac =
+            excluded.email_hmac,
+          updated_at =
+            excluded.updated_at
+      `)
+        .bind(
+          normalizedUserId,
+          firstNameEnc,
+          lastNameEnc,
+          emailEnc,
+          phoneEnc,
+          emailHmac,
+          createdIso,
+          nowIso
+        ),
+
+      env.PII_DB.prepare(`
+        DELETE FROM pii_search_tokens
+        WHERE user_id = ?
+      `)
+        .bind(
+          normalizedUserId
+        ),
+
+      ...searchTokens.map(
+        ({
+          field,
+          tokenHmac,
+        }) =>
+          env.PII_DB.prepare(`
+            INSERT INTO pii_search_tokens (
+              user_id,
+              field,
+              token_hmac
+            )
+            VALUES (?, ?, ?)
+          `)
+            .bind(
+              normalizedUserId,
+              field,
+              tokenHmac
+            )
+      ),
+    ];
+
+    await env.PII_DB.batch(
+      statements
+    );
 
     return {
       ok: true,
