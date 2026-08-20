@@ -8993,226 +8993,59 @@ Router.register("GET", "/api/apartments/full", async (ctx) => {
     };
   }
 
-  // =========================
-  // LOAD APARTMENTS
-  // =========================
-
   const apartments = await ctx.env.DB.prepare(`
     SELECT *
     FROM apartments
     ORDER BY number
   `).all();
 
-  // =========================
-  // LOAD ALL OWNER LINKS
-  // =========================
-
   const owners = await ctx.env.DB.prepare(`
     SELECT
       ua.apartment_id,
       ua.user_id AS id
-
     FROM user_apartments ua
-
     WHERE ua.relation_type = 'owner'
   `).all();
-
-  // =========================
-  // LOAD ALL RESIDENT LINKS
-  // =========================
 
   const residents = await ctx.env.DB.prepare(`
     SELECT
       ua.apartment_id,
       ua.user_id AS id
-
     FROM user_apartments ua
-
     WHERE ua.relation_type = 'resident'
   `).all();
 
-  const ownerRows =
-    owners.results || [];
-
-  const residentRows =
-    residents.results || [];
-
-  const allUserIds =
-    [
-      ...ownerRows,
-      ...residentRows,
-    ].map(
-      (row) => row.id
-    );
-
-  let piiMap =
-    new Map();
-
-  try {
-    piiMap =
-      await PiiStore.getUsersPii(
-        allUserIds,
-        ctx.env
-      );
-  } catch (error) {
-    console.warn(
-      "PII read failed for /api/apartments/full",
-      {
-        error:
-          String(
-            error?.message || error
-          ),
-      }
-    );
-  }
-
-  if (piiMap.size > 0) {
-    try {
-      await PiiAudit.record(
-        {
-          actorUserId:
-            admin.user_id,
-          subjectUserId:
-            null,
-          action:
-            "read_bulk",
-          endpoint:
-            "/api/apartments/full",
-          fields: [
-            "first_name",
-            "last_name",
-            "email",
-            "phone",
-          ],
-          subjectCount:
-            piiMap.size,
-        },
-        ctx.env
-      );
-    } catch (error) {
-      console.error(
-        "PII audit write failed for /api/apartments/full",
-        {
-          actor_user_id:
-            admin.user_id,
-          subject_count:
-            piiMap.size,
-          error:
-            String(
-              error?.message ||
-              error
-            ),
-        }
-      );
-
-      return {
-        error:
-          "pii_audit_failed",
-      };
-    }
-  }
-
-  const hydrateUser =
-    (row) => {
-      const pii =
-        piiMap.get(
-          Number(row.id)
-        );
-
-      return {
-        id:
-          row.id,
-
-        first_name:
-          pii?.first_name ?? null,
-
-        last_name:
-          pii?.last_name ?? null,
-
-        email:
-          pii?.email ?? null,
-
-        phone:
-          pii?.phone ?? null,
-      };
-    };
-
-  // =========================
-  // GROUP OWNERS
-  // =========================
-
   const ownersMap = {};
-
-  for (const owner of ownerRows) {
-
-    if (
-      !ownersMap[
-        owner.apartment_id
-      ]
-    ) {
-      ownersMap[
-        owner.apartment_id
-      ] = [];
+  for (const owner of (owners.results || [])) {
+    if (!ownersMap[owner.apartment_id]) {
+      ownersMap[owner.apartment_id] = [];
     }
 
-    ownersMap[
-      owner.apartment_id
-    ].push(
-      hydrateUser(owner)
-    );
+    ownersMap[owner.apartment_id].push({
+      id: owner.id,
+    });
   }
-
-  // =========================
-  // GROUP RESIDENTS
-  // =========================
 
   const residentsMap = {};
-
-  for (
-    const resident of
-      residentRows
-  ) {
-
-    if (
-      !residentsMap[
-        resident.apartment_id
-      ]
-    ) {
-      residentsMap[
-        resident.apartment_id
-      ] = [];
+  for (const resident of (residents.results || [])) {
+    if (!residentsMap[resident.apartment_id]) {
+      residentsMap[resident.apartment_id] = [];
     }
 
-    residentsMap[
-      resident.apartment_id
-    ].push(
-      hydrateUser(resident)
-    );
+    residentsMap[resident.apartment_id].push({
+      id: resident.id,
+    });
   }
 
-  // =========================
-  // BUILD RESULT
-  // =========================
-
-  const result =
-    (apartments.results || [])
-      .map(
-        (apt) => ({
-          ...apt,
-
-          owners:
-            ownersMap[
-              apt.id
-            ] || [],
-
-          residents:
-            residentsMap[
-              apt.id
-            ] || [],
-        })
-      );
-
-  return result;
+  return (apartments.results || []).map(
+    (apartment) => ({
+      ...apartment,
+      owners:
+        ownersMap[apartment.id] || [],
+      residents:
+        residentsMap[apartment.id] || [],
+    })
+  );
 
 });
 
