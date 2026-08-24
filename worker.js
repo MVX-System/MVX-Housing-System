@@ -10,7 +10,7 @@ export default {
 class App {
 static async handle(request, env) {
   const url = new URL(request.url);
-  const cors = this.cors();
+  const cors = this.cors(request);
 
   try {
     if (request.method === "OPTIONS") {
@@ -74,12 +74,28 @@ static async handle(request, env) {
     });
   }
 
-  static cors() {
-    return {
-      "Access-Control-Allow-Origin": "*",
+  static cors(request) {
+    const allowedOrigins = new Set([
+      "https://mvx-housing-system.pages.dev",
+      "https://mvx-housing-system-migration.pages.dev",
+      "http://localhost:5173",
+      "http://127.0.0.1:5173",
+    ]);
+
+    const origin =
+      request?.headers?.get("Origin") || "";
+
+    const headers = {
       "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
       "Access-Control-Allow-Headers": "Content-Type, Authorization",
+      "Vary": "Origin",
     };
+
+    if (allowedOrigins.has(origin)) {
+      headers["Access-Control-Allow-Origin"] = origin;
+    }
+
+    return headers;
   }
 }
 
