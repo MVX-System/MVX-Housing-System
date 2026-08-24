@@ -1324,14 +1324,104 @@ class Router {
 
 // =========================
 // AUTH MIDDLEWARE
+// Stage 2I-SR2:
+// - strict Bearer parsing
+// - JWT signature + lifetime validation
+// - live user status and role revalidation from Main D1
 // =========================
 const Auth = {
   async user(ctx) {
-    const auth = ctx.request.headers.get("Authorization");
-    if (!auth) return null;
+    const authHeader =
+      String(
+        ctx.request.headers.get(
+          "Authorization"
+        ) || ""
+      ).trim();
 
-    const token = auth.replace("Bearer ", "");
-    return await verifyJWT(token, ctx.env.JWT_SECRET);
+    const match =
+      authHeader.match(
+        /^Bearer ([A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)$/
+      );
+
+    if (!match) {
+      return null;
+    }
+
+    const token = match[1];
+
+    const tokenPayload =
+      await verifyJWT(
+        token,
+        ctx.env.JWT_SECRET
+      );
+
+    if (!tokenPayload) {
+      return null;
+    }
+
+    const userId =
+      Number(
+        tokenPayload.user_id
+      );
+
+    if (
+      !Number.isInteger(userId) ||
+      userId <= 0
+    ) {
+      return null;
+    }
+
+    const user =
+      await ctx.env.DB.prepare(`
+        SELECT
+          id,
+          nick,
+          is_active
+        FROM users
+        WHERE id = ?
+        LIMIT 1
+      `)
+        .bind(userId)
+        .first();
+
+    if (
+      !user ||
+      Number(user.is_active) !== 1
+    ) {
+      return null;
+    }
+
+    const rolesResult =
+      await ctx.env.DB.prepare(`
+        SELECT r.name
+        FROM roles r
+        JOIN user_roles ur
+          ON ur.role_id = r.id
+        WHERE ur.user_id = ?
+        ORDER BY r.name
+      `)
+        .bind(userId)
+        .all();
+
+    return {
+      user_id:
+        Number(user.id),
+      nick:
+        user.nick || null,
+      roles:
+        (rolesResult.results || [])
+          .map(
+            (row) =>
+              String(
+                row.name || ""
+              ).trim()
+          )
+          .filter(Boolean),
+      iat:
+        tokenPayload.iat,
+      exp:
+        tokenPayload.exp,
+    };
   },
 
   async requireUser(ctx) {
@@ -1341,8 +1431,19 @@ const Auth = {
 
   async requireAdmin(ctx) {
     const u = await Auth.user(ctx);
-    if (!u) return null;
-    if (!u.roles?.includes("admin")) return null;
+
+    if (!u) {
+      return null;
+    }
+
+    if (
+      !u.roles.includes(
+        "admin"
+      )
+    ) {
+      return null;
+    }
+
     return u;
   },
 };
@@ -1365,6 +1466,7 @@ async function findUserForLogin(env, body) {
     FROM users
     WHERE nick IS NOT NULL
       AND LOWER(nick) = LOWER(?)
+      AND is_active = 1
     LIMIT 1
   `)
     .bind(nickInput)
@@ -1372,39 +1474,10 @@ async function findUserForLogin(env, body) {
 }
 
 // =========================
-// SERVICES
+// Stage 2I-SR2:
+// Removed unused legacy Service.login() implementation.
+// The registered /api/login route below is the single login flow.
 // =========================
-const Service = {
-  async login(env, body) {
-    const user =
-      await findUserForLogin(env, body);
-
-    if (!user) return null;
-
-    const hash = await hashPassword(String(body.password || ""));
-    if (hash !== user.password_hash) return null;
-
-    const rolesRes = await env.DB.prepare(`
-      SELECT r.name
-      FROM roles r
-      JOIN user_roles ur ON ur.role_id = r.id
-      WHERE ur.user_id = ?
-    `).bind(user.id).all();
-
-    const roles = rolesRes.results.map(r => r.name);
-
-    const token = await signJWT(
-      {
-        user_id: user.id,
-        nick: user.nick || null,
-        roles,
-      },
-      env.JWT_SECRET
-    );
-
-    return token;
-  }
-};
 
 // =========================
 // WATER PERIOD OPENING ANNOUNCEMENTS
@@ -4707,20 +4780,12 @@ Router.register("POST", "/api/login", async (ctx) => {
       return { error: "invalid_credentials" };
     }
 
-    const rolesResult = await ctx.env.DB.prepare(`
-      SELECT r.name
-      FROM roles r
-      JOIN user_roles ur ON ur.role_id = r.id
-      WHERE ur.user_id = ?
-    `).bind(user.id).all();
-
-    const roles = rolesResult.results.map(r => r.name);
-
     const token = await signJWT(
       {
-        user_id: user.id,
-        nick: user.nick || null,
-        roles,
+        user_id:
+          Number(user.id),
+        nick:
+          user.nick || null,
       },
       ctx.env.JWT_SECRET
     );
@@ -9527,108 +9592,341 @@ Router.register("POST", "/api/admin/remove-user-apartment", async (ctx) => {
   };
 });
 // =========================
-// SIMPLE JWT (WORKER SAFE)
+// JWT (WORKER SAFE)
+// Stage 2I-SR2:
+// HS256 access tokens with mandatory iat/exp.
+// Existing pre-SR2 tokens without lifetime claims are intentionally rejected.
+// Authorization roles are never trusted from the token; Auth.user()
+// reloads current user status and roles from Main D1 on every request.
 // =========================
 
-async function signJWT(payload, secret) {
-  const enc = new TextEncoder();
+const JWT_TTL_SECONDS =
+  12 * 60 * 60;
+
+const JWT_CLOCK_SKEW_SECONDS =
+  60;
+
+function jwtBase64UrlEncodeJson(
+  value
+) {
+  const bytes =
+    new TextEncoder().encode(
+      JSON.stringify(value)
+    );
+
+  let binary = "";
+
+  for (
+    let index = 0;
+    index < bytes.length;
+    index += 1
+  ) {
+    binary +=
+      String.fromCharCode(
+        bytes[index]
+      );
+  }
+
+  return btoa(binary)
+    .replace(/=/g, "")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_");
+}
+
+function jwtBase64UrlDecodeBytes(
+  value
+) {
+  let normalized =
+    String(value || "")
+      .replace(/-/g, "+")
+      .replace(/_/g, "/");
+
+  while (
+    normalized.length % 4
+  ) {
+    normalized += "=";
+  }
+
+  const binary =
+    atob(normalized);
+
+  return Uint8Array.from(
+    binary,
+    (character) =>
+      character.charCodeAt(0)
+  );
+}
+
+function jwtBase64UrlDecodeJson(
+  value
+) {
+  const bytes =
+    jwtBase64UrlDecodeBytes(
+      value
+    );
+
+  return JSON.parse(
+    new TextDecoder().decode(
+      bytes
+    )
+  );
+}
+
+async function signJWT(
+  payload,
+  secret
+) {
+  const normalizedSecret =
+    String(secret || "");
+
+  if (!normalizedSecret) {
+    throw new Error(
+      "missing_jwt_secret"
+    );
+  }
+
+  const nowSeconds =
+    Math.floor(
+      Date.now() / 1000
+    );
 
   const header = {
     alg: "HS256",
     typ: "JWT",
   };
 
-  const base64url = (obj) =>
-    btoa(JSON.stringify(obj))
-      .replace(/=/g, "")
-      .replace(/\+/g, "-")
-      .replace(/\//g, "_");
+  const completePayload = {
+    ...payload,
+    iat:
+      nowSeconds,
+    exp:
+      nowSeconds +
+      JWT_TTL_SECONDS,
+  };
 
-  const h = base64url(header);
-  const p = base64url(payload);
+  const h =
+    jwtBase64UrlEncodeJson(
+      header
+    );
 
-  const data = enc.encode(h + "." + p);
-  const key = await crypto.subtle.importKey(
-    "raw",
-    enc.encode(secret),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"]
-  );
+  const p =
+    jwtBase64UrlEncodeJson(
+      completePayload
+    );
 
-  const sig = await crypto.subtle.sign("HMAC", key, data);
+  const data =
+    new TextEncoder().encode(
+      `${h}.${p}`
+    );
 
-  const s = btoa(String.fromCharCode(...new Uint8Array(sig)))
-    .replace(/=/g, "")
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_");
-
-  return `${h}.${p}.${s}`;
-}
-
-async function verifyJWT(token, secret) {
-
-  try {
-
-    const enc = new TextEncoder();
-
-    const [h, p, s] = token.split(".");
-
-    if (!h || !p || !s) {
-      return null;
-    }
-
-    const data = enc.encode(h + "." + p);
-
-    const key = await crypto.subtle.importKey(
+  const key =
+    await crypto.subtle.importKey(
       "raw",
-      enc.encode(secret),
+      new TextEncoder().encode(
+        normalizedSecret
+      ),
       {
         name: "HMAC",
         hash: "SHA-256",
       },
       false,
-      ["verify"]
+      [
+        "sign",
+      ]
     );
 
-    // BASE64URL -> BASE64
-    const normalize = (str) => {
-      str = str
-        .replace(/-/g, "+")
-        .replace(/_/g, "/");
-
-      while (str.length % 4) {
-        str += "=";
-      }
-
-      return str;
-    };
-
-    const signature = Uint8Array.from(
-      atob(normalize(s)),
-      c => c.charCodeAt(0)
+  const signature =
+    new Uint8Array(
+      await crypto.subtle.sign(
+        "HMAC",
+        key,
+        data
+      )
     );
 
-    const valid = await crypto.subtle.verify(
-      "HMAC",
-      key,
-      signature,
-      data
-    );
+  let binarySignature = "";
+
+  for (
+    let index = 0;
+    index <
+    signature.length;
+    index += 1
+  ) {
+    binarySignature +=
+      String.fromCharCode(
+        signature[index]
+      );
+  }
+
+  const s =
+    btoa(binarySignature)
+      .replace(/=/g, "")
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_");
+
+  return `${h}.${p}.${s}`;
+}
+
+async function verifyJWT(
+  token,
+  secret
+) {
+  try {
+    const normalizedSecret =
+      String(secret || "");
+
+    if (!normalizedSecret) {
+      return null;
+    }
+
+    const parts =
+      String(token || "")
+        .split(".");
+
+    if (
+      parts.length !== 3
+    ) {
+      return null;
+    }
+
+    const [
+      h,
+      p,
+      s,
+    ] = parts;
+
+    if (
+      !h ||
+      !p ||
+      !s
+    ) {
+      return null;
+    }
+
+    const header =
+      jwtBase64UrlDecodeJson(
+        h
+      );
+
+    if (
+      header?.alg !== "HS256" ||
+      header?.typ !== "JWT"
+    ) {
+      return null;
+    }
+
+    const data =
+      new TextEncoder().encode(
+        `${h}.${p}`
+      );
+
+    const key =
+      await crypto.subtle.importKey(
+        "raw",
+        new TextEncoder().encode(
+          normalizedSecret
+        ),
+        {
+          name: "HMAC",
+          hash: "SHA-256",
+        },
+        false,
+        [
+          "verify",
+        ]
+      );
+
+    const signature =
+      jwtBase64UrlDecodeBytes(
+        s
+      );
+
+    const valid =
+      await crypto.subtle.verify(
+        "HMAC",
+        key,
+        signature,
+        data
+      );
 
     if (!valid) {
       return null;
     }
 
-    const payload = JSON.parse(
-      atob(normalize(p))
+    const payload =
+      jwtBase64UrlDecodeJson(
+        p
+      );
+
+    const userId =
+      Number(
+        payload?.user_id
+      );
+
+    const issuedAt =
+      Number(
+        payload?.iat
+      );
+
+    const expiresAt =
+      Number(
+        payload?.exp
+      );
+
+    if (
+      !Number.isInteger(userId) ||
+      userId <= 0 ||
+      !Number.isInteger(issuedAt) ||
+      !Number.isInteger(expiresAt)
+    ) {
+      return null;
+    }
+
+    const nowSeconds =
+      Math.floor(
+        Date.now() / 1000
+      );
+
+    if (
+      issuedAt >
+        nowSeconds +
+          JWT_CLOCK_SKEW_SECONDS
+    ) {
+      return null;
+    }
+
+    if (
+      expiresAt <=
+        nowSeconds -
+          JWT_CLOCK_SKEW_SECONDS
+    ) {
+      return null;
+    }
+
+    if (
+      expiresAt <= issuedAt ||
+      expiresAt - issuedAt >
+        JWT_TTL_SECONDS +
+          JWT_CLOCK_SKEW_SECONDS
+    ) {
+      return null;
+    }
+
+    return {
+      ...payload,
+      user_id:
+        userId,
+      iat:
+        issuedAt,
+      exp:
+        expiresAt,
+    };
+
+  } catch (error) {
+    console.error(
+      "JWT VERIFY ERROR:",
+      error
     );
-
-    return payload;
-
-  } catch (e) {
-
-    console.error("JWT VERIFY ERROR:", e);
 
     return null;
   }
