@@ -9636,9 +9636,11 @@ async function verifyJWT(token, secret) {
 
 // =========================
 // APARTMENTS FULL
-// OPTIMIZED
-// Stage 2G-4: PII is read from PII_DB only.
-// Main D1 provides apartment/user relationship data only.
+// Stage 2I-5B6:
+// Apartment list remains non-PII.
+// Main D1 returns pseudonymous Nick together with user ID so
+// Admin Apartments can search owners/residents by Nick without
+// decrypting PII or querying PII_DB.
 // =========================
 
 Router.register("GET", "/api/apartments/full", async (ctx) => {
@@ -9660,16 +9662,22 @@ Router.register("GET", "/api/apartments/full", async (ctx) => {
   const owners = await ctx.env.DB.prepare(`
     SELECT
       ua.apartment_id,
-      ua.user_id AS id
+      ua.user_id AS id,
+      u.nick
     FROM user_apartments ua
+    JOIN users u
+      ON u.id = ua.user_id
     WHERE ua.relation_type = 'owner'
   `).all();
 
   const residents = await ctx.env.DB.prepare(`
     SELECT
       ua.apartment_id,
-      ua.user_id AS id
+      ua.user_id AS id,
+      u.nick
     FROM user_apartments ua
+    JOIN users u
+      ON u.id = ua.user_id
     WHERE ua.relation_type = 'resident'
   `).all();
 
@@ -9681,6 +9689,7 @@ Router.register("GET", "/api/apartments/full", async (ctx) => {
 
     ownersMap[owner.apartment_id].push({
       id: owner.id,
+      nick: owner.nick || null,
     });
   }
 
@@ -9692,6 +9701,7 @@ Router.register("GET", "/api/apartments/full", async (ctx) => {
 
     residentsMap[resident.apartment_id].push({
       id: resident.id,
+      nick: resident.nick || null,
     });
   }
 
