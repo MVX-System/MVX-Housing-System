@@ -625,6 +625,9 @@ export default function UsersPage() {
       piiSearchResults,
     ]);
 
+  // Stage 2I-5B4:
+  // Status and apartment-assignment context use only Nick / user ID.
+  // Point-loaded PII remains limited to explicit View/Edit and HMAC search.
   const openAssignments =
     async (user) => {
       await loadApartments();
@@ -1509,8 +1512,8 @@ export default function UsersPage() {
           <div>
             <p>
               <strong>
-                {statusUser.first_name}{" "}
-                {statusUser.last_name}
+                {statusUser.nick ||
+                  `#${statusUser.id}`}
               </strong>
             </p>
 
@@ -1648,8 +1651,8 @@ export default function UsersPage() {
             }}
           >
             <strong>
-              {assignmentUser.first_name}{" "}
-              {assignmentUser.last_name}
+              {assignmentUser.nick ||
+                `#${assignmentUser.id}`}
             </strong>
 
             <select
