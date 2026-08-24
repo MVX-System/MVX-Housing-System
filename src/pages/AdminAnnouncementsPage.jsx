@@ -474,22 +474,10 @@ export default function AdminAnnouncementsPage() {
         return nick;
       }
 
-      // Stage 2I-2B1 compatibility:
-      // keep the legacy PII fallback until the backend
-      // switches announcement target options to Nick + Apartment.
-      const legacyName =
-        [
-          item?.first_name,
-          item?.last_name,
-        ]
-          .filter(Boolean)
-          .join(" ");
-
-      return (
-        legacyName ||
-        item?.email ||
-        `#${item?.id ?? ""}`
-      );
+      // Stage 2I-5B3:
+      // Announcement target labels use only pseudonymous Nick identity.
+      // Legacy first_name / last_name / email fallbacks have been removed.
+      return `#${item?.id ?? ""}`;
     };
 
   const getTargetOptions =
