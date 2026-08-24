@@ -4695,19 +4695,13 @@ Router.register(
       };
     }
 
-    const currentPasswordHash =
-      await hashPassword(
-        currentPassword
+    const currentPasswordCheck =
+      await verifyPassword(
+        currentPassword,
+        user.password_hash || ""
       );
 
-    if (
-      String(
-        currentPasswordHash
-      ) !==
-      String(
-        user.password_hash || ""
-      )
-    ) {
+    if (!currentPasswordCheck.ok) {
       return {
         error:
           "current_password_incorrect"
@@ -4718,20 +4712,6 @@ Router.register(
       await hashPassword(
         newPassword
       );
-
-    if (
-      String(
-        newPasswordHash
-      ) ===
-      String(
-        user.password_hash || ""
-      )
-    ) {
-      return {
-        error:
-          "new_password_same_as_current"
-      };
-    }
 
     await ctx.env.DB.prepare(`
       UPDATE users
@@ -4774,10 +4754,66 @@ Router.register("POST", "/api/login", async (ctx) => {
       return { error: "invalid_credentials" };
     }
 
-    const hash = await hashPassword(String(body.password || ""));
+    const password =
+      String(
+        body.password || ""
+      );
 
-    if (String(hash) !== String(user.password_hash || "")) {
-      return { error: "invalid_credentials" };
+    const passwordCheck =
+      await verifyPassword(
+        password,
+        user.password_hash || ""
+      );
+
+    if (!passwordCheck.ok) {
+      return {
+        error:
+          "invalid_credentials"
+      };
+    }
+
+    // Stage 2I-SR3:
+    // Successful login transparently upgrades the legacy unsalted
+    // SHA-256 password hash to PBKDF2-HMAC-SHA256.
+    if (
+      passwordCheck.needs_rehash
+    ) {
+      try {
+        const upgradedHash =
+          await hashPassword(
+            password
+          );
+
+        await ctx.env.DB.prepare(`
+          UPDATE users
+          SET
+            password_hash = ?,
+            updated_at = ?
+          WHERE id = ?
+            AND password_hash = ?
+        `)
+          .bind(
+            upgradedHash,
+            new Date().toISOString(),
+            user.id,
+            user.password_hash
+          )
+          .run();
+
+      } catch (migrationError) {
+        console.error(
+          "PASSWORD HASH MIGRATION ERROR:",
+          {
+            user_id:
+              user.id,
+            error:
+              String(
+                migrationError?.message ||
+                migrationError
+              ),
+          }
+        );
+      }
     }
 
     const token = await signJWT(
@@ -5374,16 +5410,388 @@ Router.register("POST", "/api/admin/set-roles", async (ctx) => {
   return { ok: true };
 });
 
-async function hashPassword(password) {
-  const data = new TextEncoder().encode(password);
+// =========================
+// PASSWORD HASHING
+// Stage 2I-SR3:
+// New passwords use PBKDF2-HMAC-SHA256 with a unique random salt.
+// Legacy 64-character SHA-256 hashes are accepted only for
+// verification and are upgraded after the next successful login.
+// =========================
 
-  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+const PASSWORD_HASH_SCHEME =
+  "pbkdf2-sha256";
 
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
+const PASSWORD_PBKDF2_ITERATIONS =
+  100000;
 
-  return hashArray
-    .map(b => b.toString(16).padStart(2, "0"))
-    .join("");
+const PASSWORD_SALT_BYTES =
+  16;
+
+const PASSWORD_DERIVED_KEY_BYTES =
+  32;
+
+function passwordBytesToBase64Url(
+  bytes
+) {
+  let binary = "";
+
+  for (
+    let index = 0;
+    index < bytes.length;
+    index += 1
+  ) {
+    binary +=
+      String.fromCharCode(
+        bytes[index]
+      );
+  }
+
+  return btoa(binary)
+    .replace(/=/g, "")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_");
+}
+
+function passwordBase64UrlToBytes(
+  value
+) {
+  const source =
+    String(value || "");
+
+  if (
+    !/^[A-Za-z0-9_-]+$/.test(
+      source
+    )
+  ) {
+    throw new Error(
+      "invalid_password_hash_encoding"
+    );
+  }
+
+  let normalized =
+    source
+      .replace(/-/g, "+")
+      .replace(/_/g, "/");
+
+  while (
+    normalized.length % 4
+  ) {
+    normalized += "=";
+  }
+
+  const binary =
+    atob(normalized);
+
+  return Uint8Array.from(
+    binary,
+    (character) =>
+      character.charCodeAt(0)
+  );
+}
+
+function passwordConstantTimeEqual(
+  left,
+  right
+) {
+  const a =
+    left instanceof Uint8Array
+      ? left
+      : new Uint8Array(left);
+
+  const b =
+    right instanceof Uint8Array
+      ? right
+      : new Uint8Array(right);
+
+  if (
+    a.length !== b.length
+  ) {
+    return false;
+  }
+
+  let difference = 0;
+
+  for (
+    let index = 0;
+    index < a.length;
+    index += 1
+  ) {
+    difference |=
+      a[index] ^ b[index];
+  }
+
+  return difference === 0;
+}
+
+async function derivePasswordPbkdf2(
+  password,
+  salt,
+  iterations
+) {
+  const keyMaterial =
+    await crypto.subtle.importKey(
+      "raw",
+      new TextEncoder().encode(
+        String(password)
+      ),
+      {
+        name: "PBKDF2",
+      },
+      false,
+      [
+        "deriveBits",
+      ]
+    );
+
+  const derivedBits =
+    await crypto.subtle.deriveBits(
+      {
+        name: "PBKDF2",
+        hash: "SHA-256",
+        salt,
+        iterations,
+      },
+      keyMaterial,
+      PASSWORD_DERIVED_KEY_BYTES *
+        8
+    );
+
+  return new Uint8Array(
+    derivedBits
+  );
+}
+
+async function hashPassword(
+  password
+) {
+  const normalizedPassword =
+    String(password || "");
+
+  if (!normalizedPassword) {
+    throw new Error(
+      "missing_password"
+    );
+  }
+
+  const salt =
+    crypto.getRandomValues(
+      new Uint8Array(
+        PASSWORD_SALT_BYTES
+      )
+    );
+
+  const derivedKey =
+    await derivePasswordPbkdf2(
+      normalizedPassword,
+      salt,
+      PASSWORD_PBKDF2_ITERATIONS
+    );
+
+  return [
+    PASSWORD_HASH_SCHEME,
+    String(
+      PASSWORD_PBKDF2_ITERATIONS
+    ),
+    passwordBytesToBase64Url(
+      salt
+    ),
+    passwordBytesToBase64Url(
+      derivedKey
+    ),
+  ].join("$");
+}
+
+async function legacySha256Password(
+  password
+) {
+  const hashBuffer =
+    await crypto.subtle.digest(
+      "SHA-256",
+      new TextEncoder().encode(
+        String(password || "")
+      )
+    );
+
+  return new Uint8Array(
+    hashBuffer
+  );
+}
+
+function hexToBytes(
+  value
+) {
+  const normalized =
+    String(value || "")
+      .trim()
+      .toLowerCase();
+
+  if (
+    !/^[0-9a-f]{64}$/.test(
+      normalized
+    )
+  ) {
+    return null;
+  }
+
+  const bytes =
+    new Uint8Array(
+      normalized.length / 2
+    );
+
+  for (
+    let index = 0;
+    index < bytes.length;
+    index += 1
+  ) {
+    bytes[index] =
+      Number.parseInt(
+        normalized.slice(
+          index * 2,
+          index * 2 + 2
+        ),
+        16
+      );
+  }
+
+  return bytes;
+}
+
+async function verifyPassword(
+  password,
+  storedHash
+) {
+  const normalizedHash =
+    String(storedHash || "")
+      .trim();
+
+  if (!normalizedHash) {
+    return {
+      ok: false,
+      needs_rehash: false,
+      scheme: null,
+    };
+  }
+
+  // Transitional legacy format:
+  // raw SHA-256 hex, 64 characters.
+  if (
+    /^[0-9a-fA-F]{64}$/.test(
+      normalizedHash
+    )
+  ) {
+    const expected =
+      hexToBytes(
+        normalizedHash
+      );
+
+    const actual =
+      await legacySha256Password(
+        password
+      );
+
+    return {
+      ok:
+        expected !== null &&
+        passwordConstantTimeEqual(
+          actual,
+          expected
+        ),
+      needs_rehash: true,
+      scheme: "legacy-sha256",
+    };
+  }
+
+  const parts =
+    normalizedHash.split("$");
+
+  if (
+    parts.length !== 4 ||
+    parts[0] !==
+      PASSWORD_HASH_SCHEME
+  ) {
+    return {
+      ok: false,
+      needs_rehash: false,
+      scheme: "unknown",
+    };
+  }
+
+  const iterations =
+    Number(parts[1]);
+
+  if (
+    !Number.isInteger(
+      iterations
+    ) ||
+    iterations < 100000 ||
+    iterations > 1000000
+  ) {
+    return {
+      ok: false,
+      needs_rehash: false,
+      scheme:
+        PASSWORD_HASH_SCHEME,
+    };
+  }
+
+  let salt;
+  let expected;
+
+  try {
+    salt =
+      passwordBase64UrlToBytes(
+        parts[2]
+      );
+
+    expected =
+      passwordBase64UrlToBytes(
+        parts[3]
+      );
+  } catch {
+    return {
+      ok: false,
+      needs_rehash: false,
+      scheme:
+        PASSWORD_HASH_SCHEME,
+    };
+  }
+
+  if (
+    salt.length <
+      PASSWORD_SALT_BYTES ||
+    expected.length !==
+      PASSWORD_DERIVED_KEY_BYTES
+  ) {
+    return {
+      ok: false,
+      needs_rehash: false,
+      scheme:
+        PASSWORD_HASH_SCHEME,
+    };
+  }
+
+  const actual =
+    await derivePasswordPbkdf2(
+      password,
+      salt,
+      iterations
+    );
+
+  const ok =
+    passwordConstantTimeEqual(
+      actual,
+      expected
+    );
+
+  return {
+    ok,
+    needs_rehash:
+      ok &&
+      iterations <
+        PASSWORD_PBKDF2_ITERATIONS,
+    scheme:
+      PASSWORD_HASH_SCHEME,
+  };
 }
 
 const encoder = new TextEncoder();
