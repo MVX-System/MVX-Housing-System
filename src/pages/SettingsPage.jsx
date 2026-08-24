@@ -23,52 +23,10 @@ import {
   useMode,
 } from "../context/ModeContext";
 
+import {
+  api,
+} from "../services/api";
 
-const API_BASE_URL =
-  "https://mvx-housing-api.mvx-system.workers.dev";
-
-async function workerApi(
-  path,
-  options = {}
-) {
-  const token =
-    localStorage.getItem(
-      "token"
-    );
-
-  const response =
-    await fetch(
-      `${API_BASE_URL}${path}`,
-      {
-        ...options,
-        headers: {
-          "Content-Type":
-            "application/json",
-          ...(token
-            ? {
-                Authorization:
-                  `Bearer ${token}`,
-              }
-            : {}),
-          ...(options.headers || {}),
-        },
-      }
-    );
-
-  const data =
-    await response
-      .json()
-      .catch(() => ({}));
-
-  if (!response.ok) {
-    throw new Error(
-      data?.error ||
-      `HTTP ${response.status}`
-    );
-  }
-
-  return data;
-}
 
 const TEXT = {
   en: {
@@ -734,7 +692,7 @@ export default function SettingsPage() {
 
         try {
           const result =
-            await workerApi(
+            await api(
               "/api/admin/water-reporting-settings"
             );
 
@@ -985,7 +943,7 @@ export default function SettingsPage() {
 
       try {
         const result =
-          await workerApi(
+          await api(
             "/api/admin/water-reporting-settings",
             {
               method: "POST",
@@ -1012,7 +970,7 @@ export default function SettingsPage() {
         }
 
         const refreshed =
-          await workerApi(
+          await api(
             "/api/admin/water-reporting-settings"
           );
 
@@ -1111,7 +1069,7 @@ export default function SettingsPage() {
         }
 
         const config =
-          await workerApi(
+          await api(
             "/api/push/config"
           );
 
@@ -1152,7 +1110,7 @@ export default function SettingsPage() {
         }
 
         const result =
-          await workerApi(
+          await api(
             "/api/push/subscribe",
             {
               method: "POST",
@@ -1214,7 +1172,7 @@ export default function SettingsPage() {
             .getSubscription();
 
         if (subscription) {
-          await workerApi(
+          await api(
             "/api/push/unsubscribe",
             {
               method: "POST",
