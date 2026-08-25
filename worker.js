@@ -1,6 +1,15 @@
 export default {
   async fetch(request, env, ctx) {
     return await App.handle(request, env);
+  },
+
+  // Stage 2I-SR12:
+  // Daily retention housekeeping is executed only by Cloudflare Cron.
+  // It is intentionally not tied to normal user requests.
+  async scheduled(controller, env, ctx) {
+    ctx.waitUntil(
+      SecurityHousekeeping.run(env)
+    );
   }
 };
 
@@ -1779,6 +1788,199 @@ class SecurityAudit {
         ok: false
       };
     }
+  }
+}
+
+
+// =========================
+// SECURITY / DATA RETENTION HOUSEKEEPING
+// Stage 2I-SR12
+//
+// Retention policy:
+// - security_rate_limits: 7 days
+// - expired/revoked auth_sessions: 30 days
+// - push_deliveries: 180 days
+// - inactive push_subscriptions: 180 days, only when no delivery rows remain
+// - security_audit_log: 730 days
+// - pii_access_audit: 730 days
+//
+// No cleanup is performed from user-facing HTTP requests.
+// =========================
+class SecurityHousekeeping {
+  static async runStep(
+    name,
+    operation
+  ) {
+    try {
+      const result =
+        await operation();
+
+      return {
+        name,
+        ok: true,
+        changes:
+          Number(
+            result?.meta?.changes ||
+            0
+          ),
+      };
+    } catch (error) {
+      App.logError(
+        "retention_cleanup_error",
+        error,
+        {
+          cleanup_step:
+            String(name).slice(
+              0,
+              80
+            ),
+        }
+      );
+
+      return {
+        name,
+        ok: false,
+        changes: 0,
+      };
+    }
+  }
+
+  static async run(env) {
+    const results = [];
+
+    // Short-lived abuse-protection artifacts use Unix epoch seconds.
+    results.push(
+      await this.runStep(
+        "security_rate_limits",
+        () =>
+          env.DB.prepare(`
+            DELETE FROM security_rate_limits
+            WHERE updated_at <
+              CAST(
+                strftime(
+                  '%s',
+                  'now',
+                  '-7 days'
+                )
+                AS INTEGER
+              )
+          `).run()
+      )
+    );
+
+    // Keep expired/revoked server-side sessions for 30 days
+    // for short-term operational troubleshooting, then remove them.
+    results.push(
+      await this.runStep(
+        "auth_sessions",
+        () =>
+          env.DB.prepare(`
+            DELETE FROM auth_sessions
+            WHERE
+              (
+                revoked_at IS NOT NULL
+                AND datetime(revoked_at) <
+                  datetime(
+                    'now',
+                    '-30 days'
+                  )
+              )
+              OR
+              (
+                datetime(expires_at) <
+                  datetime(
+                    'now',
+                    '-30 days'
+                  )
+              )
+          `).run()
+      )
+    );
+
+    // Delivery history must be removed before stale subscriptions
+    // because push_deliveries has a NO ACTION FK to push_subscriptions.
+    results.push(
+      await this.runStep(
+        "push_deliveries",
+        () =>
+          env.DB.prepare(`
+            DELETE FROM push_deliveries
+            WHERE datetime(created_at) <
+              datetime(
+                'now',
+                '-180 days'
+              )
+          `).run()
+      )
+    );
+
+    // Remove only inactive subscriptions that are old enough and
+    // no longer referenced by any remaining delivery history.
+    results.push(
+      await this.runStep(
+        "push_subscriptions",
+        () =>
+          env.DB.prepare(`
+            DELETE FROM push_subscriptions
+            WHERE is_active = 0
+              AND datetime(updated_at) <
+                datetime(
+                  'now',
+                  '-180 days'
+                )
+              AND NOT EXISTS (
+                SELECT 1
+                FROM push_deliveries pd
+                WHERE
+                  pd.subscription_id =
+                    push_subscriptions.id
+              )
+          `).run()
+      )
+    );
+
+    // Security/admin audit trail: 24 months (730 days).
+    results.push(
+      await this.runStep(
+        "security_audit_log",
+        () =>
+          env.DB.prepare(`
+            DELETE FROM security_audit_log
+            WHERE datetime(created_at) <
+              datetime(
+                'now',
+                '-730 days'
+              )
+          `).run()
+      )
+    );
+
+    // PII access audit is kept separately in PII_DB,
+    // with the same 24-month retention period.
+    if (env.PII_DB) {
+      results.push(
+        await this.runStep(
+          "pii_access_audit",
+          () =>
+            env.PII_DB.prepare(`
+              DELETE FROM pii_access_audit
+              WHERE datetime(created_at) <
+                datetime(
+                  'now',
+                  '-730 days'
+                )
+            `).run()
+        )
+      );
+    }
+
+    return {
+      ok:
+        results.every(
+          (item) => item.ok
+        ),
+      results,
+    };
   }
 }
 

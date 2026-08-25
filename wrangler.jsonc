@@ -23,5 +23,10 @@
   "vars": {
     "VAPID_PUBLIC_KEY": "BJnIzhNot9ZSdlgCOCuRof2aN0-_59TJygt5qILca9uWMsjm4sJIAaHJKL0E7dtPqnNcNRAv9LymCUOpinWx-9g",
     "VAPID_SUBJECT": "mailto:irlavas20@inbox.lv"
+  },
+  "triggers": {
+    "crons": [
+      "17 3 * * *"
+    ]
   }
 }
