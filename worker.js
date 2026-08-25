@@ -2178,6 +2178,323 @@ const LOGIN_DUMMY_PASSWORD_HASH =
   "pbkdf2-sha256$100000$TVZYLVNSNy1kdW1teS1zYQ$6c_K89gSqs7ERauFL6LMzb9xFEK0Kozuw_ERyYy3R8U";
 
 // =========================
+// INPUT VALIDATION / DATA INTEGRITY
+// Stage 2I-SR8
+// =========================
+const USER_APARTMENT_RELATION_TYPES =
+  new Set([
+    "owner",
+    "resident",
+  ]);
+
+function normalizePositiveInteger(
+  value
+) {
+  const normalized =
+    Number(value);
+
+  return (
+    Number.isInteger(normalized) &&
+    normalized > 0
+  )
+    ? normalized
+    : null;
+}
+
+function normalizeIntegerInRange(
+  value,
+  {
+    min,
+    max,
+    fallback = null,
+  }
+) {
+  if (
+    value === undefined ||
+    value === null ||
+    value === ""
+  ) {
+    return fallback;
+  }
+
+  const normalized =
+    Number(value);
+
+  if (
+    !Number.isInteger(normalized) ||
+    normalized < min ||
+    normalized > max
+  ) {
+    return null;
+  }
+
+  return normalized;
+}
+
+function normalizeFiniteNumberInRange(
+  value,
+  {
+    min,
+    max,
+    fallback = null,
+  }
+) {
+  if (
+    value === undefined ||
+    value === null ||
+    value === ""
+  ) {
+    return fallback;
+  }
+
+  const normalized =
+    Number(value);
+
+  if (
+    !Number.isFinite(normalized) ||
+    normalized < min ||
+    normalized > max
+  ) {
+    return null;
+  }
+
+  return normalized;
+}
+
+function normalizeBoundedText(
+  value,
+  {
+    maxLength,
+    required = false,
+    fallback = "",
+  }
+) {
+  if (
+    value === undefined ||
+    value === null
+  ) {
+    return required
+      ? null
+      : fallback;
+  }
+
+  const normalized =
+    String(value).trim();
+
+  if (
+    required &&
+    !normalized
+  ) {
+    return null;
+  }
+
+  if (
+    normalized.length >
+    maxLength
+  ) {
+    return null;
+  }
+
+  return normalized;
+}
+
+function normalizeApartmentPayload(
+  body
+) {
+  const number =
+    normalizeBoundedText(
+      body?.number,
+      {
+        maxLength: 32,
+        required: true,
+      }
+    );
+
+  const section =
+    normalizeBoundedText(
+      body?.section,
+      {
+        maxLength: 32,
+        fallback: "",
+      }
+    );
+
+  const floor =
+    normalizeBoundedText(
+      body?.floor,
+      {
+        maxLength: 32,
+        fallback: "",
+      }
+    );
+
+  const roomCount =
+    normalizeIntegerInRange(
+      body?.room_count,
+      {
+        min: 1,
+        max: 20,
+        fallback: 1,
+      }
+    );
+
+  // Frontend historically used resident_count.
+  // Main D1 column is residents_count.
+  const residentsCountSource =
+    body?.residents_count ??
+    body?.resident_count;
+
+  const residentsCount =
+    normalizeIntegerInRange(
+      residentsCountSource,
+      {
+        min: 0,
+        max: 50,
+        fallback: 0,
+      }
+    );
+
+  const levelCount =
+    normalizeIntegerInRange(
+      body?.level_count,
+      {
+        min: 1,
+        max: 10,
+        fallback: 1,
+      }
+    );
+
+  const hotWaterRiserCount =
+    normalizeIntegerInRange(
+      body?.hot_water_riser_count,
+      {
+        min: 0,
+        max: 20,
+        fallback: 0,
+      }
+    );
+
+  const livingArea =
+    normalizeFiniteNumberInRange(
+      body?.living_area,
+      {
+        min: 0,
+        max: 10000,
+        fallback: 0,
+      }
+    );
+
+  const nonLivingArea =
+    normalizeFiniteNumberInRange(
+      body?.non_living_area,
+      {
+        min: 0,
+        max: 10000,
+        fallback: 0,
+      }
+    );
+
+  const heatedArea =
+    normalizeFiniteNumberInRange(
+      body?.heated_area,
+      {
+        min: 0,
+        max: 10000,
+        fallback: 0,
+      }
+    );
+
+  const alternativeHeatingArea =
+    normalizeFiniteNumberInRange(
+      body?.alternative_heating_area,
+      {
+        min: 0,
+        max: 10000,
+        fallback: 0,
+      }
+    );
+
+  const landTaxArea =
+    normalizeFiniteNumberInRange(
+      body?.land_tax_area,
+      {
+        min: 0,
+        max: 10000,
+        fallback: 0,
+      }
+    );
+
+  const notes =
+    normalizeBoundedText(
+      body?.notes,
+      {
+        maxLength: 5000,
+        fallback: "",
+      }
+    );
+
+  const invalid =
+    [
+      number,
+      section,
+      floor,
+      roomCount,
+      residentsCount,
+      levelCount,
+      hotWaterRiserCount,
+      livingArea,
+      nonLivingArea,
+      heatedArea,
+      alternativeHeatingArea,
+      landTaxArea,
+      notes,
+    ].some(
+      (value) =>
+        value === null
+    );
+
+  if (invalid) {
+    return {
+      ok: false,
+      error:
+        "invalid_apartment_fields",
+    };
+  }
+
+  return {
+    ok: true,
+    value: {
+      number,
+      section,
+      floor,
+      room_count:
+        roomCount,
+      residents_count:
+        residentsCount,
+      living_area:
+        livingArea,
+      non_living_area:
+        nonLivingArea,
+      heated_area:
+        heatedArea,
+      alternative_heating_area:
+        alternativeHeatingArea,
+      land_tax_area:
+        landTaxArea,
+      alternative_heating:
+        body?.alternative_heating
+          ? 1
+          : 0,
+      hot_water_riser_count:
+        hotWaterRiserCount,
+      level_count:
+        levelCount,
+      notes,
+    },
+  };
+}
+
+// =========================
 // LOGIN USER LOOKUP
 // Stage 2E-3: Nick-only authentication.
 // Email is no longer accepted as a login identifier.
@@ -6347,22 +6664,173 @@ Router.register("GET", "/api/admin/roles", async (ctx) => {
 
 // SET ROLES
 Router.register("POST", "/api/admin/set-roles", async (ctx) => {
-  const admin = await Auth.requireAdmin(ctx);
-  if (!admin) return { error: "forbidden" };
+  const admin =
+    await Auth.requireAdmin(ctx);
 
-  const body = await ctx.request.json().catch(() => ({}));
-
-  await ctx.env.DB.prepare(
-    "DELETE FROM user_roles WHERE user_id=?"
-  ).bind(body.user_id).run();
-
-  for (const roleId of body.roles || []) {
-    await ctx.env.DB.prepare(
-      "INSERT INTO user_roles(user_id,role_id) VALUES(?,?)"
-    ).bind(body.user_id, roleId).run();
+  if (!admin) {
+    return {
+      error: "forbidden"
+    };
   }
 
-  return { ok: true };
+  const body =
+    await ctx.request
+      .json()
+      .catch(() => ({}));
+
+  const userId =
+    normalizePositiveInteger(
+      body.user_id
+    );
+
+  if (!userId) {
+    return {
+      error: "invalid_user_id"
+    };
+  }
+
+  if (!Array.isArray(body.roles)) {
+    return {
+      error: "invalid_roles"
+    };
+  }
+
+  const roleIds =
+    Array.from(
+      new Set(
+        body.roles.map(
+          (value) =>
+            normalizePositiveInteger(
+              value
+            )
+        )
+      )
+    );
+
+  if (
+    roleIds.some(
+      (value) => !value
+    ) ||
+    roleIds.length > 32
+  ) {
+    return {
+      error: "invalid_roles"
+    };
+  }
+
+  const user =
+    await ctx.env.DB.prepare(`
+      SELECT id
+      FROM users
+      WHERE id = ?
+      LIMIT 1
+    `)
+      .bind(userId)
+      .first();
+
+  if (!user) {
+    return {
+      error: "user_not_found"
+    };
+  }
+
+  let validRoleIds =
+    new Set();
+
+  if (roleIds.length > 0) {
+    const placeholders =
+      roleIds
+        .map(() => "?")
+        .join(", ");
+
+    const rolesResult =
+      await ctx.env.DB.prepare(`
+        SELECT id
+        FROM roles
+        WHERE id IN (
+          ${placeholders}
+        )
+      `)
+        .bind(...roleIds)
+        .all();
+
+    validRoleIds =
+      new Set(
+        (rolesResult.results || [])
+          .map(
+            (row) =>
+              Number(row.id)
+          )
+      );
+
+    if (
+      validRoleIds.size !==
+      roleIds.length
+    ) {
+      return {
+        error: "invalid_role_id"
+      };
+    }
+  }
+
+  const adminRole =
+    await ctx.env.DB.prepare(`
+      SELECT id
+      FROM roles
+      WHERE name = 'admin'
+      LIMIT 1
+    `)
+      .first();
+
+  const adminRoleId =
+    normalizePositiveInteger(
+      adminRole?.id
+    );
+
+  if (
+    userId ===
+      Number(admin.user_id) &&
+    adminRoleId &&
+    !validRoleIds.has(
+      adminRoleId
+    )
+  ) {
+    return {
+      error:
+        "cannot_remove_own_admin_role"
+    };
+  }
+
+  const statements = [
+    ctx.env.DB.prepare(`
+      DELETE FROM user_roles
+      WHERE user_id = ?
+    `)
+      .bind(userId),
+
+    ...roleIds.map(
+      (roleId) =>
+        ctx.env.DB.prepare(`
+          INSERT INTO user_roles (
+            user_id,
+            role_id
+          )
+          VALUES (?, ?)
+        `)
+          .bind(
+            userId,
+            roleId
+          )
+    ),
+  ];
+
+  await ctx.env.DB.batch(
+    statements
+  );
+
+  return {
+    ok: true
+  };
 });
 
 // =========================
@@ -9572,7 +10040,7 @@ Router.register(
     }
 
     const apartmentId =
-      Number(
+      normalizePositiveInteger(
         body.apartment_id
       );
 
@@ -9604,15 +10072,98 @@ Router.register(
           .slice(0, 10)
       ).trim();
 
-    if (
-      !Number.isInteger(
-        apartmentId
-      ) ||
-      apartmentId <= 0
-    ) {
+    if (!apartmentId) {
       return {
         error:
           "invalid_apartment_id"
+      };
+    }
+
+    const meterType =
+      String(
+        body.type || ""
+      )
+        .trim()
+        .toLowerCase();
+
+    if (
+      !["cold", "hot"]
+        .includes(meterType)
+    ) {
+      return {
+        error:
+          "invalid_water_meter_type"
+      };
+    }
+
+    const serialNumber =
+      normalizeBoundedText(
+        body.serial_number,
+        {
+          maxLength: 128,
+          fallback: "",
+        }
+      );
+
+    const manufacturer =
+      normalizeBoundedText(
+        body.manufacturer,
+        {
+          maxLength: 128,
+          fallback: "",
+        }
+      );
+
+    const model =
+      normalizeBoundedText(
+        body.model,
+        {
+          maxLength: 128,
+          fallback: "",
+        }
+      );
+
+    const installedAt =
+      normalizeBoundedText(
+        body.installed_at,
+        {
+          maxLength: 10,
+          fallback: "",
+        }
+      );
+
+    if (
+      serialNumber === null ||
+      manufacturer === null ||
+      model === null ||
+      installedAt === null ||
+      (
+        installedAt &&
+        !isValidIsoDate(
+          installedAt
+        )
+      )
+    ) {
+      return {
+        error:
+          "invalid_water_meter_fields"
+      };
+    }
+
+    const apartmentExists =
+      await ctx.env.DB.prepare(`
+        SELECT id
+        FROM apartments
+        WHERE id = ?
+        LIMIT 1
+      `)
+        .bind(apartmentId)
+        .first();
+
+    if (!apartmentExists) {
+      return {
+        error:
+          "apartment_not_found"
       };
     }
 
@@ -9718,15 +10269,11 @@ Router.register(
       .bind(
         apartmentId,
         apartmentRiserId,
-        body.type,
-        body.serial_number || null,
-        String(
-          body.manufacturer || ""
-        ).trim() || null,
-        String(
-          body.model || ""
-        ).trim() || null,
-        body.installed_at || null
+        meterType,
+        serialNumber || null,
+        manufacturer || null,
+        model || null,
+        installedAt || null
       )
       .run();
 
@@ -9964,7 +10511,6 @@ Router.register(
   "POST",
   "/api/admin/deactivate-water-meter",
   async (ctx) => {
-
     const admin =
       await Auth.requireAdmin(ctx);
 
@@ -9979,46 +10525,95 @@ Router.register(
         .json()
         .catch(() => ({}));
 
-    if (!body.meter_id) {
+    const meterId =
+      normalizePositiveInteger(
+        body.meter_id
+      );
 
+    if (!meterId) {
       return {
         error:
-          "missing_meter_id"
+          "invalid_meter_id"
       };
-
     }
 
-    await ctx.env.DB.prepare(`
+    const reason =
+      normalizeBoundedText(
+        body.reason,
+        {
+          maxLength: 500,
+          fallback: "other",
+        }
+      );
 
-      UPDATE water_meters
+    if (reason === null) {
+      return {
+        error:
+          "invalid_deactivation_reason"
+      };
+    }
 
-      SET
+    const meter =
+      await ctx.env.DB.prepare(`
+        SELECT
+          id,
+          active
+        FROM water_meters
+        WHERE id = ?
+        LIMIT 1
+      `)
+        .bind(meterId)
+        .first();
 
-        active = 0,
+    if (!meter) {
+      return {
+        error:
+          "water_meter_not_found"
+      };
+    }
 
-        deactivated_at =
-          CURRENT_TIMESTAMP,
+    if (
+      Number(meter.active) !== 1
+    ) {
+      return {
+        error:
+          "water_meter_already_inactive"
+      };
+    }
 
-        deactivation_reason = ?
+    const result =
+      await ctx.env.DB.prepare(`
+        UPDATE water_meters
+        SET
+          active = 0,
+          deactivated_at =
+            CURRENT_TIMESTAMP,
+          deactivation_reason = ?
+        WHERE id = ?
+          AND active = 1
+      `)
+        .bind(
+          reason || "other",
+          meterId
+        )
+        .run();
 
-      WHERE id = ?
-
-    `)
-    .bind(
-      body.reason || "other",
-      body.meter_id
-    )
-    .run();
+    if (
+      Number(
+        result?.meta?.changes || 0
+      ) !== 1
+    ) {
+      return {
+        error:
+          "water_meter_deactivation_failed"
+      };
+    }
 
     return {
       ok: true
     };
   }
 );
-
-
-
-
 
 // =========================
 // ADMIN DASHBOARD
@@ -10616,6 +11211,16 @@ Router.register("POST", "/api/admin/set-user-status", async (ctx) => {
     return { error: "invalid_user_status" };
   }
 
+  if (
+    userId === Number(admin.user_id) &&
+    status === 0
+  ) {
+    return {
+      error:
+        "cannot_deactivate_self"
+    };
+  }
+
   const result = await ctx.env.DB.prepare(`
     UPDATE users
     SET
@@ -10645,68 +11250,99 @@ Router.register("POST", "/api/admin/set-user-status", async (ctx) => {
 // ADMIN CREATE APARTMENT
 // =========================
 Router.register("POST", "/api/admin/create-apartment", async (ctx) => {
-
-  const admin = await Auth.requireAdmin(ctx);
+  const admin =
+    await Auth.requireAdmin(ctx);
 
   if (!admin) {
-    return { error: "forbidden" };
-  }
-
-  const body = await ctx.request.json().catch(() => ({}));
-
-  if (!body.number) {
     return {
-      error: "missing_number"
+      error: "forbidden"
     };
   }
 
-  const result = await ctx.env.DB.prepare(`
-    INSERT INTO apartments (
-      number,
-      section,
-      floor,
-      room_count,
-      resident_count,
-      living_area,
-      non_living_area,
-      heated_area,
-      alternative_heating_area,
-      land_tax_area,
-      alternative_heating,
-      hot_water_riser_count,
-      level_count,
-      notes
-    )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `)
-    .bind(
-      body.number,
-      body.section || "",
-      body.floor || 0,
+  const body =
+    await ctx.request
+      .json()
+      .catch(() => ({}));
 
-      body.room_count || 1,
-      body.resident_count || 0,
+  const normalized =
+    normalizeApartmentPayload(
+      body
+    );
 
-      body.living_area || 0,
-      body.non_living_area || 0,
-      body.heated_area || 0,
+  if (!normalized.ok) {
+    return {
+      error: normalized.error
+    };
+  }
 
-      body.alternative_heating_area || 0,
-      body.land_tax_area || 0,
+  const apartment =
+    normalized.value;
 
-      body.alternative_heating ? 1 : 0,
+  const duplicate =
+    await ctx.env.DB.prepare(`
+      SELECT id
+      FROM apartments
+      WHERE number = ?
+        COLLATE NOCASE
+      LIMIT 1
+    `)
+      .bind(
+        apartment.number
+      )
+      .first();
 
-      body.hot_water_riser_count || 0,
+  if (duplicate) {
+    return {
+      error:
+        "apartment_number_exists"
+    };
+  }
 
-      body.level_count || 1,
-
-      body.notes || ""
-    )
-    .run();
+  const result =
+    await ctx.env.DB.prepare(`
+      INSERT INTO apartments (
+        number,
+        section,
+        floor,
+        room_count,
+        residents_count,
+        living_area,
+        non_living_area,
+        heated_area,
+        alternative_heating_area,
+        land_tax_area,
+        alternative_heating,
+        hot_water_riser_count,
+        level_count,
+        notes
+      )
+      VALUES (
+        ?, ?, ?, ?, ?, ?, ?,
+        ?, ?, ?, ?, ?, ?, ?
+      )
+    `)
+      .bind(
+        apartment.number,
+        apartment.section,
+        apartment.floor,
+        apartment.room_count,
+        apartment.residents_count,
+        apartment.living_area,
+        apartment.non_living_area,
+        apartment.heated_area,
+        apartment.alternative_heating_area,
+        apartment.land_tax_area,
+        apartment.alternative_heating,
+        apartment.hot_water_riser_count,
+        apartment.level_count,
+        apartment.notes
+      )
+      .run();
 
   return {
     ok: true,
-    apartment_id: result.meta.last_row_id
+    apartment_id:
+      result.meta.last_row_id
   };
 });
 
@@ -10714,18 +11350,82 @@ Router.register("POST", "/api/admin/create-apartment", async (ctx) => {
 // ADMIN UPDATE APARTMENT
 // =========================
 Router.register("POST", "/api/admin/update-apartment", async (ctx) => {
-
-  const admin = await Auth.requireAdmin(ctx);
+  const admin =
+    await Auth.requireAdmin(ctx);
 
   if (!admin) {
-    return { error: "forbidden" };
+    return {
+      error: "forbidden"
+    };
   }
 
-  const body = await ctx.request.json().catch(() => ({}));
+  const body =
+    await ctx.request
+      .json()
+      .catch(() => ({}));
 
-  if (!body.id) {
+  const apartmentId =
+    normalizePositiveInteger(
+      body.id
+    );
+
+  if (!apartmentId) {
     return {
-      error: "missing_apartment_id"
+      error:
+        "invalid_apartment_id"
+    };
+  }
+
+  const normalized =
+    normalizeApartmentPayload(
+      body
+    );
+
+  if (!normalized.ok) {
+    return {
+      error: normalized.error
+    };
+  }
+
+  const apartment =
+    normalized.value;
+
+  const existing =
+    await ctx.env.DB.prepare(`
+      SELECT id
+      FROM apartments
+      WHERE id = ?
+      LIMIT 1
+    `)
+      .bind(apartmentId)
+      .first();
+
+  if (!existing) {
+    return {
+      error:
+        "apartment_not_found"
+    };
+  }
+
+  const duplicate =
+    await ctx.env.DB.prepare(`
+      SELECT id
+      FROM apartments
+      WHERE number = ?
+        COLLATE NOCASE
+        AND id <> ?
+      LIMIT 1
+    `)
+      .bind(
+        apartment.number,
+        apartmentId
+      )
+      .first();
+
+  if (duplicate) {
+    return {
+      error:
+        "apartment_number_exists"
     };
   }
 
@@ -10735,48 +11435,37 @@ Router.register("POST", "/api/admin/update-apartment", async (ctx) => {
       number = ?,
       section = ?,
       floor = ?,
-
       room_count = ?,
-      resident_count = ?,
-
+      residents_count = ?,
       living_area = ?,
       non_living_area = ?,
       heated_area = ?,
-
       alternative_heating_area = ?,
       land_tax_area = ?,
-
       alternative_heating = ?,
-
       hot_water_riser_count = ?,
-
       level_count = ?,
-      notes = ?
+      notes = ?,
+      updated_at = ?
     WHERE id = ?
   `)
     .bind(
-      body.number,
-      body.section,
-      body.floor,
-
-      body.room_count,
-      body.resident_count,
-
-      body.living_area,
-      body.non_living_area,
-      body.heated_area,
-
-      body.alternative_heating_area,
-      body.land_tax_area,
-
-      body.alternative_heating ? 1 : 0,
-
-      body.hot_water_riser_count,
-
-      body.level_count,
-      body.notes,
-
-      body.id
+      apartment.number,
+      apartment.section,
+      apartment.floor,
+      apartment.room_count,
+      apartment.residents_count,
+      apartment.living_area,
+      apartment.non_living_area,
+      apartment.heated_area,
+      apartment.alternative_heating_area,
+      apartment.land_tax_area,
+      apartment.alternative_heating,
+      apartment.hot_water_riser_count,
+      apartment.level_count,
+      apartment.notes,
+      new Date().toISOString(),
+      apartmentId
     )
     .run();
 
@@ -10789,89 +11478,165 @@ Router.register("POST", "/api/admin/update-apartment", async (ctx) => {
 // GET USER APARTMENTS
 // =========================
 Router.register("GET", "/api/admin/user-apartments", async (ctx) => {
-
-  const admin = await Auth.requireAdmin(ctx);
+  const admin =
+    await Auth.requireAdmin(ctx);
 
   if (!admin) {
-    return { error: "forbidden" };
-  }
-
-  const userId = ctx.url.searchParams.get("user_id");
-
-  if (!userId) {
     return {
-      error: "missing_user_id"
+      error: "forbidden"
     };
   }
 
-  const result = await ctx.env.DB.prepare(`
-    SELECT
-      ua.rowid as id,
-      ua.apartment_id,
-      ua.relation_type,
+  const userId =
+    normalizePositiveInteger(
+      ctx.url.searchParams.get(
+        "user_id"
+      )
+    );
 
-      a.number,
-      a.section,
-      a.floor
+  if (!userId) {
+    return {
+      error: "invalid_user_id"
+    };
+  }
 
-    FROM user_apartments ua
+  const user =
+    await ctx.env.DB.prepare(`
+      SELECT id
+      FROM users
+      WHERE id = ?
+      LIMIT 1
+    `)
+      .bind(userId)
+      .first();
 
-    JOIN apartments a
-      ON a.id = ua.apartment_id
+  if (!user) {
+    return {
+      error: "user_not_found"
+    };
+  }
 
-    WHERE ua.user_id = ?
+  const result =
+    await ctx.env.DB.prepare(`
+      SELECT
+        ua.rowid AS id,
+        ua.apartment_id,
+        ua.relation_type,
+        a.number,
+        a.section,
+        a.floor
+      FROM user_apartments ua
+      JOIN apartments a
+        ON a.id =
+          ua.apartment_id
+      WHERE ua.user_id = ?
+      ORDER BY a.number
+    `)
+      .bind(userId)
+      .all();
 
-    ORDER BY a.number
-  `)
-    .bind(userId)
-    .all();
-
-  return result.results;
+  return result.results || [];
 });
 
 // =========================
 // ADD USER APARTMENT
 // =========================
 Router.register("POST", "/api/admin/add-user-apartment", async (ctx) => {
+  const admin =
+    await Auth.requireAdmin(ctx);
 
-  try {
+  if (!admin) {
+    return {
+      error: "forbidden"
+    };
+  }
 
-    const admin = await Auth.requireAdmin(ctx);
+  const body =
+    await ctx.request
+      .json()
+      .catch(() => ({}));
 
-    if (!admin) {
-      return { error: "forbidden" };
-    }
+  const userId =
+    normalizePositiveInteger(
+      body.user_id
+    );
 
-    const body = await ctx.request.json().catch(() => ({}));
-if (
-      !body.user_id ||
-      !body.apartment_id ||
-      !body.relation_type
-    ) {
-      return {
-        error: "missing_fields",
-        body
-      };
-    }
+  const apartmentId =
+    normalizePositiveInteger(
+      body.apartment_id
+    );
 
-    // normalize ids
-    const userId =
-      Number(body.user_id);
+  const relationType =
+    String(
+      body.relation_type || ""
+    )
+      .trim()
+      .toLowerCase();
 
-    const apartmentId =
-      Number(body.apartment_id);
+  if (!userId) {
+    return {
+      error: "invalid_user_id"
+    };
+  }
 
-    const relationType =
-      String(body.relation_type);
+  if (!apartmentId) {
+    return {
+      error:
+        "invalid_apartment_id"
+    };
+  }
 
-    // duplicate protection
-    const existing = await ctx.env.DB.prepare(`
+  if (
+    !USER_APARTMENT_RELATION_TYPES
+      .has(relationType)
+  ) {
+    return {
+      error:
+        "invalid_relation_type"
+    };
+  }
+
+  const user =
+    await ctx.env.DB.prepare(`
+      SELECT id
+      FROM users
+      WHERE id = ?
+      LIMIT 1
+    `)
+      .bind(userId)
+      .first();
+
+  if (!user) {
+    return {
+      error: "user_not_found"
+    };
+  }
+
+  const apartment =
+    await ctx.env.DB.prepare(`
+      SELECT id
+      FROM apartments
+      WHERE id = ?
+      LIMIT 1
+    `)
+      .bind(apartmentId)
+      .first();
+
+  if (!apartment) {
+    return {
+      error:
+        "apartment_not_found"
+    };
+  }
+
+  const existing =
+    await ctx.env.DB.prepare(`
       SELECT rowid
       FROM user_apartments
-      WHERE
-        user_id = ?
+      WHERE user_id = ?
         AND apartment_id = ?
         AND relation_type = ?
+      LIMIT 1
     `)
       .bind(
         userId,
@@ -10880,80 +11645,106 @@ if (
       )
       .first();
 
-    if (existing) {
-
-      return {
-        error: "assignment_exists"
-      };
-    }
-
-    const result =
-      await ctx.env.DB.prepare(`
-        INSERT INTO user_apartments (
-          user_id,
-          apartment_id,
-          relation_type
-        )
-        VALUES (?, ?, ?)
-      `)
-        .bind(
-          userId,
-          apartmentId,
-          relationType
-        )
-        .run();
-
+  if (existing) {
     return {
-      ok: true,
-      assignment_id:
-        result.meta.last_row_id
-    };
-
-  } catch (e) {
-
-    console.error(
-      "ADD ASSIGNMENT ERROR:",
-      e
-    );
-
-    return {
-      error: "route_error",
-      message:
-        String(e?.message || e)
+      error: "assignment_exists"
     };
   }
+
+  const result =
+    await ctx.env.DB.prepare(`
+      INSERT INTO user_apartments (
+        user_id,
+        apartment_id,
+        relation_type
+      )
+      VALUES (?, ?, ?)
+    `)
+      .bind(
+        userId,
+        apartmentId,
+        relationType
+      )
+      .run();
+
+  return {
+    ok: true,
+    assignment_id:
+      result.meta.last_row_id
+  };
 });
 
 // =========================
 // REMOVE USER APARTMENT
 // =========================
 Router.register("POST", "/api/admin/remove-user-apartment", async (ctx) => {
-
-  const admin = await Auth.requireAdmin(ctx);
+  const admin =
+    await Auth.requireAdmin(ctx);
 
   if (!admin) {
-    return { error: "forbidden" };
-  }
-
-  const body = await ctx.request.json().catch(() => ({}));
-
-  if (!body.assignment_id) {
     return {
-      error: "missing_assignment_id"
+      error: "forbidden"
     };
   }
 
-  await ctx.env.DB.prepare(`
-    DELETE FROM user_apartments
-    WHERE rowid = ?
-  `)
-    .bind(body.assignment_id)
-    .run();
+  const body =
+    await ctx.request
+      .json()
+      .catch(() => ({}));
+
+  const assignmentId =
+    normalizePositiveInteger(
+      body.assignment_id
+    );
+
+  if (!assignmentId) {
+    return {
+      error:
+        "invalid_assignment_id"
+    };
+  }
+
+  const existing =
+    await ctx.env.DB.prepare(`
+      SELECT rowid
+      FROM user_apartments
+      WHERE rowid = ?
+      LIMIT 1
+    `)
+      .bind(assignmentId)
+      .first();
+
+  if (!existing) {
+    return {
+      error:
+        "assignment_not_found"
+    };
+  }
+
+  const result =
+    await ctx.env.DB.prepare(`
+      DELETE FROM user_apartments
+      WHERE rowid = ?
+    `)
+      .bind(assignmentId)
+      .run();
+
+  if (
+    Number(
+      result?.meta?.changes || 0
+    ) !== 1
+  ) {
+    return {
+      error:
+        "assignment_delete_failed"
+    };
+  }
 
   return {
     ok: true
   };
 });
+
 // =========================
 // JWT (WORKER SAFE)
 // Stage 2I-SR2:
