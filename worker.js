@@ -78,13 +78,22 @@ static async handle(request, env) {
       );
 
     } catch (e) {
-      console.error("ROUTE ERROR:", url.pathname, e, e?.message, e?.stack);
+      const requestId =
+        this.requestId(request);
+
+      this.logError(
+        "route_error",
+        e,
+        {
+          path: url.pathname,
+          request_id: requestId,
+        }
+      );
 
       return this.json(
         {
           error: "route_error",
-          path: url.pathname,
-          message: String(e?.message || e),
+          request_id: requestId,
         },
         500,
         cors
@@ -92,18 +101,57 @@ static async handle(request, env) {
     }
 
   } catch (e) {
-    console.error("FATAL ERROR:", e);
+    const requestId =
+      this.requestId(request);
+
+    this.logError(
+      "fatal_error",
+      e,
+      {
+        request_id: requestId,
+      }
+    );
 
     return this.json(
       {
         error: "internal_error",
-        message: String(e?.message || e),
+        request_id: requestId,
       },
       500,
       cors
     );
   }
 }
+
+  static requestId(
+    request
+  ) {
+    return (
+      request?.headers?.get(
+        "cf-ray"
+      ) ||
+      crypto.randomUUID()
+    );
+  }
+
+  static logError(
+    event,
+    error,
+    details = {}
+  ) {
+    console.error(
+      JSON.stringify({
+        event:
+          String(event || "error"),
+        error_name:
+          String(
+            error?.name ||
+            "Error"
+          ),
+        ...details,
+      })
+    );
+  }
 
   static isAdminProtectedPath(
     pathname
@@ -145,6 +193,10 @@ static async handle(request, env) {
 
     if (data.error === "rate_limited") {
       return 429;
+    }
+
+    if (data.error === "login_crash") {
+      return 500;
     }
 
     // Preserve existing application semantics for all other
@@ -6068,10 +6120,13 @@ Router.register("POST", "/api/login", async (ctx) => {
     return { token };
 
   } catch (e) {
+    App.logError(
+      "login_error",
+      e
+    );
+
     return {
       error: "login_crash",
-      message:
-        String(e?.message || e),
     };
   }
 });
@@ -9984,6 +10039,26 @@ Router.register(
       object.httpEtag
     );
 
+    headers.set(
+      "Cache-Control",
+      "private, no-store"
+    );
+
+    headers.set(
+      "X-Content-Type-Options",
+      "nosniff"
+    );
+
+    headers.set(
+      "Referrer-Policy",
+      "no-referrer"
+    );
+
+    headers.set(
+      "X-Frame-Options",
+      "DENY"
+    );
+
     Object.entries(
       ctx.cors
     ).forEach(
@@ -12852,6 +12927,20 @@ async function sendPushToSubscription(
   subscription,
   payload
 ) {
+  const endpointValidation =
+    validatePushEndpoint(
+      subscription?.endpoint
+    );
+
+  if (!endpointValidation.ok) {
+    throw new Error(
+      endpointValidation.error
+    );
+  }
+
+  const safeEndpoint =
+    endpointValidation.endpoint;
+
   const encryptedBody =
     await encryptWebPushPayload(
       subscription,
@@ -12860,12 +12949,12 @@ async function sendPushToSubscription(
 
   const vapid =
     await createVapidJwt(
-      subscription.endpoint,
+      safeEndpoint,
       env
     );
 
   return await fetch(
-    subscription.endpoint,
+    safeEndpoint,
     {
       method: "POST",
 
@@ -13121,14 +13210,11 @@ async function sendUrgentAnnouncementPushes(
       } else {
         failed += 1;
 
-        const responseText =
-          (
-            await response.text()
-          )
-            .slice(
-              0,
-              500
-            );
+        try {
+          await response.body?.cancel?.();
+        } catch {
+          // Ignore response-body cleanup failures.
+        }
 
         await env.DB.prepare(`
           UPDATE push_deliveries
@@ -13144,8 +13230,7 @@ async function sendUrgentAnnouncementPushes(
           .bind(
             attemptedAt,
             responseStatus,
-            responseText ||
-              `HTTP ${responseStatus}`,
+            `HTTP ${responseStatus}`,
             attemptedAt,
             announcementId,
             subscription.id
@@ -13180,14 +13265,30 @@ async function sendUrgentAnnouncementPushes(
     } catch (error) {
       failed += 1;
 
-      const errorMessage =
+      const errorCode =
         String(
-          error?.message ||
-          error
-        ).slice(
-          0,
-          500
-        );
+          error?.name ||
+          "push_delivery_error"
+        )
+          .slice(
+            0,
+            120
+          );
+
+      App.logError(
+        "push_delivery_error",
+        error,
+        {
+          subscription_id:
+            Number(
+              subscription.id
+            ),
+          announcement_id:
+            Number(
+              announcementId
+            ),
+        }
+      );
 
       await env.DB.prepare(`
         UPDATE push_deliveries
@@ -13201,7 +13302,7 @@ async function sendUrgentAnnouncementPushes(
       `)
         .bind(
           attemptedAt,
-          errorMessage,
+          errorCode,
           attemptedAt,
           announcementId,
           subscription.id
@@ -13231,6 +13332,93 @@ async function sendUrgentAnnouncementPushes(
     sent,
     failed,
     skipped,
+  };
+}
+
+// =========================
+// PUSH ENDPOINT VALIDATION
+// Stage 2I-SR9:
+// outbound push requests are restricted to known Web Push providers.
+// =========================
+const PUSH_ENDPOINT_ALLOWED_HOSTS =
+  new Set([
+    "fcm.googleapis.com",
+    "updates.push.services.mozilla.com",
+    "push.services.mozilla.com",
+    "web.push.apple.com",
+  ]);
+
+function isAllowedPushEndpointHost(
+  hostname
+) {
+  const normalized =
+    String(hostname || "")
+      .trim()
+      .toLowerCase();
+
+  if (
+    PUSH_ENDPOINT_ALLOWED_HOSTS
+      .has(normalized)
+  ) {
+    return true;
+  }
+
+  return normalized.endsWith(
+    ".push.apple.com"
+  );
+}
+
+function validatePushEndpoint(
+  value
+) {
+  const raw =
+    String(value || "")
+      .trim();
+
+  if (
+    !raw ||
+    raw.length > 4096
+  ) {
+    return {
+      ok: false,
+      error:
+        "invalid_push_endpoint",
+    };
+  }
+
+  let url;
+
+  try {
+    url =
+      new URL(raw);
+  } catch {
+    return {
+      ok: false,
+      error:
+        "invalid_push_endpoint",
+    };
+  }
+
+  if (
+    url.protocol !== "https:" ||
+    url.username ||
+    url.password ||
+    url.hash ||
+    !isAllowedPushEndpointHost(
+      url.hostname
+    )
+  ) {
+    return {
+      ok: false,
+      error:
+        "push_endpoint_not_allowed",
+    };
+  }
+
+  return {
+    ok: true,
+    endpoint:
+      url.toString(),
   };
 }
 
@@ -13355,9 +13543,22 @@ Router.register(
     const subscription =
       body?.subscription || body;
 
-    const endpoint = String(
-      subscription?.endpoint || ""
-    ).trim();
+    const endpointValidation =
+      validatePushEndpoint(
+        subscription?.endpoint
+      );
+
+    if (
+      !endpointValidation.ok
+    ) {
+      return {
+        error:
+          endpointValidation.error,
+      };
+    }
+
+    const endpoint =
+      endpointValidation.endpoint;
 
     const p256dh = String(
       subscription?.keys?.p256dh ||
@@ -13371,12 +13572,6 @@ Router.register(
       ""
     ).trim();
 
-    if (!endpoint) {
-      return {
-        error: "push_endpoint_required",
-      };
-    }
-
     if (!p256dh || !auth) {
       return {
         error: "push_keys_required",
@@ -13384,7 +13579,6 @@ Router.register(
     }
 
     if (
-      endpoint.length > 4096 ||
       p256dh.length > 512 ||
       auth.length > 512
     ) {
@@ -13484,15 +13678,22 @@ Router.register(
       .json()
       .catch(() => ({}));
 
-    const endpoint = String(
-      body?.endpoint || ""
-    ).trim();
+    const endpointValidation =
+      validatePushEndpoint(
+        body?.endpoint
+      );
 
-    if (!endpoint) {
+    if (
+      !endpointValidation.ok
+    ) {
       return {
-        error: "push_endpoint_required",
+        error:
+          endpointValidation.error,
       };
     }
+
+    const endpoint =
+      endpointValidation.endpoint;
 
     await ensurePushSubscriptionsTable(
       ctx.env
