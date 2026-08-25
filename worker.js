@@ -143,6 +143,10 @@ static async handle(request, env) {
       return 403;
     }
 
+    if (data.error === "rate_limited") {
+      return 429;
+    }
+
     // Preserve existing application semantics for all other
     // business errors during SR6. They can be classified
     // separately without changing frontend behavior in bulk.
@@ -167,6 +171,29 @@ static async handle(request, env) {
     if (status === 401) {
       headers["WWW-Authenticate"] =
         'Bearer realm="MVX API"';
+    }
+
+    if (
+      status === 429 &&
+      data &&
+      typeof data === "object" &&
+      Number.isFinite(
+        Number(
+          data.retry_after_seconds
+        )
+      )
+    ) {
+      headers["Retry-After"] =
+        String(
+          Math.max(
+            1,
+            Math.ceil(
+              Number(
+                data.retry_after_seconds
+              )
+            )
+          )
+        );
     }
 
     return new Response(
@@ -1567,6 +1594,588 @@ const Auth = {
     return u;
   },
 };
+
+// =========================
+// SECURITY RATE LIMITING
+// Stage 2I-SR7:
+// D1-backed abuse controls for login, password verification,
+// and PII-heavy admin reads. Raw IP addresses and login identifiers
+// are never persisted; limiter keys are HMAC-SHA256 pseudonyms.
+// =========================
+class SecurityRateLimit {
+  static TABLE_NAME =
+    "security_rate_limits";
+
+  static tableReady = false;
+  static maintenanceCounter = 0;
+
+  static nowSeconds() {
+    return Math.floor(
+      Date.now() / 1000
+    );
+  }
+
+  static clientIp(request) {
+    const cloudflareIp =
+      String(
+        request?.headers?.get(
+          "CF-Connecting-IP"
+        ) || ""
+      ).trim();
+
+    if (cloudflareIp) {
+      return cloudflareIp;
+    }
+
+    const forwardedFor =
+      String(
+        request?.headers?.get(
+          "X-Forwarded-For"
+        ) || ""
+      )
+        .split(",")[0]
+        .trim();
+
+    return forwardedFor ||
+      "unknown-client";
+  }
+
+  static normalizeLoginIdentifier(
+    value
+  ) {
+    return String(value || "")
+      .trim()
+      .toLowerCase();
+  }
+
+  static async ensureTable(env) {
+    if (this.tableReady) {
+      return;
+    }
+
+    await env.DB.prepare(`
+      CREATE TABLE IF NOT EXISTS security_rate_limits (
+        scope TEXT NOT NULL,
+        key_hash TEXT NOT NULL,
+        window_started_at INTEGER NOT NULL,
+        attempt_count INTEGER NOT NULL DEFAULT 0,
+        blocked_until INTEGER,
+        updated_at INTEGER NOT NULL,
+        PRIMARY KEY (scope, key_hash)
+      )
+    `).run();
+
+    await env.DB.prepare(`
+      CREATE INDEX IF NOT EXISTS idx_security_rate_limits_updated_at
+      ON security_rate_limits(updated_at)
+    `).run();
+
+    this.tableReady = true;
+  }
+
+  static async keyHash(
+    env,
+    scope,
+    key
+  ) {
+    const secret =
+      String(
+        env?.JWT_SECRET || ""
+      );
+
+    if (!secret) {
+      throw new Error(
+        "missing_rate_limit_secret"
+      );
+    }
+
+    const cryptoKey =
+      await crypto.subtle.importKey(
+        "raw",
+        new TextEncoder().encode(
+          secret
+        ),
+        {
+          name: "HMAC",
+          hash: "SHA-256",
+        },
+        false,
+        ["sign"]
+      );
+
+    const signature =
+      new Uint8Array(
+        await crypto.subtle.sign(
+          "HMAC",
+          cryptoKey,
+          new TextEncoder().encode(
+            `mvx-rate-limit:v1:${scope}:${key}`
+          )
+        )
+      );
+
+    return Array.from(
+      signature,
+      (byte) =>
+        byte
+          .toString(16)
+          .padStart(2, "0")
+    ).join("");
+  }
+
+  static async maybeCleanup(env) {
+    this.maintenanceCounter += 1;
+
+    if (
+      this.maintenanceCounter %
+        128 !==
+      1
+    ) {
+      return;
+    }
+
+    const staleBefore =
+      this.nowSeconds() -
+      7 * 24 * 60 * 60;
+
+    try {
+      await env.DB.prepare(`
+        DELETE FROM security_rate_limits
+        WHERE updated_at < ?
+      `)
+        .bind(staleBefore)
+        .run();
+    } catch (error) {
+      console.error(
+        "RATE LIMIT CLEANUP ERROR:",
+        String(
+          error?.message || error
+        )
+      );
+    }
+  }
+
+  static async row(
+    env,
+    scope,
+    key
+  ) {
+    await this.ensureTable(env);
+
+    const keyHash =
+      await this.keyHash(
+        env,
+        scope,
+        key
+      );
+
+    const row =
+      await env.DB.prepare(`
+        SELECT
+          scope,
+          key_hash,
+          window_started_at,
+          attempt_count,
+          blocked_until,
+          updated_at
+        FROM security_rate_limits
+        WHERE scope = ?
+          AND key_hash = ?
+        LIMIT 1
+      `)
+        .bind(
+          scope,
+          keyHash
+        )
+        .first();
+
+    return {
+      keyHash,
+      row: row || null,
+    };
+  }
+
+  static blockedResult(
+    blockedUntil
+  ) {
+    const now =
+      this.nowSeconds();
+
+    return {
+      allowed: false,
+      retry_after_seconds:
+        Math.max(
+          1,
+          Number(blockedUntil || 0) -
+            now
+        ),
+    };
+  }
+
+  static async check({
+    env,
+    scope,
+    key,
+    windowSeconds,
+  }) {
+    const now =
+      this.nowSeconds();
+
+    const {
+      keyHash,
+      row,
+    } = await this.row(
+      env,
+      scope,
+      key
+    );
+
+    await this.maybeCleanup(env);
+
+    if (!row) {
+      return {
+        allowed: true,
+        key_hash: keyHash,
+      };
+    }
+
+    const blockedUntil =
+      Number(
+        row.blocked_until || 0
+      );
+
+    if (blockedUntil > now) {
+      return {
+        ...this.blockedResult(
+          blockedUntil
+        ),
+        key_hash: keyHash,
+      };
+    }
+
+    const windowStartedAt =
+      Number(
+        row.window_started_at || 0
+      );
+
+    if (
+      now - windowStartedAt >=
+      windowSeconds
+    ) {
+      return {
+        allowed: true,
+        key_hash: keyHash,
+      };
+    }
+
+    return {
+      allowed: true,
+      key_hash: keyHash,
+    };
+  }
+
+  static async recordFailure({
+    env,
+    scope,
+    key,
+    maxAttempts,
+    windowSeconds,
+    blockSeconds,
+  }) {
+    const now =
+      this.nowSeconds();
+
+    const {
+      keyHash,
+      row,
+    } = await this.row(
+      env,
+      scope,
+      key
+    );
+
+    let windowStartedAt = now;
+    let attemptCount = 1;
+
+    if (
+      row &&
+      now -
+        Number(
+          row.window_started_at || 0
+        ) <
+        windowSeconds
+    ) {
+      windowStartedAt =
+        Number(
+          row.window_started_at
+        );
+
+      attemptCount =
+        Number(
+          row.attempt_count || 0
+        ) + 1;
+    }
+
+    const blockedUntil =
+      attemptCount >= maxAttempts
+        ? now + blockSeconds
+        : null;
+
+    await env.DB.prepare(`
+      INSERT INTO security_rate_limits (
+        scope,
+        key_hash,
+        window_started_at,
+        attempt_count,
+        blocked_until,
+        updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(scope, key_hash)
+      DO UPDATE SET
+        window_started_at =
+          excluded.window_started_at,
+        attempt_count =
+          excluded.attempt_count,
+        blocked_until =
+          excluded.blocked_until,
+        updated_at =
+          excluded.updated_at
+    `)
+      .bind(
+        scope,
+        keyHash,
+        windowStartedAt,
+        attemptCount,
+        blockedUntil,
+        now
+      )
+      .run();
+
+    await this.maybeCleanup(env);
+
+    if (blockedUntil) {
+      return {
+        ...this.blockedResult(
+          blockedUntil
+        ),
+        key_hash: keyHash,
+      };
+    }
+
+    return {
+      allowed: true,
+      remaining_attempts:
+        Math.max(
+          0,
+          maxAttempts -
+            attemptCount
+        ),
+      key_hash: keyHash,
+    };
+  }
+
+  static async consume({
+    env,
+    scope,
+    key,
+    maxRequests,
+    windowSeconds,
+    blockSeconds,
+  }) {
+    const now =
+      this.nowSeconds();
+
+    const {
+      keyHash,
+      row,
+    } = await this.row(
+      env,
+      scope,
+      key
+    );
+
+    if (
+      row &&
+      Number(
+        row.blocked_until || 0
+      ) > now
+    ) {
+      return {
+        ...this.blockedResult(
+          row.blocked_until
+        ),
+        key_hash: keyHash,
+      };
+    }
+
+    let windowStartedAt = now;
+    let attemptCount = 1;
+
+    if (
+      row &&
+      now -
+        Number(
+          row.window_started_at || 0
+        ) <
+        windowSeconds
+    ) {
+      windowStartedAt =
+        Number(
+          row.window_started_at
+        );
+
+      attemptCount =
+        Number(
+          row.attempt_count || 0
+        ) + 1;
+    }
+
+    const exceeded =
+      attemptCount > maxRequests;
+
+    const blockedUntil =
+      exceeded
+        ? now + blockSeconds
+        : null;
+
+    await env.DB.prepare(`
+      INSERT INTO security_rate_limits (
+        scope,
+        key_hash,
+        window_started_at,
+        attempt_count,
+        blocked_until,
+        updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(scope, key_hash)
+      DO UPDATE SET
+        window_started_at =
+          excluded.window_started_at,
+        attempt_count =
+          excluded.attempt_count,
+        blocked_until =
+          excluded.blocked_until,
+        updated_at =
+          excluded.updated_at
+    `)
+      .bind(
+        scope,
+        keyHash,
+        windowStartedAt,
+        attemptCount,
+        blockedUntil,
+        now
+      )
+      .run();
+
+    await this.maybeCleanup(env);
+
+    if (exceeded) {
+      return {
+        ...this.blockedResult(
+          blockedUntil
+        ),
+        key_hash: keyHash,
+      };
+    }
+
+    return {
+      allowed: true,
+      remaining_requests:
+        Math.max(
+          0,
+          maxRequests -
+            attemptCount
+        ),
+      key_hash: keyHash,
+    };
+  }
+
+  static async clear({
+    env,
+    scope,
+    key,
+  }) {
+    await this.ensureTable(env);
+
+    const keyHash =
+      await this.keyHash(
+        env,
+        scope,
+        key
+      );
+
+    await env.DB.prepare(`
+      DELETE FROM security_rate_limits
+      WHERE scope = ?
+        AND key_hash = ?
+    `)
+      .bind(
+        scope,
+        keyHash
+      )
+      .run();
+  }
+
+  static response(result) {
+    return {
+      error: "rate_limited",
+      retry_after_seconds:
+        Math.max(
+          1,
+          Math.ceil(
+            Number(
+              result?.retry_after_seconds ||
+              1
+            )
+          )
+        ),
+    };
+  }
+}
+
+const LOGIN_REQUEST_IP_LIMIT = {
+  maxRequests: 60,
+  windowSeconds: 60,
+  blockSeconds: 5 * 60,
+};
+
+const LOGIN_FAILURE_IP_LIMIT = {
+  maxAttempts: 30,
+  windowSeconds: 15 * 60,
+  blockSeconds: 15 * 60,
+};
+
+const LOGIN_FAILURE_ACCOUNT_LIMIT = {
+  maxAttempts: 10,
+  windowSeconds: 15 * 60,
+  blockSeconds: 30 * 60,
+};
+
+const PASSWORD_CHANGE_FAILURE_LIMIT = {
+  maxAttempts: 10,
+  windowSeconds: 15 * 60,
+  blockSeconds: 30 * 60,
+};
+
+const ADMIN_PII_SEARCH_LIMIT = {
+  maxRequests: 120,
+  windowSeconds: 5 * 60,
+  blockSeconds: 5 * 60,
+};
+
+const ADMIN_PII_DETAIL_LIMIT = {
+  maxRequests: 120,
+  windowSeconds: 5 * 60,
+  blockSeconds: 5 * 60,
+};
+
+// Fixed PBKDF2 record used only to equalize the expensive password
+// verification path for unknown Nick values. It is not a user password.
+const LOGIN_DUMMY_PASSWORD_HASH =
+  "pbkdf2-sha256$100000$TVZYLVNSNy1kdW1teS1zYQ$6c_K89gSqs7ERauFL6LMzb9xFEK0Kozuw_ERyYy3R8U";
 
 // =========================
 // LOGIN USER LOOKUP
@@ -4815,6 +5424,27 @@ Router.register(
       };
     }
 
+    const passwordLimitKey =
+      `user:${authenticatedUser.user_id}`;
+
+    const passwordLimitCheck =
+      await SecurityRateLimit.check({
+        env: ctx.env,
+        scope:
+          "change-password-failure",
+        key:
+          passwordLimitKey,
+        windowSeconds:
+          PASSWORD_CHANGE_FAILURE_LIMIT
+            .windowSeconds,
+      });
+
+    if (!passwordLimitCheck.allowed) {
+      return SecurityRateLimit.response(
+        passwordLimitCheck
+      );
+    }
+
     const currentPasswordCheck =
       await verifyPassword(
         currentPassword,
@@ -4822,11 +5452,35 @@ Router.register(
       );
 
     if (!currentPasswordCheck.ok) {
+      const failureResult =
+        await SecurityRateLimit.recordFailure({
+          env: ctx.env,
+          scope:
+            "change-password-failure",
+          key:
+            passwordLimitKey,
+          ...PASSWORD_CHANGE_FAILURE_LIMIT,
+        });
+
+      if (!failureResult.allowed) {
+        return SecurityRateLimit.response(
+          failureResult
+        );
+      }
+
       return {
         error:
           "current_password_incorrect"
       };
     }
+
+    await SecurityRateLimit.clear({
+      env: ctx.env,
+      scope:
+        "change-password-failure",
+      key:
+        passwordLimitKey,
+    });
 
     const newPasswordHash =
       await hashPassword(
@@ -4855,24 +5509,100 @@ Router.register(
 );
 
 // LOGIN
-// Stage 2E-3: Nick-only login.
+// Stage 2I-SR7:
+// - per-IP request throttling
+// - per-IP and per-Nick failed-login throttling
+// - no raw IP/Nick stored in limiter table
+// - unknown Nick takes the same PBKDF2 verification path
 Router.register("POST", "/api/login", async (ctx) => {
   try {
-    const body = await ctx.request.json().catch(() => ({}));
+    const clientIp =
+      SecurityRateLimit.clientIp(
+        ctx.request
+      );
+
+    const requestLimit =
+      await SecurityRateLimit.consume({
+        env: ctx.env,
+        scope:
+          "login-request-ip",
+        key:
+          clientIp,
+        ...LOGIN_REQUEST_IP_LIMIT,
+      });
+
+    if (!requestLimit.allowed) {
+      return SecurityRateLimit.response(
+        requestLimit
+      );
+    }
+
+    const body =
+      await ctx.request
+        .json()
+        .catch(() => ({}));
 
     const nickInput =
-      String(body?.nick || "").trim();
+      String(
+        body?.nick || ""
+      ).trim();
 
-    if (!nickInput || !body?.password) {
-      return { error: "missing_fields" };
+    if (
+      !nickInput ||
+      !body?.password
+    ) {
+      return {
+        error: "missing_fields"
+      };
+    }
+
+    const normalizedNick =
+      SecurityRateLimit
+        .normalizeLoginIdentifier(
+          nickInput
+        );
+
+    const ipFailureCheck =
+      await SecurityRateLimit.check({
+        env: ctx.env,
+        scope:
+          "login-failure-ip",
+        key:
+          clientIp,
+        windowSeconds:
+          LOGIN_FAILURE_IP_LIMIT
+            .windowSeconds,
+      });
+
+    if (!ipFailureCheck.allowed) {
+      return SecurityRateLimit.response(
+        ipFailureCheck
+      );
+    }
+
+    const accountFailureCheck =
+      await SecurityRateLimit.check({
+        env: ctx.env,
+        scope:
+          "login-failure-account",
+        key:
+          normalizedNick,
+        windowSeconds:
+          LOGIN_FAILURE_ACCOUNT_LIMIT
+            .windowSeconds,
+      });
+
+    if (!accountFailureCheck.allowed) {
+      return SecurityRateLimit.response(
+        accountFailureCheck
+      );
     }
 
     const user =
-      await findUserForLogin(ctx.env, body);
-
-    if (!user) {
-      return { error: "invalid_credentials" };
-    }
+      await findUserForLogin(
+        ctx.env,
+        body
+      );
 
     const password =
       String(
@@ -4882,15 +5612,87 @@ Router.register("POST", "/api/login", async (ctx) => {
     const passwordCheck =
       await verifyPassword(
         password,
-        user.password_hash || ""
+        user?.password_hash ||
+          LOGIN_DUMMY_PASSWORD_HASH
       );
 
-    if (!passwordCheck.ok) {
+    if (
+      !user ||
+      !passwordCheck.ok
+    ) {
+      const [
+        ipFailureResult,
+        accountFailureResult,
+      ] = await Promise.all([
+        SecurityRateLimit
+          .recordFailure({
+            env: ctx.env,
+            scope:
+              "login-failure-ip",
+            key:
+              clientIp,
+            ...LOGIN_FAILURE_IP_LIMIT,
+          }),
+
+        SecurityRateLimit
+          .recordFailure({
+            env: ctx.env,
+            scope:
+              "login-failure-account",
+            key:
+              normalizedNick,
+            ...LOGIN_FAILURE_ACCOUNT_LIMIT,
+          }),
+      ]);
+
+      if (
+        !ipFailureResult.allowed ||
+        !accountFailureResult.allowed
+      ) {
+        const retryAfter =
+          Math.max(
+            Number(
+              ipFailureResult
+                .retry_after_seconds ||
+              0
+            ),
+            Number(
+              accountFailureResult
+                .retry_after_seconds ||
+              0
+            ),
+            1
+          );
+
+        return SecurityRateLimit.response({
+          retry_after_seconds:
+            retryAfter,
+        });
+      }
+
       return {
         error:
           "invalid_credentials"
       };
     }
+
+    await Promise.all([
+      SecurityRateLimit.clear({
+        env: ctx.env,
+        scope:
+          "login-failure-ip",
+        key:
+          clientIp,
+      }),
+
+      SecurityRateLimit.clear({
+        env: ctx.env,
+        scope:
+          "login-failure-account",
+        key:
+          normalizedNick,
+      }),
+    ]);
 
     // Stage 2I-SR3:
     // Successful login transparently upgrades the legacy unsalted
@@ -4951,7 +5753,8 @@ Router.register("POST", "/api/login", async (ctx) => {
   } catch (e) {
     return {
       error: "login_crash",
-      message: String(e?.message || e),
+      message:
+        String(e?.message || e),
     };
   }
 });
@@ -5071,6 +5874,22 @@ Router.register(
       return {
         error: "forbidden"
       };
+    }
+
+    const piiDetailLimit =
+      await SecurityRateLimit.consume({
+        env: ctx.env,
+        scope:
+          "admin-pii-detail",
+        key:
+          `user:${admin.user_id}`,
+        ...ADMIN_PII_DETAIL_LIMIT,
+      });
+
+    if (!piiDetailLimit.allowed) {
+      return SecurityRateLimit.response(
+        piiDetailLimit
+      );
     }
 
     const userId =
@@ -5235,6 +6054,22 @@ Router.register(
       return {
         error: "forbidden"
       };
+    }
+
+    const piiSearchLimit =
+      await SecurityRateLimit.consume({
+        env: ctx.env,
+        scope:
+          "admin-pii-search",
+        key:
+          `user:${admin.user_id}`,
+        ...ADMIN_PII_SEARCH_LIMIT,
+      });
+
+    if (!piiSearchLimit.allowed) {
+      return SecurityRateLimit.response(
+        piiSearchLimit
+      );
     }
 
     const query =
