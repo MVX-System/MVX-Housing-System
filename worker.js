@@ -28,10 +28,54 @@ static async handle(request, env) {
     try {
       const result = await route.handler(ctx);
 
-      // 🔥 FIX: если handler вернул Response — НЕ оборачиваем
+      // Stage 2I-SR6:
+      // Admin handlers historically return "forbidden" for both
+      // authentication failure and insufficient role.
+      // Resolve the distinction centrally, and only on failed
+      // admin requests, so successful requests are unaffected.
+      if (
+        this.isAdminProtectedPath(
+          url.pathname
+        )
+      ) {
+        const isForbiddenResponse =
+          result instanceof Response &&
+          result.status === 403;
+
+        const isForbiddenObject =
+          !(result instanceof Response) &&
+          result &&
+          typeof result === "object" &&
+          !Array.isArray(result) &&
+          result.error === "forbidden";
+
+        if (
+          isForbiddenResponse ||
+          isForbiddenObject
+        ) {
+          const authenticatedUser =
+            await Auth.user(ctx);
+
+          if (!authenticatedUser) {
+            return this.json(
+              {
+                error: "unauthorized"
+              },
+              401,
+              cors
+            );
+          }
+        }
+      }
+
+      // If handler returned a Response, preserve it as-is.
       if (result instanceof Response) return result;
 
-      return this.json(result, 200, cors);
+      return this.json(
+        result,
+        this.statusForResult(result),
+        cors
+      );
 
     } catch (e) {
       console.error("ROUTE ERROR:", url.pathname, e, e?.message, e?.stack);
@@ -61,17 +105,77 @@ static async handle(request, env) {
   }
 }
 
+  static isAdminProtectedPath(
+    pathname
+  ) {
+    return (
+      String(pathname || "")
+        .startsWith(
+          "/api/admin/"
+        ) ||
+      pathname ===
+        "/api/apartments/full"
+    );
+  }
+
   // =========================
   // RESPONSE
+  // Stage 2I-SR6:
+  // - authentication failures use HTTP 401
+  // - authorization failures use HTTP 403
+  // - API JSON responses are non-cacheable and hardened
   // =========================
+  static statusForResult(data) {
+    if (
+      !data ||
+      typeof data !== "object" ||
+      Array.isArray(data) ||
+      !data.error
+    ) {
+      return 200;
+    }
+
+    if (data.error === "unauthorized") {
+      return 401;
+    }
+
+    if (data.error === "forbidden") {
+      return 403;
+    }
+
+    // Preserve existing application semantics for all other
+    // business errors during SR6. They can be classified
+    // separately without changing frontend behavior in bulk.
+    return 200;
+  }
+
   static json(data, status, cors) {
-    return new Response(JSON.stringify(data), {
-      status,
-      headers: {
-        "Content-Type": "application/json",
-        ...cors,
-      },
-    });
+    const headers = {
+      "Content-Type":
+        "application/json; charset=utf-8",
+      "Cache-Control":
+        "no-store",
+      "X-Content-Type-Options":
+        "nosniff",
+      "Referrer-Policy":
+        "no-referrer",
+      "X-Frame-Options":
+        "DENY",
+      ...cors,
+    };
+
+    if (status === 401) {
+      headers["WWW-Authenticate"] =
+        'Bearer realm="MVX API"';
+    }
+
+    return new Response(
+      JSON.stringify(data),
+      {
+        status,
+        headers,
+      }
+    );
   }
 
   static cors(request) {
