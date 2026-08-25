@@ -1,0 +1,27 @@
+{
+  "name": "mvx-housing-api",
+  "main": "worker.js",
+  "compatibility_date": "2026-04-21",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "housing-db",
+      "database_id": "ebf27bcc-9980-4564-afe9-db14e444220f"
+    },
+    {
+      "binding": "PII_DB",
+      "database_name": "housing-pii-db",
+      "database_id": "5f20d702-446a-4a22-9d91-7ecbdc931bd0"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "WATER_CERTIFICATES",
+      "bucket_name": "mvx-water-meter-certificates"
+    }
+  ],
+  "vars": {
+    "VAPID_PUBLIC_KEY": "BJnIzhNot9ZSdlgCOCuRof2aN0-_59TJygt5qILca9uWMsjm4sJIAaHJKL0E7dtPqnNcNRAv9LymCUOpinWx-9g",
+    "VAPID_SUBJECT": "mailto:irlavas20@inbox.lv"
+  }
+}
