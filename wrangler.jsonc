@@ -21,7 +21,7 @@
     }
   ],
   "vars": {
-    "VAPID_PUBLIC_KEY": "BJnIzhNot9ZSdlgCOCuRof2aN0-_59TJygt5qILca9uWMsjm4sJIAaHJKL0E7dtPqnNcNRAv9LymCUOpinWx-9g",
+    "VAPID_PUBLIC_KEY": "BGghmhEbwKbH8P1_pDroY0TLX_S-74vYoLxdsIGa22AbD-8mu6a1Lusl_xIhrrYM1lDaNk42S0bMCm9qsbw2JRo",
     "VAPID_SUBJECT": "mailto:irlavas20@inbox.lv"
   },
   "triggers": {
