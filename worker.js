@@ -5938,10 +5938,6 @@ Router.register(
   "/api/water-reporting-period",
   async (ctx) => {
 
-    await syncWaterReportingPeriodStatuses(
-      ctx.env
-    );
-
     const user =
       await Auth.requireUser(ctx);
 
@@ -5950,6 +5946,10 @@ Router.register(
         error: "unauthorized"
       };
     }
+
+    await syncWaterReportingPeriodStatuses(
+      ctx.env
+    );
 
     const nowIso =
       new Date().toISOString();
@@ -6239,15 +6239,15 @@ Router.register("GET", "/api/my-water-meter-history", async (ctx) => {
 // =========================
 Router.register("POST", "/api/submit-water-reading", async (ctx) => {
 
-  await syncWaterReportingPeriodStatuses(
-    ctx.env
-  );
-
   const u = await Auth.requireUser(ctx);
 
   if (!u) {
     return { error: "unauthorized" };
   }
+
+  await syncWaterReportingPeriodStatuses(
+    ctx.env
+  );
 
   const body =
     await ctx.request
@@ -6416,15 +6416,15 @@ Router.register("POST", "/api/submit-water-reading", async (ctx) => {
 // =========================
 Router.register("POST", "/api/correct-water-reading", async (ctx) => {
 
-  await syncWaterReportingPeriodStatuses(
-    ctx.env
-  );
-
   const u = await Auth.requireUser(ctx);
 
   if (!u) {
     return { error: "unauthorized" };
   }
+
+  await syncWaterReportingPeriodStatuses(
+    ctx.env
+  );
 
   const body =
     await ctx.request
@@ -6822,10 +6822,6 @@ Router.register(
   "GET",
   "/api/admin/water-reading-entry-periods",
   async (ctx) => {
-    await syncWaterReportingPeriodStatuses(
-      ctx.env
-    );
-
     const admin =
       await Auth.requireAdmin(ctx);
 
@@ -6834,6 +6830,10 @@ Router.register(
         error: "forbidden"
       };
     }
+
+    await syncWaterReportingPeriodStatuses(
+      ctx.env
+    );
 
     const nowIso =
       new Date().toISOString();
@@ -6918,10 +6918,6 @@ Router.register(
   "POST",
   "/api/admin/submit-water-reading",
   async (ctx) => {
-    await syncWaterReportingPeriodStatuses(
-      ctx.env
-    );
-
     const admin =
       await Auth.requireAdmin(ctx);
 
@@ -6930,6 +6926,10 @@ Router.register(
         error: "forbidden"
       };
     }
+
+    await syncWaterReportingPeriodStatuses(
+      ctx.env
+    );
 
     const body =
       await ctx.request
@@ -7233,10 +7233,6 @@ Router.register(
   "/api/admin/current-water-reporting-period",
   async (ctx) => {
 
-    await syncWaterReportingPeriodStatuses(
-      ctx.env
-    );
-
     const admin =
       await Auth.requireAdmin(ctx);
 
@@ -7245,6 +7241,10 @@ Router.register(
         error: "forbidden"
       };
     }
+
+    await syncWaterReportingPeriodStatuses(
+      ctx.env
+    );
 
     const nowIso =
       new Date().toISOString();
@@ -7394,10 +7394,6 @@ Router.register(
   "/api/admin/water-monthly-report",
   async (ctx) => {
 
-    await syncWaterReportingPeriodStatuses(
-      ctx.env
-    );
-
     const admin =
       await Auth.requireAdmin(ctx);
 
@@ -7406,6 +7402,10 @@ Router.register(
         error: "forbidden"
       };
     }
+
+    await syncWaterReportingPeriodStatuses(
+      ctx.env
+    );
 
     const year =
       Number(
