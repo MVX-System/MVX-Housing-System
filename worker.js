@@ -1570,6 +1570,48 @@ const Auth = {
       return null;
     }
 
+    const sessionId =
+      String(
+        tokenPayload.session_id || ""
+      ).trim();
+
+    if (
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+        sessionId
+      )
+    ) {
+      return null;
+    }
+
+    const session =
+      await ctx.env.DB.prepare(`
+        SELECT
+          session_id,
+          user_id,
+          expires_at,
+          revoked_at
+        FROM auth_sessions
+        WHERE session_id = ?
+          AND user_id = ?
+        LIMIT 1
+      `)
+        .bind(
+          sessionId,
+          userId
+        )
+        .first();
+
+    if (
+      !session ||
+      session.revoked_at ||
+      !session.expires_at ||
+      Date.parse(
+        session.expires_at
+      ) <= Date.now()
+    ) {
+      return null;
+    }
+
     const user =
       await ctx.env.DB.prepare(`
         SELECT
@@ -1620,6 +1662,8 @@ const Auth = {
         tokenPayload.iat,
       exp:
         tokenPayload.exp,
+      session_id:
+        sessionId,
     };
   },
 
@@ -5870,9 +5914,25 @@ Router.register(
       )
       .run();
 
+    const revokedAt =
+      new Date().toISOString();
+
+    await ctx.env.DB.prepare(`
+      UPDATE auth_sessions
+      SET revoked_at = ?
+      WHERE user_id = ?
+        AND revoked_at IS NULL
+    `)
+      .bind(
+        revokedAt,
+        user.id
+      )
+      .run();
+
     return {
       ok: true,
-      must_change_password: 0
+      must_change_password: 0,
+      sessions_revoked: true
     };
   }
 );
@@ -6107,12 +6167,42 @@ Router.register("POST", "/api/login", async (ctx) => {
       }
     }
 
+    const sessionId =
+      crypto.randomUUID();
+
+    const sessionExpiresAt =
+      new Date(
+        (
+          Math.floor(
+            Date.now() / 1000
+          ) +
+          JWT_TTL_SECONDS
+        ) * 1000
+      ).toISOString();
+
+    await ctx.env.DB.prepare(`
+      INSERT INTO auth_sessions (
+        session_id,
+        user_id,
+        expires_at
+      )
+      VALUES (?, ?, ?)
+    `)
+      .bind(
+        sessionId,
+        Number(user.id),
+        sessionExpiresAt
+      )
+      .run();
+
     const token = await signJWT(
       {
         user_id:
           Number(user.id),
         nick:
           user.nick || null,
+        session_id:
+          sessionId,
       },
       ctx.env.JWT_SECRET
     );
@@ -6130,6 +6220,45 @@ Router.register("POST", "/api/login", async (ctx) => {
     };
   }
 });
+
+// LOGOUT
+// Stage 2I-SR10:
+// Revoke only the current server-side session.
+Router.register(
+  "POST",
+  "/api/logout",
+  async (ctx) => {
+    const authenticatedUser =
+      await Auth.requireUser(ctx);
+
+    if (!authenticatedUser) {
+      return {
+        error: "unauthorized"
+      };
+    }
+
+    const revokedAt =
+      new Date().toISOString();
+
+    await ctx.env.DB.prepare(`
+      UPDATE auth_sessions
+      SET revoked_at = ?
+      WHERE session_id = ?
+        AND user_id = ?
+        AND revoked_at IS NULL
+    `)
+      .bind(
+        revokedAt,
+        authenticatedUser.session_id,
+        authenticatedUser.user_id
+      )
+      .run();
+
+    return {
+      ok: true
+    };
+  }
+);
 
 // ME
 // Stage 2G-6: Main D1 provides only non-PII account state.
@@ -11312,6 +11441,20 @@ Router.register("POST", "/api/admin/set-user-status", async (ctx) => {
 
   if (!Number(result?.meta?.changes || 0)) {
     return { error: "user_not_found" };
+  }
+
+  if (status === 0) {
+    await ctx.env.DB.prepare(`
+      UPDATE auth_sessions
+      SET revoked_at = ?
+      WHERE user_id = ?
+        AND revoked_at IS NULL
+    `)
+      .bind(
+        new Date().toISOString(),
+        userId
+      )
+      .run();
   }
 
   return {

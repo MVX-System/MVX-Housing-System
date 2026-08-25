@@ -5,7 +5,6 @@ import {
   useEffect,
   useState,
 } from "react";
-
 import {
   api,
 } from "../services/api";
@@ -35,20 +34,46 @@ export function AuthProvider({
     setLoading,
   ] = useState(true);
 
-  const logout =
+  const clearLocalSession =
     useCallback(() => {
       localStorage.removeItem(
         "token"
       );
-
       sessionStorage.clear();
-
       setToken(null);
       setMe(null);
+    }, []);
 
+  const logout =
+    useCallback(async () => {
+      try {
+        if (
+          localStorage.getItem(
+            "token"
+          )
+        ) {
+          await api(
+            "/api/logout",
+            {
+              method: "POST",
+            }
+          );
+        }
+      } catch {
+        // Local logout must still complete if the server is unavailable.
+      } finally {
+        clearLocalSession();
+        window.location.href =
+          "/login";
+      }
+    }, [clearLocalSession]);
+
+  const expireLocalSession =
+    useCallback(() => {
+      clearLocalSession();
       window.location.href =
         "/login";
-    }, []);
+    }, [clearLocalSession]);
 
   const refreshMe =
     useCallback(async () => {
@@ -60,14 +85,13 @@ export function AuthProvider({
       if (
         !meData?.user
       ) {
-        logout();
+        expireLocalSession();
         return null;
       }
 
       setMe(meData);
-
       return meData;
-    }, [logout]);
+    }, [expireLocalSession]);
 
   useEffect(() => {
     let active = true;
@@ -79,7 +103,6 @@ export function AuthProvider({
             setMe(null);
             setLoading(false);
           }
-
           return;
         }
 
@@ -98,7 +121,7 @@ export function AuthProvider({
           if (
             !meData?.user
           ) {
-            logout();
+            expireLocalSession();
             return;
           }
 
@@ -117,7 +140,7 @@ export function AuthProvider({
     };
   }, [
     token,
-    logout,
+    expireLocalSession,
   ]);
 
   const login =
@@ -130,7 +153,6 @@ export function AuthProvider({
           "/api/login",
           {
             method: "POST",
-
             body:
               JSON.stringify({
                 nick,
@@ -144,7 +166,6 @@ export function AuthProvider({
           res?.error ||
           "Login failed"
         );
-
         return false;
       }
 
@@ -152,7 +173,6 @@ export function AuthProvider({
         "token",
         res.token
       );
-
       setToken(
         res.token
       );
@@ -165,12 +185,11 @@ export function AuthProvider({
       if (
         !meData?.user
       ) {
-        logout();
+        expireLocalSession();
         return false;
       }
 
       setMe(meData);
-
       return true;
     };
 
