@@ -1484,6 +1484,304 @@ class PiiAudit {
   }
 }
 
+
+// =========================
+// SECURITY AUDIT LOG
+// Stage 2I-SR11:
+// Main-D1 audit trail for authentication and critical state changes.
+// Never store passwords, JWTs, raw IP addresses, PII, announcement text,
+// meter serial numbers, source notes, or other free-form sensitive content.
+// =========================
+class SecurityAudit {
+  static FORBIDDEN_DETAIL_KEY =
+    /(password|token|secret|email|phone|first_name|last_name|personal_code|ip|endpoint|content|title|serial|source_note|reason)/i;
+
+  static normalizeText(
+    value,
+    {
+      allowNull = true,
+      maxLength = 160,
+    } = {}
+  ) {
+    if (
+      value === null ||
+      value === undefined ||
+      value === ""
+    ) {
+      if (allowNull) {
+        return null;
+      }
+
+      throw new Error(
+        "missing_security_audit_text"
+      );
+    }
+
+    const normalized =
+      String(value).trim();
+
+    if (
+      !normalized ||
+      normalized.length >
+        maxLength
+    ) {
+      throw new Error(
+        "invalid_security_audit_text"
+      );
+    }
+
+    return normalized;
+  }
+
+  static sanitizeDetails(
+    details
+  ) {
+    if (
+      details === null ||
+      details === undefined
+    ) {
+      return null;
+    }
+
+    const walk = (
+      value,
+      depth = 0
+    ) => {
+      if (depth > 4) {
+        throw new Error(
+          "security_audit_details_too_deep"
+        );
+      }
+
+      if (
+        value === null ||
+        typeof value ===
+          "boolean" ||
+        typeof value ===
+          "string" ||
+        typeof value ===
+          "number"
+      ) {
+        return value;
+      }
+
+      if (Array.isArray(value)) {
+        if (value.length > 64) {
+          throw new Error(
+            "security_audit_details_too_large"
+          );
+        }
+
+        return value.map(
+          (item) =>
+            walk(
+              item,
+              depth + 1
+            )
+        );
+      }
+
+      if (
+        typeof value === "object"
+      ) {
+        const result = {};
+
+        for (
+          const [
+            key,
+            item,
+          ] of Object.entries(
+            value
+          )
+        ) {
+          if (
+            this.FORBIDDEN_DETAIL_KEY
+              .test(key)
+          ) {
+            throw new Error(
+              "forbidden_security_audit_detail"
+            );
+          }
+
+          result[key] =
+            walk(
+              item,
+              depth + 1
+            );
+        }
+
+        return result;
+      }
+
+      throw new Error(
+        "invalid_security_audit_detail"
+      );
+    };
+
+    const serialized =
+      JSON.stringify(
+        walk(details)
+      );
+
+    if (
+      serialized.length > 2000
+    ) {
+      throw new Error(
+        "security_audit_details_too_large"
+      );
+    }
+
+    return serialized;
+  }
+
+  static async record(
+    ctx,
+    {
+      actorUserId = null,
+      action,
+      targetType = null,
+      targetId = null,
+      result = "success",
+      details = null,
+    }
+  ) {
+    const normalizedActorUserId =
+      actorUserId === null ||
+      actorUserId === undefined
+        ? null
+        : normalizePositiveInteger(
+            actorUserId
+          );
+
+    if (
+      actorUserId !== null &&
+      actorUserId !== undefined &&
+      !normalizedActorUserId
+    ) {
+      throw new Error(
+        "invalid_security_audit_actor"
+      );
+    }
+
+    const normalizedAction =
+      this.normalizeText(
+        action,
+        {
+          allowNull: false,
+          maxLength: 120,
+        }
+      );
+
+    const normalizedTargetType =
+      this.normalizeText(
+        targetType,
+        {
+          allowNull: true,
+          maxLength: 80,
+        }
+      );
+
+    const normalizedTargetId =
+      this.normalizeText(
+        targetId,
+        {
+          allowNull: true,
+          maxLength: 128,
+        }
+      );
+
+    const normalizedResult =
+      this.normalizeText(
+        result,
+        {
+          allowNull: false,
+          maxLength: 40,
+        }
+      );
+
+    const endpoint =
+      this.normalizeText(
+        ctx?.url?.pathname,
+        {
+          allowNull: true,
+          maxLength: 240,
+        }
+      );
+
+    const requestId =
+      App.requestId(
+        ctx?.request
+      );
+
+    const resultRow =
+      await ctx.env.DB.prepare(`
+        INSERT INTO security_audit_log (
+          actor_user_id,
+          action,
+          target_type,
+          target_id,
+          endpoint,
+          result,
+          request_id,
+          details
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `)
+        .bind(
+          normalizedActorUserId,
+          normalizedAction,
+          normalizedTargetType,
+          normalizedTargetId,
+          endpoint,
+          normalizedResult,
+          requestId,
+          this.sanitizeDetails(
+            details
+          )
+        )
+        .run();
+
+    return {
+      ok: true,
+      audit_id:
+        resultRow?.meta
+          ?.last_row_id ??
+        null,
+    };
+  }
+
+  static async recordSafe(
+    ctx,
+    entry
+  ) {
+    try {
+      return await this.record(
+        ctx,
+        entry
+      );
+    } catch (error) {
+      App.logError(
+        "security_audit_write_error",
+        error,
+        {
+          action:
+            String(
+              entry?.action || ""
+            ).slice(0, 120),
+          request_id:
+            App.requestId(
+              ctx?.request
+            ),
+        }
+      );
+
+      return {
+        ok: false
+      };
+    }
+  }
+}
+
 class Router {
   static routes = [];
 
@@ -4804,6 +5102,32 @@ Router.register(
         );
     }
 
+    await SecurityAudit.recordSafe(
+      ctx,
+      {
+        actorUserId:
+          admin.user_id,
+        action:
+          "admin.announcement_create",
+        targetType:
+          "announcement",
+        targetId:
+          String(
+            announcementId
+          ),
+        details: {
+          status:
+            requestedStatus,
+          priority,
+          urgent_push_requested:
+            requestedStatus ===
+              "published" &&
+            priority ===
+              "important",
+        },
+      }
+    );
+
     return {
       ok: true,
       push_delivery,
@@ -5054,6 +5378,25 @@ Router.register(
       targets
     );
 
+    await SecurityAudit.recordSafe(
+      ctx,
+      {
+        actorUserId:
+          admin.user_id,
+        action:
+          "admin.announcement_update",
+        targetType:
+          "announcement",
+        targetId:
+          String(
+            announcementId
+          ),
+        details: {
+          priority,
+        },
+      }
+    );
+
     return {
       ok: true,
       announcement:
@@ -5176,6 +5519,32 @@ Router.register(
           )
         : null;
 
+    await SecurityAudit.recordSafe(
+      ctx,
+      {
+        actorUserId:
+          admin.user_id,
+        action:
+          "admin.announcement_publish",
+        targetType:
+          "announcement",
+        targetId:
+          String(
+            announcementId
+          ),
+        details: {
+          priority:
+            publishedAnnouncement
+              ?.priority ||
+            null,
+          urgent_push_requested:
+            publishedAnnouncement
+              ?.priority ===
+            "important",
+        },
+      }
+    );
+
     return {
       ok: true,
       push_delivery,
@@ -5265,6 +5634,22 @@ Router.register(
         announcementId
       )
       .run();
+
+    await SecurityAudit.recordSafe(
+      ctx,
+      {
+        actorUserId:
+          admin.user_id,
+        action:
+          "admin.announcement_archive",
+        targetType:
+          "announcement",
+        targetId:
+          String(
+            announcementId
+          ),
+      }
+    );
 
     return {
       ok: true,
@@ -5929,6 +6314,23 @@ Router.register(
       )
       .run();
 
+    await SecurityAudit.recordSafe(
+      ctx,
+      {
+        actorUserId:
+          authenticatedUser.user_id,
+        action:
+          "auth.password_change",
+        targetType:
+          "user",
+        targetId:
+          String(user.id),
+        details: {
+          sessions_revoked: true,
+        },
+      }
+    );
+
     return {
       ok: true,
       must_change_password: 0,
@@ -6099,6 +6501,20 @@ Router.register("POST", "/api/login", async (ctx) => {
         });
       }
 
+      await SecurityAudit.recordSafe(
+        ctx,
+        {
+          action:
+            "auth.login",
+          result:
+            "failure",
+          details: {
+            failure_type:
+              "invalid_credentials",
+          },
+        }
+      );
+
       return {
         error:
           "invalid_credentials"
@@ -6207,6 +6623,20 @@ Router.register("POST", "/api/login", async (ctx) => {
       ctx.env.JWT_SECRET
     );
 
+    await SecurityAudit.recordSafe(
+      ctx,
+      {
+        actorUserId:
+          user.id,
+        action:
+          "auth.login",
+        targetType:
+          "session",
+        targetId:
+          sessionId,
+      }
+    );
+
     return { token };
 
   } catch (e) {
@@ -6253,6 +6683,20 @@ Router.register(
         authenticatedUser.user_id
       )
       .run();
+
+    await SecurityAudit.recordSafe(
+      ctx,
+      {
+        actorUserId:
+          authenticatedUser.user_id,
+        action:
+          "auth.logout",
+        targetType:
+          "session",
+        targetId:
+          authenticatedUser.session_id,
+      }
+    );
 
     return {
       ok: true
@@ -7010,6 +7454,24 @@ Router.register("POST", "/api/admin/set-roles", async (ctx) => {
 
   await ctx.env.DB.batch(
     statements
+  );
+
+  await SecurityAudit.recordSafe(
+    ctx,
+    {
+      actorUserId:
+        admin.user_id,
+      action:
+        "admin.user_roles_set",
+      targetType:
+        "user",
+      targetId:
+        String(userId),
+      details: {
+        role_ids:
+          roleIds,
+      },
+    }
   );
 
   return {
@@ -8801,10 +9263,44 @@ Router.register(
         )
         .run();
 
+    const readingId =
+      Number(
+        result.meta.last_row_id
+      );
+
+    await SecurityAudit.recordSafe(
+      ctx,
+      {
+        actorUserId:
+          admin.user_id,
+        action:
+          "admin.water_reading_submit",
+        targetType:
+          "water_reading",
+        targetId:
+          String(readingId),
+        details: {
+          meter_id:
+            meterId,
+          reporting_period_id:
+            Number(
+              selectedPeriod.id
+            ),
+          period_status:
+            selectedPeriod.status,
+          submission_source:
+            submissionSource,
+          late_entry:
+            selectedPeriod.status ===
+              "closed",
+        },
+      }
+    );
+
     return {
       ok: true,
       reading_id:
-        result.meta.last_row_id,
+        readingId,
       reporting_period_id:
         selectedPeriod.id,
       period_status:
@@ -10527,6 +11023,28 @@ Router.register(
           .last_row_id;
     }
 
+    await SecurityAudit.recordSafe(
+      ctx,
+      {
+        actorUserId:
+          admin.user_id,
+        action:
+          "admin.water_meter_create",
+        targetType:
+          "water_meter",
+        targetId:
+          String(meterId),
+        details: {
+          apartment_id:
+            apartmentId,
+          meter_type:
+            meterType,
+          initial_reading_created:
+            initialReadingId !== null,
+        },
+      }
+    );
+
     return {
 
       ok: true,
@@ -10699,6 +11217,28 @@ Router.register(
       }
     }
 
+    await SecurityAudit.recordSafe(
+      ctx,
+      {
+        actorUserId:
+          admin.user_id,
+        action:
+          "admin.water_meter_update",
+        targetType:
+          "water_meter",
+        targetId:
+          String(meterId),
+        details: {
+          apartment_id:
+            apartmentId,
+          meter_type:
+            type,
+          initial_reading_changed:
+            readingChanged,
+        },
+      }
+    );
+
     return {
       ok: true,
       meter_id: meterId,
@@ -10812,6 +11352,20 @@ Router.register(
           "water_meter_deactivation_failed"
       };
     }
+
+    await SecurityAudit.recordSafe(
+      ctx,
+      {
+        actorUserId:
+          admin.user_id,
+        action:
+          "admin.water_meter_deactivate",
+        targetType:
+          "water_meter",
+        targetId:
+          String(meterId),
+      }
+    );
 
     return {
       ok: true
@@ -11148,6 +11702,20 @@ Router.register("POST", "/api/admin/create-user", async (ctx) => {
     );
   }
 
+  await SecurityAudit.recordSafe(
+    ctx,
+    {
+      actorUserId:
+        admin.user_id,
+      action:
+        "admin.user_create",
+      targetType:
+        "user",
+      targetId:
+        String(userId),
+    }
+  );
+
   return {
     ok: true,
     user_id: userId
@@ -11387,6 +11955,20 @@ Router.register("POST", "/api/admin/update-user", async (ctx) => {
     );
   }
 
+  await SecurityAudit.recordSafe(
+    ctx,
+    {
+      actorUserId:
+        admin.user_id,
+      action:
+        "admin.user_update",
+      targetType:
+        "user",
+      targetId:
+        String(userId),
+    }
+  );
+
   return {
     ok: true
   };
@@ -11456,6 +12038,26 @@ Router.register("POST", "/api/admin/set-user-status", async (ctx) => {
       )
       .run();
   }
+
+  await SecurityAudit.recordSafe(
+    ctx,
+    {
+      actorUserId:
+        admin.user_id,
+      action:
+        "admin.user_status_set",
+      targetType:
+        "user",
+      targetId:
+        String(userId),
+      details: {
+        is_active:
+          status,
+        sessions_revoked:
+          status === 0,
+      },
+    }
+  );
 
   return {
     ok: true,
@@ -11557,10 +12159,29 @@ Router.register("POST", "/api/admin/create-apartment", async (ctx) => {
       )
       .run();
 
+  const apartmentId =
+    Number(
+      result.meta.last_row_id
+    );
+
+  await SecurityAudit.recordSafe(
+    ctx,
+    {
+      actorUserId:
+        admin.user_id,
+      action:
+        "admin.apartment_create",
+      targetType:
+        "apartment",
+      targetId:
+        String(apartmentId),
+    }
+  );
+
   return {
     ok: true,
     apartment_id:
-      result.meta.last_row_id
+      apartmentId
   };
 });
 
@@ -11686,6 +12307,20 @@ Router.register("POST", "/api/admin/update-apartment", async (ctx) => {
       apartmentId
     )
     .run();
+
+  await SecurityAudit.recordSafe(
+    ctx,
+    {
+      actorUserId:
+        admin.user_id,
+      action:
+        "admin.apartment_update",
+      targetType:
+        "apartment",
+      targetId:
+        String(apartmentId),
+    }
+  );
 
   return {
     ok: true
@@ -11885,10 +12520,37 @@ Router.register("POST", "/api/admin/add-user-apartment", async (ctx) => {
       )
       .run();
 
+  const assignmentId =
+    Number(
+      result.meta.last_row_id
+    );
+
+  await SecurityAudit.recordSafe(
+    ctx,
+    {
+      actorUserId:
+        admin.user_id,
+      action:
+        "admin.user_apartment_add",
+      targetType:
+        "user_apartment",
+      targetId:
+        String(assignmentId),
+      details: {
+        user_id:
+          userId,
+        apartment_id:
+          apartmentId,
+        relation_type:
+          relationType,
+      },
+    }
+  );
+
   return {
     ok: true,
     assignment_id:
-      result.meta.last_row_id
+      assignmentId
   };
 });
 
@@ -11957,6 +12619,20 @@ Router.register("POST", "/api/admin/remove-user-apartment", async (ctx) => {
         "assignment_delete_failed"
     };
   }
+
+  await SecurityAudit.recordSafe(
+    ctx,
+    {
+      actorUserId:
+        admin.user_id,
+      action:
+        "admin.user_apartment_remove",
+      targetType:
+        "user_apartment",
+      targetId:
+        String(assignmentId),
+    }
+  );
 
   return {
     ok: true
