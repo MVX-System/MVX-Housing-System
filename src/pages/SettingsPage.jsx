@@ -252,6 +252,55 @@ const TEXT = {
       "No successful backup recorded",
     backupAlertNoSuccessMessage:
       "Create a backup now to establish the first verified recovery point.",
+
+    restoreSection:
+      "Restore management",
+    restoreTitle:
+      "Recovery points",
+    restoreHint:
+      "Review available D1 Time Travel and offsite recovery points. Restore actions are not enabled yet.",
+    restoreLoading:
+      "Loading restore status...",
+    restoreLoadFailed:
+      "Restore status could not be loaded.",
+    restoreReadOnlyTitle:
+      "Read-only restore management",
+    restoreReadOnlyMessage:
+      "Recovery points can be reviewed here, but no restore operation can be started in this stage.",
+    restoreMode:
+      "Mode",
+    restoreReadOnly:
+      "Read only",
+    restoreMainD1:
+      "Main D1 Time Travel",
+    restorePiiD1:
+      "PII D1 Time Travel",
+    restoreAvailable:
+      "Available",
+    restoreUnavailable:
+      "Unavailable",
+    restoreChecked:
+      "Checked",
+    restoreWindow:
+      "Time Travel window",
+    restoreWindowUnknown:
+      "Not specified",
+    restoreOffsitePoints:
+      "Offsite recovery points",
+    restoreNoPoints:
+      "No verified offsite recovery points are available.",
+    restorePoint:
+      "Recovery point",
+    restoreReady:
+      "Restorable",
+    restoreNotReady:
+      "Not ready",
+    restoreProvider:
+      "Provider",
+    restoreDestination:
+      "Destination",
+    restoreRefresh:
+      "Refresh restore status",
   },
 
   lv: {
@@ -477,6 +526,55 @@ const TEXT = {
       "Nav reģistrēta neviena veiksmīga rezerves kopija",
     backupAlertNoSuccessMessage:
       "Izveidojiet rezerves kopiju tagad, lai izveidotu pirmo pārbaudīto atjaunošanas punktu.",
+
+    restoreSection:
+      "Atjaunošanas pārvaldība",
+    restoreTitle:
+      "Atjaunošanas punkti",
+    restoreHint:
+      "Pārskatiet pieejamos D1 Time Travel un ārējās rezerves kopijas atjaunošanas punktus. Atjaunošanas darbības vēl nav iespējotas.",
+    restoreLoading:
+      "Tiek ielādēts atjaunošanas statuss...",
+    restoreLoadFailed:
+      "Neizdevās ielādēt atjaunošanas statusu.",
+    restoreReadOnlyTitle:
+      "Atjaunošanas pārvaldība tikai lasīšanai",
+    restoreReadOnlyMessage:
+      "Šeit var pārskatīt atjaunošanas punktus, bet šajā posmā atjaunošanu nevar sākt.",
+    restoreMode:
+      "Režīms",
+    restoreReadOnly:
+      "Tikai lasīšanai",
+    restoreMainD1:
+      "Galvenās D1 Time Travel",
+    restorePiiD1:
+      "PII D1 Time Travel",
+    restoreAvailable:
+      "Pieejams",
+    restoreUnavailable:
+      "Nav pieejams",
+    restoreChecked:
+      "Pārbaudīts",
+    restoreWindow:
+      "Time Travel periods",
+    restoreWindowUnknown:
+      "Nav norādīts",
+    restoreOffsitePoints:
+      "Ārējie atjaunošanas punkti",
+    restoreNoPoints:
+      "Nav pieejamu pārbaudītu ārējo atjaunošanas punktu.",
+    restorePoint:
+      "Atjaunošanas punkts",
+    restoreReady:
+      "Gatavs atjaunošanai",
+    restoreNotReady:
+      "Nav gatavs",
+    restoreProvider:
+      "Pakalpojuma sniedzējs",
+    restoreDestination:
+      "Galamērķis",
+    restoreRefresh:
+      "Atjaunināt atjaunošanas statusu",
   },
 
   ru: {
@@ -702,6 +800,55 @@ const TEXT = {
       "Успешных резервных копий пока нет",
     backupAlertNoSuccessMessage:
       "Создайте резервную копию сейчас, чтобы сформировать первую проверенную точку восстановления.",
+
+    restoreSection:
+      "Восстановление",
+    restoreTitle:
+      "Точки восстановления",
+    restoreHint:
+      "Просмотр доступных точек D1 Time Travel и внешних резервных копий. Операции восстановления пока не включены.",
+    restoreLoading:
+      "Загрузка статуса восстановления...",
+    restoreLoadFailed:
+      "Не удалось загрузить статус восстановления.",
+    restoreReadOnlyTitle:
+      "Режим только для просмотра",
+    restoreReadOnlyMessage:
+      "Здесь можно просматривать точки восстановления, но на этом этапе запуск восстановления недоступен.",
+    restoreMode:
+      "Режим",
+    restoreReadOnly:
+      "Только просмотр",
+    restoreMainD1:
+      "Main D1 Time Travel",
+    restorePiiD1:
+      "PII D1 Time Travel",
+    restoreAvailable:
+      "Доступно",
+    restoreUnavailable:
+      "Недоступно",
+    restoreChecked:
+      "Проверено",
+    restoreWindow:
+      "Окно Time Travel",
+    restoreWindowUnknown:
+      "Не указано",
+    restoreOffsitePoints:
+      "Внешние точки восстановления",
+    restoreNoPoints:
+      "Нет доступных проверенных внешних точек восстановления.",
+    restorePoint:
+      "Точка восстановления",
+    restoreReady:
+      "Готова к восстановлению",
+    restoreNotReady:
+      "Не готова",
+    restoreProvider:
+      "Провайдер",
+    restoreDestination:
+      "Хранилище",
+    restoreRefresh:
+      "Обновить статус восстановления",
   },
 };
 
@@ -1254,6 +1401,21 @@ export default function SettingsPage() {
       ]
     );
 
+  const [
+    restoreLoading,
+    setRestoreLoading,
+  ] = useState(false);
+
+  const [
+    restoreError,
+    setRestoreError,
+  ] = useState("");
+
+  const [
+    restoreStatus,
+    setRestoreStatus,
+  ] = useState(null);
+
   useEffect(() => {
     if (
       !isAdmin ||
@@ -1414,6 +1576,63 @@ export default function SettingsPage() {
     mode,
     mustChangePassword,
     text.backupLoadFailed,
+  ]);
+
+
+  useEffect(() => {
+    if (
+      !isAdmin ||
+      mode !== "admin" ||
+      mustChangePassword
+    ) {
+      return;
+    }
+
+    const loadRestoreManagement =
+      async () => {
+        setRestoreLoading(true);
+        setRestoreError("");
+
+        try {
+          const result =
+            await api(
+              "/api/admin/restore/status?limit=20"
+            );
+
+          if (
+            !result ||
+            result.error ||
+            result.ok === false
+          ) {
+            throw new Error(
+              result?.error ||
+              "restore_status_load_failed"
+            );
+          }
+
+          setRestoreStatus(
+            result
+          );
+        } catch (loadError) {
+          console.error(
+            "LOAD RESTORE MANAGEMENT ERROR:",
+            loadError
+          );
+
+          setRestoreError(
+            text.restoreLoadFailed
+          );
+        } finally {
+          setRestoreLoading(false);
+        }
+      };
+
+    loadRestoreManagement();
+  }, [
+    isAdmin,
+    mode,
+    mustChangePassword,
+    text.restoreLoadFailed,
   ]);
 
 
@@ -2039,6 +2258,45 @@ export default function SettingsPage() {
         );
       } finally {
         setBackupLoading(false);
+      }
+    };
+
+  const handleRefreshRestore =
+    async () => {
+      setRestoreError("");
+      setRestoreLoading(true);
+
+      try {
+        const result =
+          await api(
+            "/api/admin/restore/status?limit=20"
+          );
+
+        if (
+          !result ||
+          result.error ||
+          result.ok === false
+        ) {
+          throw new Error(
+            result?.error ||
+            "restore_status_load_failed"
+          );
+        }
+
+        setRestoreStatus(
+          result
+        );
+      } catch (refreshError) {
+        console.error(
+          "REFRESH RESTORE MANAGEMENT ERROR:",
+          refreshError
+        );
+
+        setRestoreError(
+          text.restoreLoadFailed
+        );
+      } finally {
+        setRestoreLoading(false);
       }
     };
 
@@ -2805,6 +3063,286 @@ export default function SettingsPage() {
                           ? text.showLessRuns
                           : text.showMoreRuns}
                       </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </section>
+        )}
+
+      {isAdmin &&
+        mode === "admin" &&
+        !mustChangePassword && (
+          <section
+            style={{
+              ...sectionStyle,
+              marginBottom: 18,
+            }}
+          >
+            <SectionHeader
+              eyebrow={text.restoreSection}
+              title={text.restoreTitle}
+              hint={text.restoreHint}
+            />
+
+            {restoreLoading ? (
+              <div style={noticeStyle}>
+                {text.restoreLoading}
+              </div>
+            ) : (
+              <div
+                style={{
+                  display: "grid",
+                  gap: 14,
+                }}
+              >
+                <div style={noticeStyle}>
+                  <div
+                    style={{
+                      color: "var(--text-h)",
+                      fontSize: 12,
+                      fontWeight: 800,
+                    }}
+                  >
+                    {text.restoreReadOnlyTitle}
+                  </div>
+
+                  <div
+                    style={{
+                      marginTop: 4,
+                      fontSize: 11,
+                      lineHeight: 1.5,
+                    }}
+                  >
+                    {text.restoreReadOnlyMessage}
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns:
+                      "repeat(auto-fit,minmax(210px,1fr))",
+                    gap: 10,
+                  }}
+                >
+                  <InfoBox
+                    label={text.restoreMode}
+                    value={
+                      restoreStatus?.mode === "read_only"
+                        ? text.restoreReadOnly
+                        : "—"
+                    }
+                  />
+
+                  <InfoBox
+                    label={text.restoreWindow}
+                    value={
+                      restoreStatus
+                        ?.time_travel
+                        ?.window_days
+                        ? `${restoreStatus.time_travel.window_days} ${text.days}`
+                        : text.restoreWindowUnknown
+                    }
+                  />
+
+                  <InfoBox
+                    label={text.restoreProvider}
+                    value={
+                      restoreStatus
+                        ?.offsite
+                        ?.provider || "—"
+                    }
+                  />
+
+                  <InfoBox
+                    label={text.restoreDestination}
+                    value={
+                      restoreStatus
+                        ?.offsite
+                        ?.destination || "—"
+                    }
+                  />
+                </div>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns:
+                      "repeat(auto-fit,minmax(210px,1fr))",
+                    gap: 10,
+                  }}
+                >
+                  <InfoBox
+                    label={text.restoreMainD1}
+                    value={`${restoreStatus?.time_travel?.main?.available
+                      ? text.restoreAvailable
+                      : text.restoreUnavailable} · ${text.restoreChecked}: ${formatDateTime(
+                      restoreStatus?.time_travel?.main?.checked_at,
+                      language,
+                      "Europe/Riga"
+                    )}`}
+                  />
+
+                  <InfoBox
+                    label={text.restorePiiD1}
+                    value={`${restoreStatus?.time_travel?.pii?.available
+                      ? text.restoreAvailable
+                      : text.restoreUnavailable} · ${text.restoreChecked}: ${formatDateTime(
+                      restoreStatus?.time_travel?.pii?.checked_at,
+                      language,
+                      "Europe/Riga"
+                    )}`}
+                  />
+                </div>
+
+                {restoreError && (
+                  <div
+                    role="alert"
+                    style={errorStyle}
+                  >
+                    {restoreError}
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  disabled={restoreLoading}
+                  onClick={handleRefreshRestore}
+                  style={
+                    secondaryButtonStyle(
+                      restoreLoading
+                    )
+                  }
+                >
+                  {text.restoreRefresh}
+                </button>
+
+                <div>
+                  <div
+                    style={{
+                      marginBottom: 8,
+                      color: "var(--text-h)",
+                      fontSize: 12,
+                      fontWeight: 800,
+                    }}
+                  >
+                    {text.restoreOffsitePoints}
+                  </div>
+
+                  {(restoreStatus?.offsite?.restore_points || []).length === 0 ? (
+                    <div style={noticeStyle}>
+                      {text.restoreNoPoints}
+                    </div>
+                  ) : (
+                    <div
+                      style={{
+                        display: "grid",
+                        gap: 8,
+                      }}
+                    >
+                      {restoreStatus.offsite.restore_points.map(
+                        (point) => (
+                          <div
+                            key={point.backup_run_id}
+                            style={{
+                              padding: 12,
+                              border:
+                                "1px solid var(--border)",
+                              borderRadius: 10,
+                              background:
+                                "var(--surface-soft)",
+                            }}
+                          >
+                            <div
+                              style={{
+                                display: "flex",
+                                justifyContent:
+                                  "space-between",
+                                gap: 12,
+                                flexWrap: "wrap",
+                              }}
+                            >
+                              <div
+                                style={{
+                                  color: "var(--text-h)",
+                                  fontSize: 12,
+                                  fontWeight: 800,
+                                }}
+                              >
+                                {text.restorePoint} #{point.backup_run_id}
+                              </div>
+
+                              <div
+                                style={{
+                                  color:
+                                    point.restorable
+                                      ? "#15803d"
+                                      : "#9f3f3f",
+                                  fontSize: 11,
+                                  fontWeight: 800,
+                                }}
+                              >
+                                {point.restorable
+                                  ? text.restoreReady
+                                  : text.restoreNotReady}
+                              </div>
+                            </div>
+
+                            <div
+                              style={{
+                                marginTop: 8,
+                                display: "grid",
+                                gridTemplateColumns:
+                                  "repeat(auto-fit,minmax(160px,1fr))",
+                                gap: 8,
+                              }}
+                            >
+                              <InfoBox
+                                label={text.completed}
+                                value={formatDateTime(
+                                  point.completed_at ||
+                                  point.created_at,
+                                  language,
+                                  "Europe/Riga"
+                                )}
+                              />
+
+                              <InfoBox
+                                label={text.archive}
+                                value={
+                                  point.archive_name ||
+                                  "—"
+                                }
+                              />
+
+                              <InfoBox
+                                label={text.archiveSize}
+                                value={
+                                  point.archive_size_bytes === null ||
+                                  point.archive_size_bytes === undefined
+                                    ? "—"
+                                    : formatBytes(
+                                        point.archive_size_bytes
+                                      )
+                                }
+                              />
+
+                              <InfoBox
+                                label={text.integrity}
+                                value={`${text.mainDb}: ${
+                                  point.main_integrity ||
+                                  "—"
+                                } · ${text.piiDb}: ${
+                                  point.pii_integrity ||
+                                  "—"
+                                }`}
+                              />
+                            </div>
+                          </div>
+                        )
+                      )}
                     </div>
                   )}
                 </div>
