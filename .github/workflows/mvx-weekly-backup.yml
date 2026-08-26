@@ -1,0 +1,255 @@
+name: MVX Weekly Encrypted Backup
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "30 3 * * 0"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mvx-weekly-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      MEGA_SESSION: ${{ secrets.MEGA_SESSION }}
+      MVX_BACKUP_ENCRYPTION_PASSWORD: ${{ secrets.MVX_BACKUP_ENCRYPTION_PASSWORD }}
+
+      MAIN_DB: housing-db
+      PII_DB: housing-pii-db
+      R2_BUCKET: mvx-water-meter-certificates
+      MEGA_DESTINATION: /MVX-Backups
+      WRANGLER_VERSION: 4.126.0
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install required tools
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          sudo apt-get update
+          sudo apt-get install -y sqlite3 curl ca-certificates openssl tar
+
+          curl -fsSL \
+            https://mega.nz/linux/repo/xUbuntu_22.04/amd64/megacmd-xUbuntu_22.04_amd64.deb \
+            -o /tmp/megacmd.deb
+
+          sudo apt-get install -y /tmp/megacmd.deb
+
+          sqlite3 --version
+          openssl version
+          mega-version
+          npx --yes wrangler@"$WRANGLER_VERSION" --version
+
+      - name: Create and verify backup
+        id: backup
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+
+          TIMESTAMP="$(date -u +%Y%m%d-%H%M%S)"
+          WORK_DIR="$RUNNER_TEMP/mvx-backup-$TIMESTAMP"
+          BACKUP_DIR="$WORK_DIR/backup-$TIMESTAMP"
+          R2_DIR="$BACKUP_DIR/r2"
+          MAIN_TEST_DB="$WORK_DIR/housing-db.sqlite"
+          PII_TEST_DB="$WORK_DIR/housing-pii-db.sqlite"
+          R2_KEYS_FILE="$WORK_DIR/r2-keys.txt"
+          ARCHIVE_NAME="backup-$TIMESTAMP.tar.gz.enc"
+          ARCHIVE_PATH="$RUNNER_TEMP/$ARCHIVE_NAME"
+
+          mkdir -p "$BACKUP_DIR" "$R2_DIR"
+
+          echo "Exporting Main D1..."
+          npx --yes wrangler@"$WRANGLER_VERSION" d1 export "$MAIN_DB" \
+            --remote \
+            --skip-confirmation \
+            --output "$BACKUP_DIR/housing-db.sql"
+
+          echo "Exporting PII D1..."
+          npx --yes wrangler@"$WRANGLER_VERSION" d1 export "$PII_DB" \
+            --remote \
+            --skip-confirmation \
+            --output "$BACKUP_DIR/housing-pii-db.sql"
+
+          echo "Validating SQL exports..."
+          sqlite3 "$MAIN_TEST_DB" < "$BACKUP_DIR/housing-db.sql"
+          sqlite3 "$PII_TEST_DB" < "$BACKUP_DIR/housing-pii-db.sql"
+
+          MAIN_INTEGRITY="$(sqlite3 "$MAIN_TEST_DB" "PRAGMA integrity_check;")"
+          PII_INTEGRITY="$(sqlite3 "$PII_TEST_DB" "PRAGMA integrity_check;")"
+
+          if [ "$MAIN_INTEGRITY" != "ok" ]; then
+            echo "Main D1 integrity check failed." >&2
+            exit 1
+          fi
+
+          if [ "$PII_INTEGRITY" != "ok" ]; then
+            echo "PII D1 integrity check failed." >&2
+            exit 1
+          fi
+
+          MAIN_TABLES="$(sqlite3 "$MAIN_TEST_DB" \
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table';")"
+          PII_TABLES="$(sqlite3 "$PII_TEST_DB" \
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table';")"
+
+          echo "Main D1 integrity: ok"
+          echo "PII D1 integrity: ok"
+
+          echo "Collecting referenced R2 certificate objects..."
+          sqlite3 "$MAIN_TEST_DB" "
+          SELECT DISTINCT certificate_file_key
+          FROM water_meter_calibrations
+          WHERE certificate_file_key IS NOT NULL
+            AND TRIM(certificate_file_key) <> ''
+          ORDER BY certificate_file_key;
+          " > "$R2_KEYS_FILE"
+
+          R2_EXPECTED="$(wc -l < "$R2_KEYS_FILE" | tr -d ' ')"
+          R2_BACKED_UP=0
+
+          : > "$BACKUP_DIR/r2-manifest.tsv"
+
+          while IFS= read -r OBJECT_KEY; do
+            [ -n "$OBJECT_KEY" ] || continue
+
+            if [[ "$OBJECT_KEY" = /* ]] || \
+               [[ "$OBJECT_KEY" == "../"* ]] || \
+               [[ "$OBJECT_KEY" == *"/../"* ]] || \
+               [[ "$OBJECT_KEY" == *"/.." ]]; then
+              echo "Unsafe R2 object key detected; backup stopped." >&2
+              exit 1
+            fi
+
+            DEST="$R2_DIR/$OBJECT_KEY"
+            mkdir -p "$(dirname "$DEST")"
+
+            npx --yes wrangler@"$WRANGLER_VERSION" r2 object get \
+              "$R2_BUCKET/$OBJECT_KEY" \
+              --remote \
+              --file "$DEST"
+
+            FILE_SIZE="$(stat -c '%s' "$DEST")"
+            FILE_SHA256="$(sha256sum "$DEST" | awk '{print $1}')"
+
+            printf '%s\t%s\t%s\n' \
+              "$OBJECT_KEY" \
+              "$FILE_SIZE" \
+              "$FILE_SHA256" \
+              >> "$BACKUP_DIR/r2-manifest.tsv"
+
+            R2_BACKED_UP=$((R2_BACKED_UP + 1))
+          done < "$R2_KEYS_FILE"
+
+          if [ "$R2_BACKED_UP" -ne "$R2_EXPECTED" ]; then
+            echo "R2 object count mismatch." >&2
+            exit 1
+          fi
+
+          MAIN_SHA256="$(sha256sum "$BACKUP_DIR/housing-db.sql" | awk '{print $1}')"
+          PII_SHA256="$(sha256sum "$BACKUP_DIR/housing-pii-db.sql" | awk '{print $1}')"
+
+          cat > "$BACKUP_DIR/manifest.txt" <<EOF
+          MVX Backup Manifest
+          Created: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          Type: weekly-github-actions
+
+          Main D1
+            database: $MAIN_DB
+            file: housing-db.sql
+            integrity_check: $MAIN_INTEGRITY
+            tables: $MAIN_TABLES
+            sha256: $MAIN_SHA256
+
+          PII D1
+            database: $PII_DB
+            file: housing-pii-db.sql
+            integrity_check: $PII_INTEGRITY
+            tables: $PII_TABLES
+            sha256: $PII_SHA256
+
+          R2
+            bucket: $R2_BUCKET
+            referenced_objects: $R2_EXPECTED
+            backed_up_objects: $R2_BACKED_UP
+            manifest: r2-manifest.tsv
+
+          Required Worker secrets for disaster recovery
+            JWT_SECRET
+            PII_ENCRYPTION_KEY
+            PII_HMAC_KEY
+            VAPID_PRIVATE_KEY
+
+          Secret values are intentionally NOT included in this backup.
+          EOF
+
+          (
+            cd "$BACKUP_DIR"
+            find . -type f \
+              ! -name SHA256SUMS \
+              -print0 \
+              | sort -z \
+              | xargs -0 sha256sum \
+              > SHA256SUMS
+          )
+
+          echo "Creating encrypted archive..."
+          tar -C "$WORK_DIR" -czf - "backup-$TIMESTAMP" \
+            | openssl enc -aes-256-cbc \
+                -salt \
+                -pbkdf2 \
+                -iter 200000 \
+                -pass env:MVX_BACKUP_ENCRYPTION_PASSWORD \
+                -out "$ARCHIVE_PATH"
+
+          test -s "$ARCHIVE_PATH"
+
+          ARCHIVE_SHA256="$(sha256sum "$ARCHIVE_PATH" | awk '{print $1}')"
+          ARCHIVE_SIZE="$(stat -c '%s' "$ARCHIVE_PATH")"
+
+          echo "Backup archive created."
+          echo "Archive size: $ARCHIVE_SIZE bytes"
+          echo "Archive SHA-256: $ARCHIVE_SHA256"
+
+          echo "archive_name=$ARCHIVE_NAME" >> "$GITHUB_OUTPUT"
+          echo "archive_path=$ARCHIVE_PATH" >> "$GITHUB_OUTPUT"
+
+          rm -rf "$WORK_DIR"
+
+      - name: Upload encrypted backup to MEGA
+        shell: bash
+        env:
+          ARCHIVE_NAME: ${{ steps.backup.outputs.archive_name }}
+          ARCHIVE_PATH: ${{ steps.backup.outputs.archive_path }}
+        run: |
+          set -euo pipefail
+
+          mega-login "$MEGA_SESSION"
+          mega-put "$ARCHIVE_PATH" "$MEGA_DESTINATION/"
+
+          echo "Verifying uploaded backup is visible in MEGA..."
+          mega-ls -l "$MEGA_DESTINATION" | grep -F "$ARCHIVE_NAME"
+
+      - name: Remove local encrypted archive
+        if: always()
+        shell: bash
+        env:
+          ARCHIVE_PATH: ${{ steps.backup.outputs.archive_path }}
+        run: |
+          set -euo pipefail
+
+          if [ -n "${ARCHIVE_PATH:-}" ] && [ -f "$ARCHIVE_PATH" ]; then
+            rm -f "$ARCHIVE_PATH"
+          fi
