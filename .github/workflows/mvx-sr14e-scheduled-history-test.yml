@@ -1,0 +1,215 @@
+name: MVX SR14E Scheduled History Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      test_mode:
+        description: "Simulated scheduled result"
+        required: true
+        default: "success"
+        type: choice
+        options:
+          - success
+          - skipped
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mvx-sr14e-scheduled-history-test
+  cancel-in-progress: false
+
+jobs:
+  scheduled-history-test:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      MAIN_DB: housing-db
+      WRANGLER_VERSION: 4.126.0
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Create simulated scheduled backup run
+        id: create_run
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          NOW_ISO="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+
+          INSERT_JSON="$(
+            npx --yes wrangler@"$WRANGLER_VERSION" d1 execute "$MAIN_DB" \
+              --remote \
+              --command "
+                INSERT INTO backup_runs (
+                  trigger_type,
+                  status,
+                  requested_by,
+                  github_run_id,
+                  created_at,
+                  updated_at
+                )
+                VALUES (
+                  'scheduled',
+                  'requested',
+                  NULL,
+                  '$GITHUB_RUN_ID',
+                  '$NOW_ISO',
+                  '$NOW_ISO'
+                )
+                RETURNING id;
+              " \
+              --json
+          )"
+
+          BACKUP_RUN_ID="$(
+            printf '%s' "$INSERT_JSON" | node -e '
+              let input = "";
+              process.stdin.on("data", chunk => input += chunk);
+              process.stdin.on("end", () => {
+                const data = JSON.parse(input);
+                const root = Array.isArray(data) ? data[0] : data;
+                const row =
+                  root?.results?.[0] ??
+                  root?.result?.[0]?.results?.[0] ??
+                  null;
+
+                const id = Number(row?.id);
+
+                if (!Number.isInteger(id) || id <= 0) {
+                  console.error("test backup_run id not returned");
+                  process.exit(2);
+                }
+
+                process.stdout.write(String(id));
+              });
+            '
+          )"
+
+          echo "backup_run_id=$BACKUP_RUN_ID" >> "$GITHUB_OUTPUT"
+          echo "Created test backup_runs row: $BACKUP_RUN_ID"
+
+      - name: Mark simulated scheduled backup as running
+        if: inputs.test_mode == 'success'
+        shell: bash
+        env:
+          BACKUP_RUN_ID: ${{ steps.create_run.outputs.backup_run_id }}
+        run: |
+          set -euo pipefail
+
+          if [[ ! "$BACKUP_RUN_ID" =~ ^[1-9][0-9]*$ ]]; then
+            echo "Invalid backup_run_id." >&2
+            exit 1
+          fi
+
+          NOW_ISO="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+
+          npx --yes wrangler@"$WRANGLER_VERSION" d1 execute "$MAIN_DB" \
+            --remote \
+            --command "
+              UPDATE backup_runs
+              SET
+                status = 'running',
+                started_at = '$NOW_ISO',
+                updated_at = '$NOW_ISO'
+              WHERE id = $BACKUP_RUN_ID
+                AND trigger_type = 'scheduled'
+                AND status = 'requested';
+            "
+
+      - name: Mark simulated scheduled backup as successful
+        if: inputs.test_mode == 'success'
+        shell: bash
+        env:
+          BACKUP_RUN_ID: ${{ steps.create_run.outputs.backup_run_id }}
+        run: |
+          set -euo pipefail
+
+          if [[ ! "$BACKUP_RUN_ID" =~ ^[1-9][0-9]*$ ]]; then
+            echo "Invalid backup_run_id." >&2
+            exit 1
+          fi
+
+          NOW_ISO="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+          TEST_ARCHIVE="sr14e-test-$GITHUB_RUN_ID.tar.gz.enc"
+          TEST_SHA256="0000000000000000000000000000000000000000000000000000000000000000"
+
+          npx --yes wrangler@"$WRANGLER_VERSION" d1 execute "$MAIN_DB" \
+            --remote \
+            --command "
+              UPDATE backup_runs
+              SET
+                status = 'success',
+                completed_at = '$NOW_ISO',
+                archive_name = '$TEST_ARCHIVE',
+                archive_size_bytes = 1,
+                archive_sha256 = '$TEST_SHA256',
+                r2_object_count = 0,
+                main_integrity = 'ok',
+                pii_integrity = 'ok',
+                failure_code = NULL,
+                updated_at = '$NOW_ISO'
+              WHERE id = $BACKUP_RUN_ID
+                AND trigger_type = 'scheduled'
+                AND status = 'running';
+            "
+
+      - name: Mark simulated scheduled backup as skipped
+        if: inputs.test_mode == 'skipped'
+        shell: bash
+        env:
+          BACKUP_RUN_ID: ${{ steps.create_run.outputs.backup_run_id }}
+        run: |
+          set -euo pipefail
+
+          if [[ ! "$BACKUP_RUN_ID" =~ ^[1-9][0-9]*$ ]]; then
+            echo "Invalid backup_run_id." >&2
+            exit 1
+          fi
+
+          NOW_ISO="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+
+          npx --yes wrangler@"$WRANGLER_VERSION" d1 execute "$MAIN_DB" \
+            --remote \
+            --command "
+              UPDATE backup_runs
+              SET
+                status = 'skipped',
+                completed_at = '$NOW_ISO',
+                failure_code = NULL,
+                updated_at = '$NOW_ISO'
+              WHERE id = $BACKUP_RUN_ID
+                AND trigger_type = 'scheduled'
+                AND status = 'requested';
+            "
+
+      - name: Show test result
+        shell: bash
+        env:
+          BACKUP_RUN_ID: ${{ steps.create_run.outputs.backup_run_id }}
+        run: |
+          set -euo pipefail
+
+          npx --yes wrangler@"$WRANGLER_VERSION" d1 execute "$MAIN_DB" \
+            --remote \
+            --command "
+              SELECT
+                id,
+                trigger_type,
+                status,
+                requested_by,
+                github_run_id,
+                started_at,
+                completed_at,
+                archive_name,
+                failure_code,
+                created_at,
+                updated_at
+              FROM backup_runs
+              WHERE id = $BACKUP_RUN_ID;
+            "
