@@ -15,6 +15,10 @@ jobs:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
     steps:
-      - name: Check Cloudflare access
+      - name: Check D1 access
         run: |
           npx --yes wrangler@4.126.0 d1 list
+
+      - name: Check R2 read access
+        run: |
+          npx --yes wrangler@4.126.0 r2 bucket info mvx-water-meter-certificates
