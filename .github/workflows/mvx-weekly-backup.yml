@@ -22,7 +22,6 @@ jobs:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       MEGA_SESSION: ${{ secrets.MEGA_SESSION }}
       MVX_BACKUP_ENCRYPTION_PASSWORD: ${{ secrets.MVX_BACKUP_ENCRYPTION_PASSWORD }}
-
       MAIN_DB: housing-db
       PII_DB: housing-pii-db
       R2_BUCKET: mvx-water-meter-certificates
@@ -33,7 +32,63 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Check automatic backup setting
+        id: auto
+        if: github.event_name == 'schedule'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "Reading automatic backup setting from Main D1..."
+
+          SETTING_JSON="$(
+            npx --yes wrangler@"$WRANGLER_VERSION" d1 execute "$MAIN_DB" \
+              --remote \
+              --command "SELECT automatic_enabled FROM backup_settings WHERE id = 1;" \
+              --json
+          )"
+
+          AUTOMATIC_ENABLED="$(
+            printf '%s' "$SETTING_JSON" | node -e '
+              let input = "";
+              process.stdin.on("data", chunk => input += chunk);
+              process.stdin.on("end", () => {
+                const data = JSON.parse(input);
+                const root = Array.isArray(data) ? data[0] : data;
+                const row =
+                  root?.results?.[0] ??
+                  root?.result?.[0]?.results?.[0] ??
+                  null;
+
+                if (!row || !Object.prototype.hasOwnProperty.call(row, "automatic_enabled")) {
+                  console.error("backup_settings row not found");
+                  process.exit(2);
+                }
+
+                const enabled = Number(row.automatic_enabled) === 1;
+                process.stdout.write(enabled ? "true" : "false");
+              });
+            '
+          )"
+
+          echo "automatic_enabled=$AUTOMATIC_ENABLED"
+
+          if [ "$AUTOMATIC_ENABLED" = "true" ]; then
+            echo "Scheduled backup is enabled."
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Scheduled backup is disabled in MVX Admin settings."
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Automatic backup disabled
+        if: github.event_name == 'schedule' && steps.auto.outputs.should_run == 'false'
+        shell: bash
+        run: |
+          echo "Scheduled MVX backup skipped because automatic backup is disabled."
+
       - name: Install required tools
+        if: github.event_name == 'workflow_dispatch' || steps.auto.outputs.should_run == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -54,6 +109,7 @@ jobs:
 
       - name: Create and verify backup
         id: backup
+        if: github.event_name == 'workflow_dispatch' || steps.auto.outputs.should_run == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -72,18 +128,21 @@ jobs:
           mkdir -p "$BACKUP_DIR" "$R2_DIR"
 
           echo "Exporting Main D1..."
+
           npx --yes wrangler@"$WRANGLER_VERSION" d1 export "$MAIN_DB" \
             --remote \
             --skip-confirmation \
             --output "$BACKUP_DIR/housing-db.sql"
 
           echo "Exporting PII D1..."
+
           npx --yes wrangler@"$WRANGLER_VERSION" d1 export "$PII_DB" \
             --remote \
             --skip-confirmation \
             --output "$BACKUP_DIR/housing-pii-db.sql"
 
           echo "Validating SQL exports..."
+
           sqlite3 "$MAIN_TEST_DB" < "$BACKUP_DIR/housing-db.sql"
           sqlite3 "$PII_TEST_DB" < "$BACKUP_DIR/housing-pii-db.sql"
 
@@ -100,15 +159,21 @@ jobs:
             exit 1
           fi
 
-          MAIN_TABLES="$(sqlite3 "$MAIN_TEST_DB" \
-            "SELECT COUNT(*) FROM sqlite_master WHERE type='table';")"
-          PII_TABLES="$(sqlite3 "$PII_TEST_DB" \
-            "SELECT COUNT(*) FROM sqlite_master WHERE type='table';")"
+          MAIN_TABLES="$(
+            sqlite3 "$MAIN_TEST_DB" \
+              "SELECT COUNT(*) FROM sqlite_master WHERE type='table';"
+          )"
+
+          PII_TABLES="$(
+            sqlite3 "$PII_TEST_DB" \
+              "SELECT COUNT(*) FROM sqlite_master WHERE type='table';"
+          )"
 
           echo "Main D1 integrity: ok"
           echo "PII D1 integrity: ok"
 
           echo "Collecting referenced R2 certificate objects..."
+
           sqlite3 "$MAIN_TEST_DB" "
           SELECT DISTINCT certificate_file_key
           FROM water_meter_calibrations
@@ -158,8 +223,13 @@ jobs:
             exit 1
           fi
 
-          MAIN_SHA256="$(sha256sum "$BACKUP_DIR/housing-db.sql" | awk '{print $1}')"
-          PII_SHA256="$(sha256sum "$BACKUP_DIR/housing-pii-db.sql" | awk '{print $1}')"
+          MAIN_SHA256="$(
+            sha256sum "$BACKUP_DIR/housing-db.sql" | awk '{print $1}'
+          )"
+
+          PII_SHA256="$(
+            sha256sum "$BACKUP_DIR/housing-pii-db.sql" | awk '{print $1}'
+          )"
 
           cat > "$BACKUP_DIR/manifest.txt" <<EOF
           MVX Backup Manifest
@@ -197,6 +267,7 @@ jobs:
 
           (
             cd "$BACKUP_DIR"
+
             find . -type f \
               ! -name SHA256SUMS \
               -print0 \
@@ -206,6 +277,7 @@ jobs:
           )
 
           echo "Creating encrypted archive..."
+
           tar -C "$WORK_DIR" -czf - "backup-$TIMESTAMP" \
             | openssl enc -aes-256-cbc \
                 -salt \
@@ -216,8 +288,13 @@ jobs:
 
           test -s "$ARCHIVE_PATH"
 
-          ARCHIVE_SHA256="$(sha256sum "$ARCHIVE_PATH" | awk '{print $1}')"
-          ARCHIVE_SIZE="$(stat -c '%s' "$ARCHIVE_PATH")"
+          ARCHIVE_SHA256="$(
+            sha256sum "$ARCHIVE_PATH" | awk '{print $1}'
+          )"
+
+          ARCHIVE_SIZE="$(
+            stat -c '%s' "$ARCHIVE_PATH"
+          )"
 
           echo "Backup archive created."
           echo "Archive size: $ARCHIVE_SIZE bytes"
@@ -229,6 +306,7 @@ jobs:
           rm -rf "$WORK_DIR"
 
       - name: Upload encrypted backup to MEGA
+        if: github.event_name == 'workflow_dispatch' || steps.auto.outputs.should_run == 'true'
         shell: bash
         env:
           ARCHIVE_NAME: ${{ steps.backup.outputs.archive_name }}
@@ -240,10 +318,11 @@ jobs:
           mega-put "$ARCHIVE_PATH" "$MEGA_DESTINATION/"
 
           echo "Verifying uploaded backup is visible in MEGA..."
+
           mega-ls -l "$MEGA_DESTINATION" | grep -F "$ARCHIVE_NAME"
 
       - name: Remove local encrypted archive
-        if: always()
+        if: always() && (github.event_name == 'workflow_dispatch' || steps.auto.outputs.should_run == 'true')
         shell: bash
         env:
           ARCHIVE_PATH: ${{ steps.backup.outputs.archive_path }}

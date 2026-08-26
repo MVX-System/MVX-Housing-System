@@ -3409,6 +3409,313 @@ async function getWaterReportingSettings(env) {
     .first();
 }
 
+
+// =========================
+// BACKUP STATUS MODEL
+// Stage 2I-SR14B:
+// Read-only helpers for Admin Backup Management.
+// No secrets, MEGA credentials, API tokens, or encryption passwords
+// are stored or returned by this subsystem.
+// =========================
+
+const BACKUP_SETTINGS_ID = 1;
+const BACKUP_RUNS_DEFAULT_LIMIT = 20;
+const BACKUP_RUNS_MAX_LIMIT = 100;
+
+async function ensureBackupStatusTables(env) {
+  await env.DB.prepare(`
+    CREATE TABLE IF NOT EXISTS backup_settings (
+      id INTEGER PRIMARY KEY,
+      automatic_enabled INTEGER NOT NULL DEFAULT 1
+        CHECK (automatic_enabled IN (0, 1)),
+      updated_by INTEGER,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (updated_by)
+        REFERENCES users(id)
+        ON DELETE SET NULL
+    )
+  `).run();
+
+  await env.DB.prepare(`
+    INSERT OR IGNORE INTO backup_settings (
+      id,
+      automatic_enabled
+    )
+    VALUES (?, 1)
+  `)
+    .bind(BACKUP_SETTINGS_ID)
+    .run();
+
+  await env.DB.prepare(`
+    CREATE TABLE IF NOT EXISTS backup_runs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      trigger_type TEXT NOT NULL
+        CHECK (
+          trigger_type IN (
+            'scheduled',
+            'manual'
+          )
+        ),
+      status TEXT NOT NULL
+        CHECK (
+          status IN (
+            'requested',
+            'running',
+            'success',
+            'failed',
+            'skipped'
+          )
+        ),
+      requested_by INTEGER,
+      github_run_id TEXT UNIQUE,
+      started_at TEXT,
+      completed_at TEXT,
+      archive_name TEXT,
+      archive_size_bytes INTEGER,
+      archive_sha256 TEXT,
+      r2_object_count INTEGER,
+      main_integrity TEXT,
+      pii_integrity TEXT,
+      failure_code TEXT,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (requested_by)
+        REFERENCES users(id)
+        ON DELETE SET NULL
+    )
+  `).run();
+
+  await env.DB.prepare(`
+    CREATE INDEX IF NOT EXISTS idx_backup_runs_created_at
+    ON backup_runs(created_at)
+  `).run();
+
+  await env.DB.prepare(`
+    CREATE INDEX IF NOT EXISTS idx_backup_runs_status
+    ON backup_runs(status)
+  `).run();
+
+  await env.DB.prepare(`
+    CREATE INDEX IF NOT EXISTS idx_backup_runs_trigger_type
+    ON backup_runs(trigger_type)
+  `).run();
+}
+
+async function getBackupSettings(env) {
+  await ensureBackupStatusTables(env);
+
+  const row =
+    await env.DB.prepare(`
+      SELECT
+        id,
+        automatic_enabled,
+        updated_by,
+        created_at,
+        updated_at
+      FROM backup_settings
+      WHERE id = ?
+      LIMIT 1
+    `)
+      .bind(BACKUP_SETTINGS_ID)
+      .first();
+
+  if (!row) {
+    return null;
+  }
+
+  return {
+    ...row,
+    automatic_enabled:
+      Number(
+        row.automatic_enabled
+      ) === 1,
+  };
+}
+
+function normalizeBackupRunRow(row) {
+  if (!row) {
+    return null;
+  }
+
+  return {
+    id:
+      Number(row.id),
+    trigger_type:
+      row.trigger_type,
+    status:
+      row.status,
+    requested_by:
+      row.requested_by === null ||
+      row.requested_by === undefined
+        ? null
+        : Number(
+            row.requested_by
+          ),
+    requested_by_nick:
+      row.requested_by_nick ||
+      null,
+    github_run_id:
+      row.github_run_id ||
+      null,
+    started_at:
+      row.started_at ||
+      null,
+    completed_at:
+      row.completed_at ||
+      null,
+    archive_name:
+      row.archive_name ||
+      null,
+    archive_size_bytes:
+      row.archive_size_bytes === null ||
+      row.archive_size_bytes === undefined
+        ? null
+        : Number(
+            row.archive_size_bytes
+          ),
+    archive_sha256:
+      row.archive_sha256 ||
+      null,
+    r2_object_count:
+      row.r2_object_count === null ||
+      row.r2_object_count === undefined
+        ? null
+        : Number(
+            row.r2_object_count
+          ),
+    main_integrity:
+      row.main_integrity ||
+      null,
+    pii_integrity:
+      row.pii_integrity ||
+      null,
+    failure_code:
+      row.failure_code ||
+      null,
+    created_at:
+      row.created_at,
+    updated_at:
+      row.updated_at,
+  };
+}
+
+async function getBackupRuns(
+  env,
+  limit =
+    BACKUP_RUNS_DEFAULT_LIMIT
+) {
+  await ensureBackupStatusTables(env);
+
+  const normalizedLimit =
+    normalizeIntegerInRange(
+      limit,
+      {
+        min: 1,
+        max:
+          BACKUP_RUNS_MAX_LIMIT,
+        fallback:
+          BACKUP_RUNS_DEFAULT_LIMIT,
+      }
+    );
+
+  const safeLimit =
+    normalizedLimit ??
+    BACKUP_RUNS_DEFAULT_LIMIT;
+
+  const result =
+    await env.DB.prepare(`
+      SELECT
+        br.id,
+        br.trigger_type,
+        br.status,
+        br.requested_by,
+        requester.nick
+          AS requested_by_nick,
+        br.github_run_id,
+        br.started_at,
+        br.completed_at,
+        br.archive_name,
+        br.archive_size_bytes,
+        br.archive_sha256,
+        br.r2_object_count,
+        br.main_integrity,
+        br.pii_integrity,
+        br.failure_code,
+        br.created_at,
+        br.updated_at
+      FROM backup_runs br
+      LEFT JOIN users requester
+        ON requester.id =
+          br.requested_by
+      ORDER BY
+        datetime(br.created_at)
+          DESC,
+        br.id DESC
+      LIMIT ?
+    `)
+      .bind(safeLimit)
+      .all();
+
+  return (
+    result.results || []
+  ).map(
+    normalizeBackupRunRow
+  );
+}
+
+async function getLatestBackupRun(
+  env,
+  {
+    successfulOnly = false,
+  } = {}
+) {
+  await ensureBackupStatusTables(env);
+
+  const statusClause =
+    successfulOnly
+      ? "WHERE br.status = 'success'"
+      : "";
+
+  const row =
+    await env.DB.prepare(`
+      SELECT
+        br.id,
+        br.trigger_type,
+        br.status,
+        br.requested_by,
+        requester.nick
+          AS requested_by_nick,
+        br.github_run_id,
+        br.started_at,
+        br.completed_at,
+        br.archive_name,
+        br.archive_size_bytes,
+        br.archive_sha256,
+        br.r2_object_count,
+        br.main_integrity,
+        br.pii_integrity,
+        br.failure_code,
+        br.created_at,
+        br.updated_at
+      FROM backup_runs br
+      LEFT JOIN users requester
+        ON requester.id =
+          br.requested_by
+      ${statusClause}
+      ORDER BY
+        datetime(br.created_at)
+          DESC,
+        br.id DESC
+      LIMIT 1
+    `)
+      .first();
+
+  return normalizeBackupRunRow(
+    row
+  );
+}
+
 function getDatePartsInTimeZone(date, timeZone) {
   const formatter = new Intl.DateTimeFormat("en-CA", {
     timeZone,
@@ -8921,6 +9228,237 @@ Router.register("POST", "/api/correct-water-reading", async (ctx) => {
       reading.reporting_period_id
   };
 });
+
+// =========================
+// ADMIN BACKUP MANAGEMENT
+// Stage 2I-SR14B:
+// Read-only backup status and run history.
+// The application does not expose backup credentials or secrets.
+// =========================
+
+Router.register(
+  "GET",
+  "/api/admin/backup/status",
+  async (ctx) => {
+    const admin =
+      await Auth.requireAdmin(ctx);
+
+    if (!admin) {
+      return {
+        error: "forbidden"
+      };
+    }
+
+    const [
+      settings,
+      lastRun,
+      lastSuccessfulRun,
+    ] =
+      await Promise.all([
+        getBackupSettings(
+          ctx.env
+        ),
+        getLatestBackupRun(
+          ctx.env
+        ),
+        getLatestBackupRun(
+          ctx.env,
+          {
+            successfulOnly:
+              true,
+          }
+        ),
+      ]);
+
+    return {
+      ok: true,
+
+      settings,
+
+      last_run:
+        lastRun,
+
+      last_successful_run:
+        lastSuccessfulRun,
+
+      protection: {
+        main_d1_time_travel: {
+          enabled: true,
+          database:
+            "housing-db",
+        },
+
+        pii_d1_time_travel: {
+          enabled: true,
+          database:
+            "housing-pii-db",
+        },
+
+        r2_bucket_lock: {
+          enabled: true,
+          bucket:
+            "mvx-water-meter-certificates",
+          retention_days: 90,
+        },
+
+        offsite_backup: {
+          enabled: true,
+          provider:
+            "MEGA",
+          destination:
+            "/MVX-Backups",
+          schedule:
+            "weekly",
+          schedule_utc:
+            "Sunday 03:30",
+        },
+      },
+    };
+  }
+);
+
+Router.register(
+  "GET",
+  "/api/admin/backup/runs",
+  async (ctx) => {
+    const admin =
+      await Auth.requireAdmin(ctx);
+
+    if (!admin) {
+      return {
+        error: "forbidden"
+      };
+    }
+
+    const rawLimit =
+      ctx.url.searchParams.get(
+        "limit"
+      );
+
+    const limit =
+      rawLimit === null
+        ? BACKUP_RUNS_DEFAULT_LIMIT
+        : normalizeIntegerInRange(
+            rawLimit,
+            {
+              min: 1,
+              max:
+                BACKUP_RUNS_MAX_LIMIT,
+              fallback: null,
+            }
+          );
+
+    if (limit === null) {
+      return {
+        error:
+          "invalid_backup_runs_limit"
+      };
+    }
+
+    return {
+      ok: true,
+      limit,
+      runs:
+        await getBackupRuns(
+          ctx.env,
+          limit
+        ),
+    };
+  }
+);
+
+
+Router.register(
+  "POST",
+  "/api/admin/backup/settings",
+  async (ctx) => {
+    const admin =
+      await Auth.requireAdmin(ctx);
+
+    if (!admin) {
+      return {
+        error: "forbidden"
+      };
+    }
+
+    const body =
+      await ctx.request
+        .json()
+        .catch(() => ({}));
+
+    if (
+      typeof body
+        .automatic_enabled !==
+      "boolean"
+    ) {
+      return {
+        error:
+          "invalid_automatic_enabled"
+      };
+    }
+
+    await ensureBackupStatusTables(
+      ctx.env
+    );
+
+    const automaticEnabled =
+      body.automatic_enabled
+        ? 1
+        : 0;
+
+    const nowIso =
+      new Date()
+        .toISOString();
+
+    await ctx.env.DB.prepare(`
+      UPDATE backup_settings
+      SET
+        automatic_enabled = ?,
+        updated_by = ?,
+        updated_at = ?
+      WHERE id = ?
+    `)
+      .bind(
+        automaticEnabled,
+        admin.user_id,
+        nowIso,
+        BACKUP_SETTINGS_ID
+      )
+      .run();
+
+    await SecurityAudit.recordSafe(
+      ctx,
+      {
+        actorUserId:
+          admin.user_id,
+        action:
+          "admin.backup_settings_update",
+        targetType:
+          "backup_settings",
+        targetId:
+          String(
+            BACKUP_SETTINGS_ID
+          ),
+        details: {
+          automatic_enabled:
+            Boolean(
+              body
+                .automatic_enabled
+            ),
+        },
+      }
+    );
+
+    return {
+      ok: true,
+      settings:
+        await getBackupSettings(
+          ctx.env
+        ),
+    };
+  }
+);
+
 
 // =========================
 // ADMIN WATER REPORTING SETTINGS
