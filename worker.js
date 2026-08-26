@@ -3422,6 +3422,12 @@ const BACKUP_SETTINGS_ID = 1;
 const BACKUP_RUNS_DEFAULT_LIMIT = 20;
 const BACKUP_RUNS_MAX_LIMIT = 100;
 
+// Stage 2I-SR14F-A:
+// Read-only restore catalogue.
+// No restore endpoint or destructive operation is exposed here.
+const RESTORE_POINTS_DEFAULT_LIMIT = 20;
+const RESTORE_POINTS_MAX_LIMIT = 100;
+
 async function ensureBackupStatusTables(env) {
   await env.DB.prepare(`
     CREATE TABLE IF NOT EXISTS backup_settings (
@@ -3813,6 +3819,365 @@ function getGitHubBackupConfiguration(
     workflow,
     token,
   };
+}
+
+
+// =========================
+// RESTORE STATUS HELPERS
+// Stage 2I-SR14F-A
+//
+// This subsystem is deliberately read-only.
+// It can:
+// - read current D1 Time Travel bookmarks through Cloudflare API;
+// - list successful encrypted offsite backups recorded in Main D1.
+//
+// It cannot:
+// - restore D1;
+// - import an archive;
+// - overwrite any database;
+// - mutate backup history.
+//
+// Cloudflare API token should have D1 Read only.
+// =========================
+
+function getCloudflareD1ReadConfiguration(
+  env
+) {
+  const accountId =
+    String(
+      env?.CLOUDFLARE_ACCOUNT_ID ||
+      ""
+    ).trim();
+
+  const mainDatabaseId =
+    String(
+      env?.MAIN_D1_DATABASE_ID ||
+      ""
+    ).trim();
+
+  const piiDatabaseId =
+    String(
+      env?.PII_D1_DATABASE_ID ||
+      ""
+    ).trim();
+
+  const apiToken =
+    String(
+      env?.CLOUDFLARE_D1_READ_TOKEN ||
+      ""
+    ).trim();
+
+  const configured =
+    Boolean(
+      accountId &&
+      mainDatabaseId &&
+      piiDatabaseId &&
+      apiToken
+    );
+
+  return {
+    configured,
+    account_id:
+      accountId || null,
+    main_database_id:
+      mainDatabaseId || null,
+    pii_database_id:
+      piiDatabaseId || null,
+    api_token:
+      apiToken || null,
+  };
+}
+
+function getConfiguredTimeTravelWindowDays(
+  env
+) {
+  const raw =
+    String(
+      env?.D1_TIME_TRAVEL_WINDOW_DAYS ||
+      ""
+    ).trim();
+
+  if (!raw) {
+    return null;
+  }
+
+  const value =
+    Number(raw);
+
+  if (
+    !Number.isInteger(value) ||
+    value < 1 ||
+    value > 30
+  ) {
+    return null;
+  }
+
+  return value;
+}
+
+async function getD1TimeTravelBookmark(
+  {
+    accountId,
+    databaseId,
+    apiToken,
+    databaseName,
+  }
+) {
+  const checkedAt =
+    new Date().toISOString();
+
+  if (
+    !accountId ||
+    !databaseId ||
+    !apiToken
+  ) {
+    return {
+      database:
+        databaseName,
+      database_id:
+        databaseId || null,
+      available: false,
+      bookmark: null,
+      checked_at:
+        checkedAt,
+      error:
+        "time_travel_status_not_configured",
+    };
+  }
+
+  const url =
+    `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(
+      accountId
+    )}/d1/database/${encodeURIComponent(
+      databaseId
+    )}/time_travel/bookmark`;
+
+  let response;
+
+  try {
+    response =
+      await fetch(
+        url,
+        {
+          method: "GET",
+          headers: {
+            "Authorization":
+              `Bearer ${apiToken}`,
+            "Accept":
+              "application/json",
+          },
+        }
+      );
+  } catch (error) {
+    App.logError(
+      "restore_status_cloudflare_request_error",
+      error,
+      {
+        database:
+          databaseName,
+      }
+    );
+
+    return {
+      database:
+        databaseName,
+      database_id:
+        databaseId,
+      available: false,
+      bookmark: null,
+      checked_at:
+        checkedAt,
+      error:
+        "time_travel_status_unavailable",
+    };
+  }
+
+  if (!response.ok) {
+    App.logError(
+      "restore_status_cloudflare_response_error",
+      new Error(
+        "cloudflare_api_rejected"
+      ),
+      {
+        database:
+          databaseName,
+        cloudflare_status:
+          Number(
+            response.status
+          ),
+      }
+    );
+
+    return {
+      database:
+        databaseName,
+      database_id:
+        databaseId,
+      available: false,
+      bookmark: null,
+      checked_at:
+        checkedAt,
+      error:
+        "time_travel_status_unavailable",
+    };
+  }
+
+  const payload =
+    await response
+      .json()
+      .catch(() => null);
+
+  const bookmark =
+    String(
+      payload?.result?.bookmark ||
+      ""
+    ).trim();
+
+  if (
+    payload?.success !== true ||
+    !bookmark
+  ) {
+    return {
+      database:
+        databaseName,
+      database_id:
+        databaseId,
+      available: false,
+      bookmark: null,
+      checked_at:
+        checkedAt,
+      error:
+        "time_travel_bookmark_missing",
+    };
+  }
+
+  return {
+    database:
+      databaseName,
+    database_id:
+      databaseId,
+    available: true,
+    bookmark,
+    checked_at:
+      checkedAt,
+    error: null,
+  };
+}
+
+async function getOffsiteRestorePoints(
+  env,
+  limit =
+    RESTORE_POINTS_DEFAULT_LIMIT
+) {
+  await ensureBackupStatusTables(
+    env
+  );
+
+  const normalizedLimit =
+    normalizeIntegerInRange(
+      limit,
+      {
+        min: 1,
+        max:
+          RESTORE_POINTS_MAX_LIMIT,
+        fallback:
+          RESTORE_POINTS_DEFAULT_LIMIT,
+      }
+    );
+
+  const safeLimit =
+    normalizedLimit ??
+    RESTORE_POINTS_DEFAULT_LIMIT;
+
+  const result =
+    await env.DB.prepare(`
+      SELECT
+        id,
+        trigger_type,
+        github_run_id,
+        completed_at,
+        archive_name,
+        archive_size_bytes,
+        archive_sha256,
+        r2_object_count,
+        main_integrity,
+        pii_integrity,
+        created_at
+      FROM backup_runs
+      WHERE status = 'success'
+        AND archive_name IS NOT NULL
+        AND TRIM(archive_name) <> ''
+      ORDER BY
+        datetime(
+          COALESCE(
+            completed_at,
+            created_at
+          )
+        ) DESC,
+        id DESC
+      LIMIT ?
+    `)
+      .bind(
+        safeLimit
+      )
+      .all();
+
+  return (
+    result.results || []
+  ).map(
+    (row) => ({
+      backup_run_id:
+        Number(row.id),
+      trigger_type:
+        row.trigger_type,
+      github_run_id:
+        row.github_run_id ||
+        null,
+      completed_at:
+        row.completed_at ||
+        null,
+      archive_name:
+        row.archive_name,
+      archive_size_bytes:
+        row.archive_size_bytes ===
+          null ||
+        row.archive_size_bytes ===
+          undefined
+          ? null
+          : Number(
+              row.archive_size_bytes
+            ),
+      archive_sha256:
+        row.archive_sha256 ||
+        null,
+      r2_object_count:
+        row.r2_object_count ===
+          null ||
+        row.r2_object_count ===
+          undefined
+          ? null
+          : Number(
+              row.r2_object_count
+            ),
+      main_integrity:
+        row.main_integrity ||
+        null,
+      pii_integrity:
+        row.pii_integrity ||
+        null,
+      created_at:
+        row.created_at,
+      restorable:
+        Boolean(
+          row.archive_name &&
+          row.archive_sha256 &&
+          row.main_integrity ===
+            "ok" &&
+          row.pii_integrity ===
+            "ok"
+        ),
+    })
+  );
 }
 
 function getDatePartsInTimeZone(date, timeZone) {
@@ -9902,6 +10267,174 @@ Router.register(
   }
 );
 
+
+
+// =========================
+// ADMIN RESTORE MANAGEMENT
+// Stage 2I-SR14F-A:
+// Read-only restore status and restore-point catalogue.
+//
+// IMPORTANT:
+// There is intentionally no POST restore route in SR14F-A.
+// This endpoint cannot modify D1, R2, MEGA, or backup history.
+// =========================
+Router.register(
+  "GET",
+  "/api/admin/restore/status",
+  async (ctx) => {
+    const admin =
+      await Auth.requireAdmin(ctx);
+
+    if (!admin) {
+      return {
+        error: "forbidden"
+      };
+    }
+
+    const rawLimit =
+      ctx.url.searchParams.get(
+        "limit"
+      );
+
+    const limit =
+      rawLimit === null
+        ? RESTORE_POINTS_DEFAULT_LIMIT
+        : normalizeIntegerInRange(
+            rawLimit,
+            {
+              min: 1,
+              max:
+                RESTORE_POINTS_MAX_LIMIT,
+              fallback: null,
+            }
+          );
+
+    if (limit === null) {
+      return {
+        error:
+          "invalid_restore_points_limit"
+      };
+    }
+
+    const cloudflare =
+      getCloudflareD1ReadConfiguration(
+        ctx.env
+      );
+
+    let mainTimeTravel;
+    let piiTimeTravel;
+
+    if (cloudflare.configured) {
+      [
+        mainTimeTravel,
+        piiTimeTravel,
+      ] =
+        await Promise.all([
+          getD1TimeTravelBookmark({
+            accountId:
+              cloudflare.account_id,
+            databaseId:
+              cloudflare.main_database_id,
+            apiToken:
+              cloudflare.api_token,
+            databaseName:
+              "housing-db",
+          }),
+
+          getD1TimeTravelBookmark({
+            accountId:
+              cloudflare.account_id,
+            databaseId:
+              cloudflare.pii_database_id,
+            apiToken:
+              cloudflare.api_token,
+            databaseName:
+              "housing-pii-db",
+          }),
+        ]);
+    } else {
+      const checkedAt =
+        new Date()
+          .toISOString();
+
+      mainTimeTravel = {
+        database:
+          "housing-db",
+        database_id:
+          cloudflare
+            .main_database_id,
+        available: false,
+        bookmark: null,
+        checked_at:
+          checkedAt,
+        error:
+          "time_travel_status_not_configured",
+      };
+
+      piiTimeTravel = {
+        database:
+          "housing-pii-db",
+        database_id:
+          cloudflare
+            .pii_database_id,
+        available: false,
+        bookmark: null,
+        checked_at:
+          checkedAt,
+        error:
+          "time_travel_status_not_configured",
+      };
+    }
+
+    const restorePoints =
+      await getOffsiteRestorePoints(
+        ctx.env,
+        limit
+      );
+
+    return {
+      ok: true,
+
+      mode:
+        "read_only",
+
+      destructive_operations_exposed:
+        false,
+
+      time_travel: {
+        configured:
+          cloudflare.configured,
+
+        window_days:
+          getConfiguredTimeTravelWindowDays(
+            ctx.env
+          ),
+
+        main:
+          mainTimeTravel,
+
+        pii:
+          piiTimeTravel,
+      },
+
+      offsite: {
+        provider:
+          "MEGA",
+
+        destination:
+          "/MVX-Backups",
+
+        restore_points:
+          restorePoints,
+
+        restore_point_count:
+          restorePoints.length,
+
+        limit,
+      },
+    };
+  }
+);
 
 // =========================
 // ADMIN WATER REPORTING SETTINGS

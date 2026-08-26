@@ -25,7 +25,10 @@
     "VAPID_SUBJECT": "mailto:irlavas20@inbox.lv",
     "GITHUB_OWNER": "MVX-System",
     "GITHUB_REPO": "MVX-Housing-System",
-    "GITHUB_BACKUP_WORKFLOW": "mvx-weekly-backup.yml"
+    "GITHUB_BACKUP_WORKFLOW": "mvx-weekly-backup.yml",
+    "CLOUDFLARE_ACCOUNT_ID": "9b022a12befdc53491eaa8fd72f4f791",
+    "MAIN_D1_DATABASE_ID": "ebf27bcc-9980-4564-afe9-db14e444220f",
+    "PII_D1_DATABASE_ID": "5f20d702-446a-4a22-9d91-7ecbdc931bd0"
   },
   "triggers": {
     "crons": [
