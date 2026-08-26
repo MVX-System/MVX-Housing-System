@@ -137,6 +137,101 @@ const TEXT = {
       "Notification settings could not be updated.",
     notificationsIosHint:
       "On iPhone or iPad, add MVX to the Home Screen and open it from there before enabling notifications.",
+
+    backupSection:
+      "Backup management",
+    backupTitle:
+      "Backup protection",
+    backupHint:
+      "Review backup protection, automatic backup status, and recent backup runs.",
+    automaticBackup:
+      "Automatic backup",
+    automaticOn:
+      "Enabled",
+    automaticOff:
+      "Disabled",
+    backupEnable:
+      "Enable automatic backup",
+    backupDisable:
+      "Disable automatic backup",
+    backupSaving:
+      "Updating backup setting...",
+    backupLoading:
+      "Loading backup status...",
+    backupLoadFailed:
+      "Backup status could not be loaded.",
+    backupSaveFailed:
+      "Automatic backup setting could not be updated.",
+    backupSaved:
+      "Automatic backup setting updated.",
+    createBackup:
+      "Create backup now",
+    creatingBackup:
+      "Starting backup...",
+    backupCreated:
+      "Backup request accepted.",
+    backupCreateFailed:
+      "Backup could not be started.",
+    backupAlreadyRunning:
+      "A backup is already in progress.",
+    lastBackup:
+      "Last backup",
+    lastSuccessfulBackup:
+      "Last successful backup",
+    noBackupRuns:
+      "No backup runs recorded yet.",
+    recentRuns:
+      "Recent backup runs",
+    protection:
+      "Protection",
+    d1Main:
+      "Main D1 Time Travel",
+    d1Pii:
+      "PII D1 Time Travel",
+    r2Protection:
+      "R2 Bucket Lock",
+    offsite:
+      "Offsite backup",
+    retention:
+      "Retention",
+    days:
+      "days",
+    schedule:
+      "Schedule",
+    destination:
+      "Destination",
+    provider:
+      "Provider",
+    statusRequested:
+      "Requested",
+    statusRunning:
+      "Running",
+    statusSuccess:
+      "Success",
+    statusFailed:
+      "Failed",
+    statusSkipped:
+      "Skipped",
+    requestedBy:
+      "Requested by",
+    started:
+      "Started",
+    completed:
+      "Completed",
+    archive:
+      "Archive",
+    archiveSize:
+      "Archive size",
+    integrity:
+      "Integrity",
+    mainDb:
+      "Main DB",
+    piiDb:
+      "PII DB",
+    r2Objects:
+      "R2 objects",
+    refreshBackup:
+      "Refresh backup status",
   },
 
   lv: {
@@ -247,6 +342,101 @@ const TEXT = {
       "Neizdevās atjaunināt paziņojumu iestatījumus.",
     notificationsIosHint:
       "iPhone vai iPad ierīcē vispirms pievienojiet MVX sākuma ekrānam un atveriet to no sākuma ekrāna.",
+
+    backupSection:
+      "Rezerves kopiju pārvaldība",
+    backupTitle:
+      "Rezerves kopiju aizsardzība",
+    backupHint:
+      "Pārskatiet aizsardzības stāvokli, automātiskās rezerves kopijas un pēdējos izpildes rezultātus.",
+    automaticBackup:
+      "Automātiskā rezerves kopija",
+    automaticOn:
+      "Ieslēgta",
+    automaticOff:
+      "Izslēgta",
+    backupEnable:
+      "Ieslēgt automātisko rezerves kopiju",
+    backupDisable:
+      "Izslēgt automātisko rezerves kopiju",
+    backupSaving:
+      "Tiek atjaunināts rezerves kopijas iestatījums...",
+    backupLoading:
+      "Tiek ielādēts rezerves kopiju statuss...",
+    backupLoadFailed:
+      "Neizdevās ielādēt rezerves kopiju statusu.",
+    backupSaveFailed:
+      "Neizdevās mainīt automātiskās rezerves kopijas iestatījumu.",
+    backupSaved:
+      "Automātiskās rezerves kopijas iestatījums ir atjaunināts.",
+    createBackup:
+      "Izveidot rezerves kopiju tagad",
+    creatingBackup:
+      "Rezerves kopija tiek sākta...",
+    backupCreated:
+      "Rezerves kopijas pieprasījums ir pieņemts.",
+    backupCreateFailed:
+      "Neizdevās sākt rezerves kopiju.",
+    backupAlreadyRunning:
+      "Rezerves kopija jau tiek veidota.",
+    lastBackup:
+      "Pēdējā rezerves kopija",
+    lastSuccessfulBackup:
+      "Pēdējā veiksmīgā rezerves kopija",
+    noBackupRuns:
+      "Rezerves kopiju izpildes vēl nav reģistrētas.",
+    recentRuns:
+      "Pēdējie izpildes rezultāti",
+    protection:
+      "Aizsardzība",
+    d1Main:
+      "Galvenās D1 Time Travel",
+    d1Pii:
+      "PII D1 Time Travel",
+    r2Protection:
+      "R2 Bucket Lock",
+    offsite:
+      "Ārējā rezerves kopija",
+    retention:
+      "Saglabāšana",
+    days:
+      "dienas",
+    schedule:
+      "Grafiks",
+    destination:
+      "Galamērķis",
+    provider:
+      "Pakalpojuma sniedzējs",
+    statusRequested:
+      "Pieprasīta",
+    statusRunning:
+      "Notiek",
+    statusSuccess:
+      "Veiksmīga",
+    statusFailed:
+      "Neizdevās",
+    statusSkipped:
+      "Izlaista",
+    requestedBy:
+      "Pieprasīja",
+    started:
+      "Sākts",
+    completed:
+      "Pabeigts",
+    archive:
+      "Arhīvs",
+    archiveSize:
+      "Arhīva izmērs",
+    integrity:
+      "Integritāte",
+    mainDb:
+      "Galvenā DB",
+    piiDb:
+      "PII DB",
+    r2Objects:
+      "R2 objekti",
+    refreshBackup:
+      "Atjaunināt rezerves kopiju statusu",
   },
 
   ru: {
@@ -357,6 +547,101 @@ const TEXT = {
       "Не удалось изменить настройки уведомлений.",
     notificationsIosHint:
       "На iPhone или iPad сначала добавьте MVX на экран «Домой» и откройте приложение с этого экрана.",
+
+    backupSection:
+      "Резервное копирование",
+    backupTitle:
+      "Управление резервными копиями",
+    backupHint:
+      "Просмотр защиты, статуса автоматического резервного копирования и последних запусков.",
+    automaticBackup:
+      "Автоматическое резервное копирование",
+    automaticOn:
+      "Включено",
+    automaticOff:
+      "Выключено",
+    backupEnable:
+      "Включить автоматическое резервное копирование",
+    backupDisable:
+      "Отключить автоматическое резервное копирование",
+    backupSaving:
+      "Изменение настройки резервного копирования...",
+    backupLoading:
+      "Загрузка статуса резервного копирования...",
+    backupLoadFailed:
+      "Не удалось загрузить статус резервного копирования.",
+    backupSaveFailed:
+      "Не удалось изменить автоматическое резервное копирование.",
+    backupSaved:
+      "Настройка автоматического резервного копирования изменена.",
+    createBackup:
+      "Создать резервную копию сейчас",
+    creatingBackup:
+      "Запуск резервного копирования...",
+    backupCreated:
+      "Запрос на резервное копирование принят.",
+    backupCreateFailed:
+      "Не удалось запустить резервное копирование.",
+    backupAlreadyRunning:
+      "Резервное копирование уже выполняется.",
+    lastBackup:
+      "Последняя резервная копия",
+    lastSuccessfulBackup:
+      "Последняя успешная резервная копия",
+    noBackupRuns:
+      "Запуски резервного копирования пока не зарегистрированы.",
+    recentRuns:
+      "Последние запуски",
+    protection:
+      "Защита",
+    d1Main:
+      "Main D1 Time Travel",
+    d1Pii:
+      "PII D1 Time Travel",
+    r2Protection:
+      "R2 Bucket Lock",
+    offsite:
+      "Внешняя резервная копия",
+    retention:
+      "Хранение",
+    days:
+      "дней",
+    schedule:
+      "Расписание",
+    destination:
+      "Хранилище",
+    provider:
+      "Провайдер",
+    statusRequested:
+      "Запрошено",
+    statusRunning:
+      "Выполняется",
+    statusSuccess:
+      "Успешно",
+    statusFailed:
+      "Ошибка",
+    statusSkipped:
+      "Пропущено",
+    requestedBy:
+      "Запросил",
+    started:
+      "Начато",
+    completed:
+      "Завершено",
+    archive:
+      "Архив",
+    archiveSize:
+      "Размер архива",
+    integrity:
+      "Целостность",
+    mainDb:
+      "Основная БД",
+    piiDb:
+      "PII БД",
+    r2Objects:
+      "Объекты R2",
+    refreshBackup:
+      "Обновить статус резервного копирования",
   },
 };
 
@@ -528,6 +813,77 @@ function getStatusLabel(
   );
 }
 
+function getBackupStatusLabel(
+  status,
+  text
+) {
+  const normalized =
+    String(status || "")
+      .trim()
+      .toLowerCase();
+
+  const labels = {
+    requested:
+      text.statusRequested,
+    running:
+      text.statusRunning,
+    success:
+      text.statusSuccess,
+    failed:
+      text.statusFailed,
+    skipped:
+      text.statusSkipped,
+  };
+
+  return (
+    labels[normalized] ||
+    text.unknown
+  );
+}
+
+function formatBytes(
+  value
+) {
+  const bytes =
+    Number(value);
+
+  if (
+    !Number.isFinite(bytes) ||
+    bytes < 0
+  ) {
+    return "—";
+  }
+
+  if (bytes < 1024) {
+    return `${bytes} B`;
+  }
+
+  const units = [
+    "KB",
+    "MB",
+    "GB",
+    "TB",
+  ];
+
+  let size =
+    bytes / 1024;
+
+  let unitIndex = 0;
+
+  while (
+    size >= 1024 &&
+    unitIndex <
+      units.length - 1
+  ) {
+    size /= 1024;
+    unitIndex += 1;
+  }
+
+  return `${size.toFixed(
+    size >= 10 ? 1 : 2
+  )} ${units[unitIndex]}`;
+}
+
 export default function SettingsPage() {
   const {
     language,
@@ -677,6 +1033,41 @@ export default function SettingsPage() {
     setPushError,
   ] = useState("");
 
+  const [
+    backupLoading,
+    setBackupLoading,
+  ] = useState(false);
+
+  const [
+    backupSaving,
+    setBackupSaving,
+  ] = useState(false);
+
+  const [
+    backupCreating,
+    setBackupCreating,
+  ] = useState(false);
+
+  const [
+    backupError,
+    setBackupError,
+  ] = useState("");
+
+  const [
+    backupSuccess,
+    setBackupSuccess,
+  ] = useState("");
+
+  const [
+    backupStatus,
+    setBackupStatus,
+  ] = useState(null);
+
+  const [
+    backupRuns,
+    setBackupRuns,
+  ] = useState([]);
+
   useEffect(() => {
     if (
       !isAdmin ||
@@ -757,6 +1148,86 @@ export default function SettingsPage() {
     isAdmin,
     mustChangePassword,
     text.waterLoadFailed,
+  ]);
+
+
+  useEffect(() => {
+    if (
+      !isAdmin ||
+      mode !== "admin" ||
+      mustChangePassword
+    ) {
+      return;
+    }
+
+    const loadBackupManagement =
+      async () => {
+        setBackupLoading(true);
+        setBackupError("");
+
+        try {
+          const [
+            statusResult,
+            runsResult,
+          ] =
+            await Promise.all([
+              api(
+                "/api/admin/backup/status"
+              ),
+              api(
+                "/api/admin/backup/runs?limit=10"
+              ),
+            ]);
+
+          if (
+            !statusResult ||
+            statusResult.error ||
+            statusResult.ok === false
+          ) {
+            throw new Error(
+              statusResult?.error ||
+              "backup_status_load_failed"
+            );
+          }
+
+          if (
+            !runsResult ||
+            runsResult.error ||
+            runsResult.ok === false
+          ) {
+            throw new Error(
+              runsResult?.error ||
+              "backup_runs_load_failed"
+            );
+          }
+
+          setBackupStatus(
+            statusResult
+          );
+
+          setBackupRuns(
+            runsResult.runs || []
+          );
+        } catch (loadError) {
+          console.error(
+            "LOAD BACKUP MANAGEMENT ERROR:",
+            loadError
+          );
+
+          setBackupError(
+            text.backupLoadFailed
+          );
+        } finally {
+          setBackupLoading(false);
+        }
+      };
+
+    loadBackupManagement();
+  }, [
+    isAdmin,
+    mode,
+    mustChangePassword,
+    text.backupLoadFailed,
   ]);
 
 
@@ -1205,6 +1676,186 @@ export default function SettingsPage() {
       }
     };
 
+  const refreshBackupManagement =
+    async () => {
+      const [
+        statusResult,
+        runsResult,
+      ] =
+        await Promise.all([
+          api(
+            "/api/admin/backup/status"
+          ),
+          api(
+            "/api/admin/backup/runs?limit=10"
+          ),
+        ]);
+
+      if (
+        !statusResult ||
+        statusResult.error ||
+        statusResult.ok === false ||
+        !runsResult ||
+        runsResult.error ||
+        runsResult.ok === false
+      ) {
+        throw new Error(
+          statusResult?.error ||
+          runsResult?.error ||
+          "backup_refresh_failed"
+        );
+      }
+
+      setBackupStatus(
+        statusResult
+      );
+
+      setBackupRuns(
+        runsResult.runs || []
+      );
+
+      return {
+        statusResult,
+        runsResult,
+      };
+    };
+
+  const handleToggleAutomaticBackup =
+    async () => {
+      setBackupError("");
+      setBackupSuccess("");
+      setBackupSaving(true);
+
+      try {
+        const currentEnabled =
+          Boolean(
+            backupStatus
+              ?.settings
+              ?.automatic_enabled
+          );
+
+        const result =
+          await api(
+            "/api/admin/backup/settings",
+            {
+              method: "POST",
+              body:
+                JSON.stringify({
+                  automatic_enabled:
+                    !currentEnabled,
+                }),
+            }
+          );
+
+        if (
+          !result ||
+          result.error ||
+          result.ok === false
+        ) {
+          throw new Error(
+            result?.error ||
+            "backup_settings_save_failed"
+          );
+        }
+
+        await refreshBackupManagement();
+
+        setBackupSuccess(
+          text.backupSaved
+        );
+      } catch (saveError) {
+        console.error(
+          "SAVE BACKUP SETTINGS ERROR:",
+          saveError
+        );
+
+        setBackupError(
+          text.backupSaveFailed
+        );
+      } finally {
+        setBackupSaving(false);
+      }
+    };
+
+  const handleCreateBackup =
+    async () => {
+      setBackupError("");
+      setBackupSuccess("");
+      setBackupCreating(true);
+
+      try {
+        const result =
+          await api(
+            "/api/admin/backup/create",
+            {
+              method: "POST",
+            }
+          );
+
+        if (
+          result?.error ===
+          "backup_already_in_progress"
+        ) {
+          setBackupError(
+            text.backupAlreadyRunning
+          );
+
+          await refreshBackupManagement();
+          return;
+        }
+
+        if (
+          !result ||
+          result.error ||
+          result.ok === false
+        ) {
+          throw new Error(
+            result?.error ||
+            "backup_create_failed"
+          );
+        }
+
+        setBackupSuccess(
+          text.backupCreated
+        );
+
+        await refreshBackupManagement();
+      } catch (createError) {
+        console.error(
+          "CREATE BACKUP ERROR:",
+          createError
+        );
+
+        setBackupError(
+          text.backupCreateFailed
+        );
+      } finally {
+        setBackupCreating(false);
+      }
+    };
+
+  const handleRefreshBackup =
+    async () => {
+      setBackupError("");
+      setBackupSuccess("");
+      setBackupLoading(true);
+
+      try {
+        await refreshBackupManagement();
+      } catch (refreshError) {
+        console.error(
+          "REFRESH BACKUP MANAGEMENT ERROR:",
+          refreshError
+        );
+
+        setBackupError(
+          text.backupLoadFailed
+        );
+      } finally {
+        setBackupLoading(false);
+      }
+    };
+
   const visibleError =
     validationError ||
     (
@@ -1482,6 +2133,442 @@ export default function SettingsPage() {
                     : text.saveWater}
                 </button>
               </form>
+            )}
+          </section>
+        )}
+
+      {isAdmin &&
+        mode === "admin" &&
+        !mustChangePassword && (
+          <section
+            style={{
+              ...sectionStyle,
+              marginBottom: 18,
+            }}
+          >
+            <SectionHeader
+              eyebrow={
+                text.backupSection
+              }
+              title={
+                text.backupTitle
+              }
+              hint={
+                text.backupHint
+              }
+            />
+
+            {backupLoading ? (
+              <div
+                style={noticeStyle}
+              >
+                {text.backupLoading}
+              </div>
+            ) : (
+              <div
+                style={{
+                  display: "grid",
+                  gap: 14,
+                }}
+              >
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns:
+                      "repeat(auto-fit,minmax(210px,1fr))",
+                    gap: 10,
+                  }}
+                >
+                  <InfoBox
+                    label={
+                      text.automaticBackup
+                    }
+                    value={
+                      backupStatus
+                        ?.settings
+                        ?.automatic_enabled
+                        ? text.automaticOn
+                        : text.automaticOff
+                    }
+                  />
+
+                  <InfoBox
+                    label={
+                      text.lastBackup
+                    }
+                    value={
+                      backupStatus
+                        ?.last_run
+                        ? `${getBackupStatusLabel(
+                            backupStatus
+                              .last_run
+                              .status,
+                            text
+                          )} · ${formatDateTime(
+                            backupStatus
+                              .last_run
+                              .completed_at ||
+                            backupStatus
+                              .last_run
+                              .started_at ||
+                            backupStatus
+                              .last_run
+                              .created_at,
+                            language,
+                            "Europe/Riga"
+                          )}`
+                        : text.noBackupRuns
+                    }
+                  />
+
+                  <InfoBox
+                    label={
+                      text.lastSuccessfulBackup
+                    }
+                    value={
+                      backupStatus
+                        ?.last_successful_run
+                        ? formatDateTime(
+                            backupStatus
+                              .last_successful_run
+                              .completed_at ||
+                            backupStatus
+                              .last_successful_run
+                              .created_at,
+                            language,
+                            "Europe/Riga"
+                          )
+                        : text.noBackupRuns
+                    }
+                  />
+                </div>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns:
+                      "repeat(auto-fit,minmax(210px,1fr))",
+                    gap: 10,
+                  }}
+                >
+                  <InfoBox
+                    label={
+                      text.d1Main
+                    }
+                    value={
+                      backupStatus
+                        ?.protection
+                        ?.main_d1_time_travel
+                        ?.enabled
+                        ? text.automaticOn
+                        : text.automaticOff
+                    }
+                  />
+
+                  <InfoBox
+                    label={
+                      text.d1Pii
+                    }
+                    value={
+                      backupStatus
+                        ?.protection
+                        ?.pii_d1_time_travel
+                        ?.enabled
+                        ? text.automaticOn
+                        : text.automaticOff
+                    }
+                  />
+
+                  <InfoBox
+                    label={
+                      text.r2Protection
+                    }
+                    value={
+                      backupStatus
+                        ?.protection
+                        ?.r2_bucket_lock
+                        ?.enabled
+                        ? `${text.automaticOn} · ${backupStatus
+                            ?.protection
+                            ?.r2_bucket_lock
+                            ?.retention_days || "—"} ${text.days}`
+                        : text.automaticOff
+                    }
+                  />
+
+                  <InfoBox
+                    label={
+                      text.offsite
+                    }
+                    value={
+                      backupStatus
+                        ?.protection
+                        ?.offsite_backup
+                        ?.enabled
+                        ? `${backupStatus
+                            ?.protection
+                            ?.offsite_backup
+                            ?.provider || "—"} · ${backupStatus
+                            ?.protection
+                            ?.offsite_backup
+                            ?.destination || "—"}`
+                        : text.automaticOff
+                    }
+                  />
+                </div>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns:
+                      "repeat(auto-fit,minmax(210px,1fr))",
+                    gap: 10,
+                  }}
+                >
+                  <button
+                    type="button"
+                    disabled={
+                      backupSaving
+                    }
+                    onClick={
+                      handleToggleAutomaticBackup
+                    }
+                    style={
+                      secondaryButtonStyle(
+                        backupSaving
+                      )
+                    }
+                  >
+                    {backupSaving
+                      ? text.backupSaving
+                      : backupStatus
+                          ?.settings
+                          ?.automatic_enabled
+                        ? text.backupDisable
+                        : text.backupEnable}
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={
+                      backupCreating
+                    }
+                    onClick={
+                      handleCreateBackup
+                    }
+                    style={
+                      primaryButtonStyle(
+                        backupCreating
+                      )
+                    }
+                  >
+                    {backupCreating
+                      ? text.creatingBackup
+                      : text.createBackup}
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={
+                      backupLoading
+                    }
+                    onClick={
+                      handleRefreshBackup
+                    }
+                    style={
+                      secondaryButtonStyle(
+                        backupLoading
+                      )
+                    }
+                  >
+                    {text.refreshBackup}
+                  </button>
+                </div>
+
+                {backupError && (
+                  <div
+                    role="alert"
+                    style={errorStyle}
+                  >
+                    {backupError}
+                  </div>
+                )}
+
+                {backupSuccess && (
+                  <div
+                    role="status"
+                    style={successStyle}
+                  >
+                    {backupSuccess}
+                  </div>
+                )}
+
+                <div>
+                  <div
+                    style={{
+                      marginBottom: 8,
+                      color:
+                        "var(--text-h)",
+                      fontSize: 12,
+                      fontWeight: 800,
+                    }}
+                  >
+                    {text.recentRuns}
+                  </div>
+
+                  {backupRuns.length ===
+                  0 ? (
+                    <div
+                      style={noticeStyle}
+                    >
+                      {text.noBackupRuns}
+                    </div>
+                  ) : (
+                    <div
+                      style={{
+                        display: "grid",
+                        gap: 8,
+                      }}
+                    >
+                      {backupRuns.map(
+                        (run) => (
+                          <div
+                            key={
+                              run.id
+                            }
+                            style={{
+                              padding: 12,
+                              border:
+                                "1px solid var(--border)",
+                              borderRadius: 10,
+                              background:
+                                "var(--surface-soft)",
+                            }}
+                          >
+                            <div
+                              style={{
+                                display: "flex",
+                                justifyContent:
+                                  "space-between",
+                                gap: 12,
+                                flexWrap:
+                                  "wrap",
+                              }}
+                            >
+                              <div
+                                style={{
+                                  color:
+                                    "var(--text-h)",
+                                  fontSize: 12,
+                                  fontWeight: 800,
+                                }}
+                              >
+                                #{run.id} ·{" "}
+                                {getBackupStatusLabel(
+                                  run.status,
+                                  text
+                                )}
+                              </div>
+
+                              <div
+                                style={{
+                                  color:
+                                    "var(--text)",
+                                  fontSize: 11,
+                                }}
+                              >
+                                {formatDateTime(
+                                  run.completed_at ||
+                                  run.started_at ||
+                                  run.created_at,
+                                  language,
+                                  "Europe/Riga"
+                                )}
+                              </div>
+                            </div>
+
+                            <div
+                              style={{
+                                marginTop: 8,
+                                display:
+                                  "grid",
+                                gridTemplateColumns:
+                                  "repeat(auto-fit,minmax(160px,1fr))",
+                                gap: 8,
+                              }}
+                            >
+                              <InfoBox
+                                label={
+                                  text.requestedBy
+                                }
+                                value={
+                                  run.requested_by_nick ||
+                                  "—"
+                                }
+                              />
+
+                              <InfoBox
+                                label={
+                                  text.archive
+                                }
+                                value={
+                                  run.archive_name ||
+                                  "—"
+                                }
+                              />
+
+                              <InfoBox
+                                label={
+                                  text.archiveSize
+                                }
+                                value={
+                                  run.archive_size_bytes ===
+                                    null ||
+                                  run.archive_size_bytes ===
+                                    undefined
+                                    ? "—"
+                                    : formatBytes(
+                                        run.archive_size_bytes
+                                      )
+                                }
+                              />
+
+                              <InfoBox
+                                label={
+                                  text.r2Objects
+                                }
+                                value={
+                                  run.r2_object_count ===
+                                    null ||
+                                  run.r2_object_count ===
+                                    undefined
+                                    ? "—"
+                                    : String(
+                                        run.r2_object_count
+                                      )
+                                }
+                              />
+
+                              <InfoBox
+                                label={
+                                  text.integrity
+                                }
+                                value={`${text.mainDb}: ${
+                                  run.main_integrity ||
+                                  "—"
+                                } · ${text.piiDb}: ${
+                                  run.pii_integrity ||
+                                  "—"
+                                }`}
+                              />
+                            </div>
+                          </div>
+                        )
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
             )}
           </section>
         )}
@@ -1926,6 +3013,31 @@ const successStyle = {
   color: "#15803d",
   fontSize: 12,
 };
+
+function secondaryButtonStyle(
+  disabled
+) {
+  return {
+    minHeight: 42,
+    padding:
+      "9px 14px",
+    border:
+      "1px solid var(--border)",
+    borderRadius: 9,
+    background:
+      disabled
+        ? "var(--surface-soft)"
+        : "var(--surface)",
+    color:
+      "var(--text-h)",
+    fontSize: 12,
+    fontWeight: 800,
+    cursor:
+      disabled
+        ? "default"
+        : "pointer",
+  };
+}
 
 function primaryButtonStyle(
   disabled
