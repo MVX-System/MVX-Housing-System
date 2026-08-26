@@ -232,6 +232,10 @@ const TEXT = {
       "R2 objects",
     refreshBackup:
       "Refresh backup status",
+    showMoreRuns:
+      "Show more",
+    showLessRuns:
+      "Show less",
     backupAlertAutomaticOffTitle:
       "Automatic backup is disabled",
     backupAlertAutomaticOffMessage:
@@ -453,6 +457,10 @@ const TEXT = {
       "R2 objekti",
     refreshBackup:
       "Atjaunināt rezerves kopiju statusu",
+    showMoreRuns:
+      "Rādīt vairāk",
+    showLessRuns:
+      "Rādīt mazāk",
     backupAlertAutomaticOffTitle:
       "Automātiskā rezerves kopija ir izslēgta",
     backupAlertAutomaticOffMessage:
@@ -674,6 +682,10 @@ const TEXT = {
       "Объекты R2",
     refreshBackup:
       "Обновить статус резервного копирования",
+    showMoreRuns:
+      "Показать больше",
+    showLessRuns:
+      "Показать меньше",
     backupAlertAutomaticOffTitle:
       "Автоматическое резервное копирование отключено",
     backupAlertAutomaticOffMessage:
@@ -1218,6 +1230,16 @@ export default function SettingsPage() {
     backupRuns,
     setBackupRuns,
   ] = useState([]);
+
+  const [
+    showAllBackupRuns,
+    setShowAllBackupRuns,
+  ] = useState(false);
+
+  const visibleBackupRuns =
+    showAllBackupRuns
+      ? backupRuns
+      : backupRuns.slice(0, 5);
 
   const backupAlerts =
     useMemo(
@@ -2620,7 +2642,7 @@ export default function SettingsPage() {
                         gap: 8,
                       }}
                     >
-                      {backupRuns.map(
+                      {visibleBackupRuns.map(
                         (run) => (
                           <div
                             key={
@@ -2755,6 +2777,34 @@ export default function SettingsPage() {
                           </div>
                         )
                       )}
+                    </div>
+                  )}
+
+                  {backupRuns.length >
+                    5 && (
+                    <div
+                      style={{
+                        marginTop: 10,
+                      }}
+                    >
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setShowAllBackupRuns(
+                            (current) =>
+                              !current
+                          )
+                        }
+                        style={
+                          secondaryButtonStyle(
+                            false
+                          )
+                        }
+                      >
+                        {showAllBackupRuns
+                          ? text.showLessRuns
+                          : text.showMoreRuns}
+                      </button>
                     </div>
                   )}
                 </div>
