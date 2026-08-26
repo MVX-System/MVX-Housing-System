@@ -232,6 +232,22 @@ const TEXT = {
       "R2 objects",
     refreshBackup:
       "Refresh backup status",
+    backupAlertAutomaticOffTitle:
+      "Automatic backup is disabled",
+    backupAlertAutomaticOffMessage:
+      "Scheduled weekly backups will be skipped until automatic backup is enabled again.",
+    backupAlertFailedTitle:
+      "The latest backup failed",
+    backupAlertFailedMessage:
+      "Review the latest backup run and start a new backup after the issue is resolved.",
+    backupAlertOverdueTitle:
+      "Successful backup is overdue",
+    backupAlertOverdueMessage:
+      "No successful backup has been recorded within the last 8 days.",
+    backupAlertNoSuccessTitle:
+      "No successful backup recorded",
+    backupAlertNoSuccessMessage:
+      "Create a backup now to establish the first verified recovery point.",
   },
 
   lv: {
@@ -437,6 +453,22 @@ const TEXT = {
       "R2 objekti",
     refreshBackup:
       "Atjaunināt rezerves kopiju statusu",
+    backupAlertAutomaticOffTitle:
+      "Automātiskā rezerves kopija ir izslēgta",
+    backupAlertAutomaticOffMessage:
+      "Iknedēļas plānotās rezerves kopijas tiks izlaistas, līdz automātiskā rezerves kopija tiks atkal ieslēgta.",
+    backupAlertFailedTitle:
+      "Pēdējā rezerves kopija neizdevās",
+    backupAlertFailedMessage:
+      "Pārbaudiet pēdējo izpildi un pēc problēmas novēršanas izveidojiet jaunu rezerves kopiju.",
+    backupAlertOverdueTitle:
+      "Veiksmīga rezerves kopija ir nokavēta",
+    backupAlertOverdueMessage:
+      "Pēdējo 8 dienu laikā nav reģistrēta neviena veiksmīga rezerves kopija.",
+    backupAlertNoSuccessTitle:
+      "Nav reģistrēta neviena veiksmīga rezerves kopija",
+    backupAlertNoSuccessMessage:
+      "Izveidojiet rezerves kopiju tagad, lai izveidotu pirmo pārbaudīto atjaunošanas punktu.",
   },
 
   ru: {
@@ -642,6 +674,22 @@ const TEXT = {
       "Объекты R2",
     refreshBackup:
       "Обновить статус резервного копирования",
+    backupAlertAutomaticOffTitle:
+      "Автоматическое резервное копирование отключено",
+    backupAlertAutomaticOffMessage:
+      "Еженедельные резервные копии по расписанию будут пропускаться, пока автоматическое резервное копирование не будет снова включено.",
+    backupAlertFailedTitle:
+      "Последняя резервная копия завершилась ошибкой",
+    backupAlertFailedMessage:
+      "Проверьте последний запуск и после устранения причины создайте новую резервную копию.",
+    backupAlertOverdueTitle:
+      "Успешная резервная копия просрочена",
+    backupAlertOverdueMessage:
+      "За последние 8 дней не зарегистрировано ни одной успешной резервной копии.",
+    backupAlertNoSuccessTitle:
+      "Успешных резервных копий пока нет",
+    backupAlertNoSuccessMessage:
+      "Создайте резервную копию сейчас, чтобы сформировать первую проверенную точку восстановления.",
   },
 };
 
@@ -884,6 +932,109 @@ function formatBytes(
   )} ${units[unitIndex]}`;
 }
 
+const BACKUP_OVERDUE_MS =
+  8 * 24 * 60 * 60 * 1000;
+
+function getBackupAlerts(
+  backupStatus,
+  text
+) {
+  if (!backupStatus) {
+    return [];
+  }
+
+  const alerts = [];
+
+  const automaticEnabled =
+    Boolean(
+      backupStatus
+        ?.settings
+        ?.automatic_enabled
+    );
+
+  if (!automaticEnabled) {
+    alerts.push({
+      key:
+        "automatic-off",
+      title:
+        text.backupAlertAutomaticOffTitle,
+      message:
+        text.backupAlertAutomaticOffMessage,
+    });
+  }
+
+  const lastRun =
+    backupStatus
+      ?.last_run ||
+    null;
+
+  if (
+    lastRun?.status ===
+      "failed"
+  ) {
+    alerts.push({
+      key:
+        "latest-failed",
+      title:
+        text.backupAlertFailedTitle,
+      message:
+        text.backupAlertFailedMessage,
+    });
+  }
+
+  const lastSuccessfulRun =
+    backupStatus
+      ?.last_successful_run ||
+    null;
+
+  if (!lastSuccessfulRun) {
+    alerts.push({
+      key:
+        "no-success",
+      title:
+        text.backupAlertNoSuccessTitle,
+      message:
+        text.backupAlertNoSuccessMessage,
+    });
+
+    return alerts;
+  }
+
+  const successfulAt =
+    lastSuccessfulRun
+      .completed_at ||
+    lastSuccessfulRun
+      .created_at ||
+    null;
+
+  const successfulTimestamp =
+    successfulAt
+      ? Date.parse(
+          successfulAt
+        )
+      : NaN;
+
+  if (
+    Number.isFinite(
+      successfulTimestamp
+    ) &&
+    Date.now() -
+      successfulTimestamp >
+      BACKUP_OVERDUE_MS
+  ) {
+    alerts.push({
+      key:
+        "overdue",
+      title:
+        text.backupAlertOverdueTitle,
+      message:
+        text.backupAlertOverdueMessage,
+    });
+  }
+
+  return alerts;
+}
+
 export default function SettingsPage() {
   const {
     language,
@@ -1067,6 +1218,19 @@ export default function SettingsPage() {
     backupRuns,
     setBackupRuns,
   ] = useState([]);
+
+  const backupAlerts =
+    useMemo(
+      () =>
+        getBackupAlerts(
+          backupStatus,
+          text
+        ),
+      [
+        backupStatus,
+        text,
+      ]
+    );
 
   useEffect(() => {
     if (
@@ -2171,6 +2335,32 @@ export default function SettingsPage() {
                   gap: 14,
                 }}
               >
+                {backupAlerts.length >
+                  0 && (
+                  <div
+                    style={{
+                      display: "grid",
+                      gap: 8,
+                    }}
+                  >
+                    {backupAlerts.map(
+                      (alert) => (
+                        <BackupAlert
+                          key={
+                            alert.key
+                          }
+                          title={
+                            alert.title
+                          }
+                          message={
+                            alert.message
+                          }
+                        />
+                      )
+                    )}
+                  </div>
+                )}
+
                 <div
                   style={{
                     display: "grid",
@@ -2899,6 +3089,39 @@ function ReadOnlyField({
   );
 }
 
+function BackupAlert({
+  title,
+  message,
+}) {
+  return (
+    <div
+      role="alert"
+      style={warningStyle}
+    >
+      <div
+        style={{
+          color:
+            "var(--text-h)",
+          fontSize: 12,
+          fontWeight: 800,
+        }}
+      >
+        {title}
+      </div>
+
+      <div
+        style={{
+          marginTop: 4,
+          fontSize: 11,
+          lineHeight: 1.5,
+        }}
+      >
+        {message}
+      </div>
+    </div>
+  );
+}
+
 function InfoBox({
   label,
   value,
@@ -2989,6 +3212,17 @@ const noticeStyle = {
     "var(--surface-soft)",
   color:
     "var(--text)",
+  fontSize: 12,
+};
+
+const warningStyle = {
+  padding: 12,
+  border:
+    "1px solid rgba(180,120,20,.30)",
+  borderRadius: 9,
+  background:
+    "rgba(180,120,20,.08)",
+  color: "#8a5a12",
   fontSize: 12,
 };
 
