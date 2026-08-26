@@ -20,7 +20,21 @@ self.addEventListener(
   "activate",
   (event) => {
     event.waitUntil(
-      self.clients.claim()
+      (async () => {
+        const cacheNames =
+          await caches.keys();
+
+        await Promise.all(
+          cacheNames.map(
+            (cacheName) =>
+              caches.delete(
+                cacheName
+              )
+          )
+        );
+
+        await self.clients.claim();
+      })()
     );
   }
 );
