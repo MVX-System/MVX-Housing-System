@@ -3716,6 +3716,105 @@ async function getLatestBackupRun(
   );
 }
 
+
+async function getBackupRunById(
+  env,
+  backupRunId
+) {
+  await ensureBackupStatusTables(env);
+
+  const normalizedId =
+    normalizePositiveInteger(
+      backupRunId
+    );
+
+  if (!normalizedId) {
+    return null;
+  }
+
+  const row =
+    await env.DB.prepare(`
+      SELECT
+        br.id,
+        br.trigger_type,
+        br.status,
+        br.requested_by,
+        requester.nick
+          AS requested_by_nick,
+        br.github_run_id,
+        br.started_at,
+        br.completed_at,
+        br.archive_name,
+        br.archive_size_bytes,
+        br.archive_sha256,
+        br.r2_object_count,
+        br.main_integrity,
+        br.pii_integrity,
+        br.failure_code,
+        br.created_at,
+        br.updated_at
+      FROM backup_runs br
+      LEFT JOIN users requester
+        ON requester.id =
+          br.requested_by
+      WHERE br.id = ?
+      LIMIT 1
+    `)
+      .bind(
+        normalizedId
+      )
+      .first();
+
+  return normalizeBackupRunRow(
+    row
+  );
+}
+
+function getGitHubBackupConfiguration(
+  env
+) {
+  const owner =
+    String(
+      env?.GITHUB_OWNER || ""
+    ).trim();
+
+  const repo =
+    String(
+      env?.GITHUB_REPO || ""
+    ).trim();
+
+  const workflow =
+    String(
+      env?.GITHUB_BACKUP_WORKFLOW || ""
+    ).trim();
+
+  const token =
+    String(
+      env?.GITHUB_BACKUP_TOKEN || ""
+    ).trim();
+
+  if (
+    !owner ||
+    !repo ||
+    !workflow ||
+    !token
+  ) {
+    return {
+      ok: false,
+      error:
+        "backup_github_not_configured",
+    };
+  }
+
+  return {
+    ok: true,
+    owner,
+    repo,
+    workflow,
+    token,
+  };
+}
+
 function getDatePartsInTimeZone(date, timeZone) {
   const formatter = new Intl.DateTimeFormat("en-CA", {
     timeZone,
@@ -9454,6 +9553,350 @@ Router.register(
       settings:
         await getBackupSettings(
           ctx.env
+        ),
+    };
+  }
+);
+
+
+Router.register(
+  "POST",
+  "/api/admin/backup/create",
+  async (ctx) => {
+    const admin =
+      await Auth.requireAdmin(ctx);
+
+    if (!admin) {
+      return {
+        error: "forbidden"
+      };
+    }
+
+    await ensureBackupStatusTables(
+      ctx.env
+    );
+
+    const github =
+      getGitHubBackupConfiguration(
+        ctx.env
+      );
+
+    if (!github.ok) {
+      await SecurityAudit.recordSafe(
+        ctx,
+        {
+          actorUserId:
+            admin.user_id,
+          action:
+            "admin.backup_create",
+          targetType:
+            "backup_run",
+          result:
+            "failure",
+          details: {
+            failure_type:
+              "github_not_configured",
+          },
+        }
+      );
+
+      return {
+        error:
+          github.error
+      };
+    }
+
+    // Protect against double-clicks or two administrators starting
+    // overlapping manual backups. A stale run older than 2 hours
+    // does not block a new request.
+    const activeRun =
+      await ctx.env.DB.prepare(`
+        SELECT
+          id,
+          status,
+          created_at
+        FROM backup_runs
+        WHERE status IN (
+          'requested',
+          'running'
+        )
+          AND datetime(created_at) >=
+            datetime(
+              'now',
+              '-2 hours'
+            )
+        ORDER BY
+          datetime(created_at) DESC,
+          id DESC
+        LIMIT 1
+      `)
+        .first();
+
+    if (activeRun) {
+      return {
+        error:
+          "backup_already_in_progress",
+        backup_run_id:
+          Number(activeRun.id),
+        status:
+          activeRun.status,
+      };
+    }
+
+    const nowIso =
+      new Date()
+        .toISOString();
+
+    const insertResult =
+      await ctx.env.DB.prepare(`
+        INSERT INTO backup_runs (
+          trigger_type,
+          status,
+          requested_by,
+          created_at,
+          updated_at
+        )
+        VALUES (
+          'manual',
+          'requested',
+          ?,
+          ?,
+          ?
+        )
+      `)
+        .bind(
+          admin.user_id,
+          nowIso,
+          nowIso
+        )
+        .run();
+
+    const backupRunId =
+      Number(
+        insertResult?.meta
+          ?.last_row_id
+      );
+
+    if (
+      !Number.isInteger(
+        backupRunId
+      ) ||
+      backupRunId <= 0
+    ) {
+      throw new Error(
+        "backup_run_insert_failed"
+      );
+    }
+
+    const dispatchUrl =
+      `https://api.github.com/repos/${encodeURIComponent(
+        github.owner
+      )}/${encodeURIComponent(
+        github.repo
+      )}/actions/workflows/${encodeURIComponent(
+        github.workflow
+      )}/dispatches`;
+
+    let dispatchResponse;
+
+    try {
+      dispatchResponse =
+        await fetch(
+          dispatchUrl,
+          {
+            method: "POST",
+            headers: {
+              "Accept":
+                "application/vnd.github+json",
+              "Authorization":
+                `Bearer ${github.token}`,
+              "Content-Type":
+                "application/json",
+              "X-GitHub-Api-Version":
+                "2022-11-28",
+              "User-Agent":
+                "MVX-Housing-System",
+            },
+            body:
+              JSON.stringify({
+                ref: "main",
+                inputs: {
+                  backup_run_id:
+                    String(
+                      backupRunId
+                    ),
+                  trigger_type:
+                    "manual",
+                },
+              }),
+          }
+        );
+    } catch (error) {
+      await ctx.env.DB.prepare(`
+        UPDATE backup_runs
+        SET
+          status = 'failed',
+          completed_at = ?,
+          failure_code =
+            'GITHUB_DISPATCH_ERROR',
+          updated_at = ?
+        WHERE id = ?
+          AND status = 'requested'
+      `)
+        .bind(
+          nowIso,
+          nowIso,
+          backupRunId
+        )
+        .run();
+
+      App.logError(
+        "backup_dispatch_error",
+        error,
+        {
+          backup_run_id:
+            backupRunId,
+        }
+      );
+
+      await SecurityAudit.recordSafe(
+        ctx,
+        {
+          actorUserId:
+            admin.user_id,
+          action:
+            "admin.backup_create",
+          targetType:
+            "backup_run",
+          targetId:
+            String(
+              backupRunId
+            ),
+          result:
+            "failure",
+          details: {
+            failure_type:
+              "dispatch_error",
+          },
+        }
+      );
+
+      return {
+        error:
+          "backup_dispatch_failed",
+        backup_run:
+          await getBackupRunById(
+            ctx.env,
+            backupRunId
+          ),
+      };
+    }
+
+    if (!dispatchResponse.ok) {
+      const completedAt =
+        new Date()
+          .toISOString();
+
+      await ctx.env.DB.prepare(`
+        UPDATE backup_runs
+        SET
+          status = 'failed',
+          completed_at = ?,
+          failure_code =
+            'GITHUB_DISPATCH_FAILED',
+          updated_at = ?
+        WHERE id = ?
+          AND status = 'requested'
+      `)
+        .bind(
+          completedAt,
+          completedAt,
+          backupRunId
+        )
+        .run();
+
+      App.logError(
+        "backup_dispatch_rejected",
+        new Error(
+          "github_dispatch_rejected"
+        ),
+        {
+          backup_run_id:
+            backupRunId,
+          github_status:
+            Number(
+              dispatchResponse.status
+            ),
+        }
+      );
+
+      await SecurityAudit.recordSafe(
+        ctx,
+        {
+          actorUserId:
+            admin.user_id,
+          action:
+            "admin.backup_create",
+          targetType:
+            "backup_run",
+          targetId:
+            String(
+              backupRunId
+            ),
+          result:
+            "failure",
+          details: {
+            failure_type:
+              "dispatch_rejected",
+            github_status:
+              Number(
+                dispatchResponse.status
+              ),
+          },
+        }
+      );
+
+      return {
+        error:
+          "backup_dispatch_failed",
+        backup_run:
+          await getBackupRunById(
+            ctx.env,
+            backupRunId
+          ),
+      };
+    }
+
+    await SecurityAudit.recordSafe(
+      ctx,
+      {
+        actorUserId:
+          admin.user_id,
+        action:
+          "admin.backup_create",
+        targetType:
+          "backup_run",
+        targetId:
+          String(
+            backupRunId
+          ),
+        details: {
+          trigger_type:
+            "manual",
+          dispatch_accepted:
+            true,
+        },
+      }
+    );
+
+    return {
+      ok: true,
+      dispatch_accepted:
+        true,
+      backup_run:
+        await getBackupRunById(
+          ctx.env,
+          backupRunId
         ),
     };
   }
