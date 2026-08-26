@@ -2,6 +2,16 @@ name: MVX Weekly Encrypted Backup
 
 on:
   workflow_dispatch:
+    inputs:
+      backup_run_id:
+        description: "MVX backup_runs.id for Admin Mode tracking"
+        required: false
+        type: string
+      trigger_type:
+        description: "Backup trigger type"
+        required: false
+        default: "manual"
+        type: string
   schedule:
     - cron: "30 3 * * 0"
 
@@ -31,6 +41,33 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+
+      - name: Mark manual backup as running
+        if: github.event_name == 'workflow_dispatch' && inputs.backup_run_id != ''
+        shell: bash
+        env:
+          BACKUP_RUN_ID: ${{ inputs.backup_run_id }}
+        run: |
+          set -euo pipefail
+
+          if [[ ! "$BACKUP_RUN_ID" =~ ^[1-9][0-9]*$ ]]; then
+            echo "Invalid backup_run_id." >&2
+            exit 1
+          fi
+
+          NOW_ISO="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+
+          npx --yes wrangler@"$WRANGLER_VERSION" d1 execute "$MAIN_DB"             --remote             --command "
+              UPDATE backup_runs
+              SET
+                status = 'running',
+                github_run_id = '$GITHUB_RUN_ID',
+                started_at = '$NOW_ISO',
+                updated_at = '$NOW_ISO'
+              WHERE id = $BACKUP_RUN_ID
+                AND trigger_type = 'manual'
+                AND status = 'requested';
+            "
 
       - name: Check automatic backup setting
         id: auto
@@ -302,6 +339,11 @@ jobs:
 
           echo "archive_name=$ARCHIVE_NAME" >> "$GITHUB_OUTPUT"
           echo "archive_path=$ARCHIVE_PATH" >> "$GITHUB_OUTPUT"
+          echo "archive_size_bytes=$ARCHIVE_SIZE" >> "$GITHUB_OUTPUT"
+          echo "archive_sha256=$ARCHIVE_SHA256" >> "$GITHUB_OUTPUT"
+          echo "r2_object_count=$R2_BACKED_UP" >> "$GITHUB_OUTPUT"
+          echo "main_integrity=$MAIN_INTEGRITY" >> "$GITHUB_OUTPUT"
+          echo "pii_integrity=$PII_INTEGRITY" >> "$GITHUB_OUTPUT"
 
           rm -rf "$WORK_DIR"
 
@@ -321,6 +363,59 @@ jobs:
 
           mega-ls -l "$MEGA_DESTINATION" | grep -F "$ARCHIVE_NAME"
 
+      - name: Mark manual backup as successful
+        if: success() && github.event_name == 'workflow_dispatch' && inputs.backup_run_id != ''
+        shell: bash
+        env:
+          BACKUP_RUN_ID: ${{ inputs.backup_run_id }}
+          ARCHIVE_NAME: ${{ steps.backup.outputs.archive_name }}
+          ARCHIVE_SIZE_BYTES: ${{ steps.backup.outputs.archive_size_bytes }}
+          ARCHIVE_SHA256: ${{ steps.backup.outputs.archive_sha256 }}
+          R2_OBJECT_COUNT: ${{ steps.backup.outputs.r2_object_count }}
+          MAIN_INTEGRITY: ${{ steps.backup.outputs.main_integrity }}
+          PII_INTEGRITY: ${{ steps.backup.outputs.pii_integrity }}
+        run: |
+          set -euo pipefail
+
+          if [[ ! "$BACKUP_RUN_ID" =~ ^[1-9][0-9]*$ ]]; then
+            echo "Invalid backup_run_id." >&2
+            exit 1
+          fi
+
+          if [[ ! "$ARCHIVE_SIZE_BYTES" =~ ^[0-9]+$ ]]; then
+            echo "Invalid archive size." >&2
+            exit 1
+          fi
+
+          if [[ ! "$R2_OBJECT_COUNT" =~ ^[0-9]+$ ]]; then
+            echo "Invalid R2 object count." >&2
+            exit 1
+          fi
+
+          if [[ ! "$ARCHIVE_SHA256" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "Invalid archive SHA-256." >&2
+            exit 1
+          fi
+
+          NOW_ISO="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+
+          npx --yes wrangler@"$WRANGLER_VERSION" d1 execute "$MAIN_DB"             --remote             --command "
+              UPDATE backup_runs
+              SET
+                status = 'success',
+                completed_at = '$NOW_ISO',
+                archive_name = '$ARCHIVE_NAME',
+                archive_size_bytes = $ARCHIVE_SIZE_BYTES,
+                archive_sha256 = '$ARCHIVE_SHA256',
+                r2_object_count = $R2_OBJECT_COUNT,
+                main_integrity = '$MAIN_INTEGRITY',
+                pii_integrity = '$PII_INTEGRITY',
+                failure_code = NULL,
+                updated_at = '$NOW_ISO'
+              WHERE id = $BACKUP_RUN_ID
+                AND trigger_type = 'manual';
+            "
+
       - name: Remove local encrypted archive
         if: always() && (github.event_name == 'workflow_dispatch' || steps.auto.outputs.should_run == 'true')
         shell: bash
@@ -332,3 +427,30 @@ jobs:
           if [ -n "${ARCHIVE_PATH:-}" ] && [ -f "$ARCHIVE_PATH" ]; then
             rm -f "$ARCHIVE_PATH"
           fi
+
+      - name: Mark manual backup as failed
+        if: failure() && github.event_name == 'workflow_dispatch' && inputs.backup_run_id != ''
+        shell: bash
+        env:
+          BACKUP_RUN_ID: ${{ inputs.backup_run_id }}
+        run: |
+          set -euo pipefail
+
+          if [[ ! "$BACKUP_RUN_ID" =~ ^[1-9][0-9]*$ ]]; then
+            echo "Invalid backup_run_id; failure status cannot be recorded." >&2
+            exit 1
+          fi
+
+          NOW_ISO="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+
+          npx --yes wrangler@"$WRANGLER_VERSION" d1 execute "$MAIN_DB"             --remote             --command "
+              UPDATE backup_runs
+              SET
+                status = 'failed',
+                completed_at = '$NOW_ISO',
+                failure_code = 'GITHUB_WORKFLOW_FAILED',
+                updated_at = '$NOW_ISO'
+              WHERE id = $BACKUP_RUN_ID
+                AND trigger_type = 'manual'
+                AND status <> 'success';
+            "
