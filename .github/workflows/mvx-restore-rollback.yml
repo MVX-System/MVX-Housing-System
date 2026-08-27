@@ -1,0 +1,592 @@
+name: MVX Controlled D1 Rollback
+
+on:
+  workflow_dispatch:
+    inputs:
+      restore_execution_id:
+        description: "OPS restore execution journal ID"
+        required: true
+        type: string
+      confirmation_phrase:
+        description: "Exact phrase: ROLLBACK PRODUCTION EXECUTION <id>"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mvx-controlled-production-rollback
+  cancel-in-progress: false
+
+jobs:
+  rollback:
+    runs-on: ubuntu-latest
+
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      MAIN_DB: housing-db
+      PII_DB: housing-pii-db
+      OPS_DB: housing-ops-db
+
+      MAIN_D1_DATABASE_ID: ebf27bcc-9980-4564-afe9-db14e444220f
+      PII_D1_DATABASE_ID: 5f20d702-446a-4a22-9d91-7ecbdc931bd0
+
+      WRANGLER_VERSION: "4.127.0"
+
+    steps:
+      - name: Validate explicit rollback confirmation
+        id: confirm
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          EXECUTION_ID="${{ inputs.restore_execution_id }}"
+          RAW_CONFIRMATION="${{ inputs.confirmation_phrase }}"
+
+          if ! [[ "$EXECUTION_ID" =~ ^[1-9][0-9]*$ ]]; then
+            echo "Invalid restore_execution_id." >&2
+            exit 2
+          fi
+
+          EXPECTED="ROLLBACK PRODUCTION EXECUTION ${EXECUTION_ID}"
+
+          CONFIRMATION="$(
+            printf '%s' "$RAW_CONFIRMATION" |
+              sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'
+          )"
+
+          if [ "$CONFIRMATION" != "$EXPECTED" ]; then
+            echo "Rollback confirmation phrase mismatch." >&2
+            echo "Required phrase: $EXPECTED" >&2
+            exit 2
+          fi
+
+          echo "confirmed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Wrangler
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@"$WRANGLER_VERSION" --version
+
+      - name: Resolve rollback source from independent OPS journal
+        id: journal
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          EXECUTION_ID="${{ inputs.restore_execution_id }}"
+
+          RAW="$(
+            npx --yes wrangler@"$WRANGLER_VERSION" d1 execute "$OPS_DB" \
+              --remote \
+              --json \
+              --command "
+                SELECT
+                  restore_execution_id,
+                  status,
+                  rollback_status,
+                  main_restore_status,
+                  pii_restore_status,
+                  main_previous_bookmark,
+                  pii_previous_bookmark,
+                  rollback_github_run_id,
+                  failure_code
+                FROM restore_execution_journal
+                WHERE restore_execution_id = $EXECUTION_ID
+                LIMIT 1;
+              "
+          )"
+
+          ROW="$(
+            printf '%s' "$RAW" | jq -c '
+              if type == "array" then
+                .[0].results[0] // empty
+              else
+                .results[0] // empty
+              end
+            '
+          )"
+
+          if [ -z "$ROW" ]; then
+            echo "OPS restore journal entry not found." >&2
+            exit 3
+          fi
+
+          STATUS="$(printf '%s' "$ROW" | jq -r '.status // ""')"
+          ROLLBACK_STATUS="$(printf '%s' "$ROW" | jq -r '.rollback_status // ""')"
+          MAIN_RESTORE_STATUS="$(printf '%s' "$ROW" | jq -r '.main_restore_status // ""')"
+          PII_RESTORE_STATUS="$(printf '%s' "$ROW" | jq -r '.pii_restore_status // ""')"
+          MAIN_PREVIOUS="$(printf '%s' "$ROW" | jq -r '.main_previous_bookmark // ""')"
+          PII_PREVIOUS="$(printf '%s' "$ROW" | jq -r '.pii_previous_bookmark // ""')"
+          EXISTING_RUN="$(printf '%s' "$ROW" | jq -r '.rollback_github_run_id // ""')"
+
+          if [ "$STATUS" != "rollback_required" ]; then
+            echo "Rollback is not authorized by journal status: $STATUS" >&2
+            exit 4
+          fi
+
+          if [ "$ROLLBACK_STATUS" != "required" ]; then
+            echo "Rollback is not required by journal state: $ROLLBACK_STATUS" >&2
+            exit 4
+          fi
+
+          if [ "$MAIN_RESTORE_STATUS" != "success" ] && [ "$PII_RESTORE_STATUS" != "success" ]; then
+            echo "No completed restore exists to roll back." >&2
+            exit 4
+          fi
+
+          if [ -z "$MAIN_PREVIOUS" ] || [ -z "$PII_PREVIOUS" ]; then
+            echo "Previous bookmarks are missing." >&2
+            exit 4
+          fi
+
+          if [ -n "$EXISTING_RUN" ]; then
+            echo "Rollback run is already recorded: $EXISTING_RUN" >&2
+            exit 4
+          fi
+
+          echo "main_previous_bookmark=$MAIN_PREVIOUS" >> "$GITHUB_OUTPUT"
+          echo "pii_previous_bookmark=$PII_PREVIOUS" >> "$GITHUB_OUTPUT"
+
+      - name: Claim rollback run in OPS journal
+        id: claim
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          EXECUTION_ID="${{ inputs.restore_execution_id }}"
+          NOW_ISO="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+
+          npx --yes wrangler@"$WRANGLER_VERSION" d1 execute "$OPS_DB" \
+            --remote \
+            --command "
+              UPDATE restore_execution_journal
+              SET
+                rollback_github_run_id = '$GITHUB_RUN_ID',
+                rollback_status = 'running',
+                rollback_started_at = '$NOW_ISO',
+                rollback_completed_at = NULL,
+                updated_at = '$NOW_ISO'
+              WHERE restore_execution_id = $EXECUTION_ID
+                AND status = 'rollback_required'
+                AND rollback_status = 'required'
+                AND rollback_github_run_id IS NULL;
+            "
+
+          RAW="$(
+            npx --yes wrangler@"$WRANGLER_VERSION" d1 execute "$OPS_DB" \
+              --remote \
+              --json \
+              --command "
+                SELECT
+                  rollback_status,
+                  rollback_github_run_id
+                FROM restore_execution_journal
+                WHERE restore_execution_id = $EXECUTION_ID
+                LIMIT 1;
+              "
+          )"
+
+          ROW="$(
+            printf '%s' "$RAW" | jq -c '
+              if type == "array" then
+                .[0].results[0] // empty
+              else
+                .results[0] // empty
+              end
+            '
+          )"
+
+          STATUS="$(printf '%s' "$ROW" | jq -r '.rollback_status // ""')"
+          RUN_ID="$(printf '%s' "$ROW" | jq -r '.rollback_github_run_id // ""')"
+
+          if [ "$STATUS" != "running" ] || [ "$RUN_ID" != "$GITHUB_RUN_ID" ]; then
+            echo "Could not exclusively claim rollback execution." >&2
+            exit 5
+          fi
+
+      - name: Enable independent maintenance lock
+        id: maintenance
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          EXECUTION_ID="${{ inputs.restore_execution_id }}"
+          NOW_ISO="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+
+          npx --yes wrangler@"$WRANGLER_VERSION" d1 execute "$OPS_DB" \
+            --remote \
+            --command "
+              UPDATE system_operations_control
+              SET
+                maintenance_enabled = 1,
+                maintenance_reason = 'controlled_rollback',
+                restore_execution_id = $EXECUTION_ID,
+                enabled_at = '$NOW_ISO',
+                disabled_at = NULL,
+                updated_at = '$NOW_ISO'
+              WHERE id = 1
+                AND maintenance_enabled = 0;
+            "
+
+          RAW="$(
+            npx --yes wrangler@"$WRANGLER_VERSION" d1 execute "$OPS_DB" \
+              --remote \
+              --json \
+              --command "
+                SELECT
+                  maintenance_enabled,
+                  restore_execution_id
+                FROM system_operations_control
+                WHERE id = 1
+                LIMIT 1;
+              "
+          )"
+
+          ROW="$(
+            printf '%s' "$RAW" | jq -c '
+              if type == "array" then
+                .[0].results[0] // empty
+              else
+                .results[0] // empty
+              end
+            '
+          )"
+
+          ENABLED="$(printf '%s' "$ROW" | jq -r '.maintenance_enabled // 0')"
+          ACTIVE_ID="$(printf '%s' "$ROW" | jq -r '.restore_execution_id // ""')"
+
+          if [ "$ENABLED" != "1" ] || [ "$ACTIVE_ID" != "$EXECUTION_ID" ]; then
+            echo "Maintenance lock was not acquired." >&2
+            exit 6
+          fi
+
+          echo "enabled=true" >> "$GITHUB_OUTPUT"
+
+      - name: Capture final pre-rollback bookmarks
+        id: pre_rollback
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          EXECUTION_ID="${{ inputs.restore_execution_id }}"
+
+          get_current_bookmark() {
+            local db_id="$1"
+
+            curl --fail-with-body --silent --show-error \
+              -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+              -H "Content-Type: application/json" \
+              "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/d1/database/${db_id}/time_travel/bookmark"
+          }
+
+          MAIN_JSON="$(get_current_bookmark "$MAIN_D1_DATABASE_ID")"
+          PII_JSON="$(get_current_bookmark "$PII_D1_DATABASE_ID")"
+
+          MAIN_CURRENT="$(printf '%s' "$MAIN_JSON" | jq -r '.result.bookmark // empty')"
+          PII_CURRENT="$(printf '%s' "$PII_JSON" | jq -r '.result.bookmark // empty')"
+
+          if [ -z "$MAIN_CURRENT" ] || [ -z "$PII_CURRENT" ]; then
+            echo "Could not capture pre-rollback bookmarks." >&2
+            exit 7
+          fi
+
+          NOW_ISO="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+
+          npx --yes wrangler@"$WRANGLER_VERSION" d1 execute "$OPS_DB" \
+            --remote \
+            --command "
+              UPDATE restore_execution_journal
+              SET
+                main_pre_rollback_bookmark = '$MAIN_CURRENT',
+                pii_pre_rollback_bookmark = '$PII_CURRENT',
+                updated_at = '$NOW_ISO'
+              WHERE restore_execution_id = $EXECUTION_ID
+                AND rollback_status = 'running';
+            "
+
+          echo "main_pre_rollback_bookmark=$MAIN_CURRENT" >> "$GITHUB_OUTPUT"
+          echo "pii_pre_rollback_bookmark=$PII_CURRENT" >> "$GITHUB_OUTPUT"
+
+      - name: Roll back Main D1
+        id: rollback_main
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          EXECUTION_ID="${{ inputs.restore_execution_id }}"
+          TARGET_BOOKMARK="${{ steps.journal.outputs.main_previous_bookmark }}"
+
+          URL="https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/d1/database/${MAIN_D1_DATABASE_ID}/time_travel/restore?bookmark=${TARGET_BOOKMARK}"
+
+          RESPONSE="$(
+            curl --fail-with-body --silent --show-error \
+              -X POST \
+              -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+              -H "Content-Type: application/json" \
+              "$URL"
+          )"
+
+          if [ "$(printf '%s' "$RESPONSE" | jq -r '.success // false')" != "true" ]; then
+            echo "Main rollback API returned unsuccessful response." >&2
+            exit 10
+          fi
+
+          BOOKMARK="$(printf '%s' "$RESPONSE" | jq -r '.result.bookmark // empty')"
+          PREVIOUS="$(printf '%s' "$RESPONSE" | jq -r '.result.previous_bookmark // empty')"
+
+          if [ -z "$BOOKMARK" ] || [ -z "$PREVIOUS" ]; then
+            echo "Main rollback response is missing bookmark data." >&2
+            exit 10
+          fi
+
+          NOW_ISO="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+
+          npx --yes wrangler@"$WRANGLER_VERSION" d1 execute "$OPS_DB" \
+            --remote \
+            --command "
+              UPDATE restore_execution_journal
+              SET
+                main_rollback_bookmark = '$BOOKMARK',
+                main_rollback_previous_bookmark = '$PREVIOUS',
+                updated_at = '$NOW_ISO'
+              WHERE restore_execution_id = $EXECUTION_ID;
+            "
+
+          echo "main_rollback_bookmark=$BOOKMARK" >> "$GITHUB_OUTPUT"
+          echo "main_rollback_previous_bookmark=$PREVIOUS" >> "$GITHUB_OUTPUT"
+
+      - name: Roll back PII D1
+        id: rollback_pii
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          EXECUTION_ID="${{ inputs.restore_execution_id }}"
+          TARGET_BOOKMARK="${{ steps.journal.outputs.pii_previous_bookmark }}"
+
+          URL="https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/d1/database/${PII_D1_DATABASE_ID}/time_travel/restore?bookmark=${TARGET_BOOKMARK}"
+
+          RESPONSE="$(
+            curl --fail-with-body --silent --show-error \
+              -X POST \
+              -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+              -H "Content-Type: application/json" \
+              "$URL"
+          )"
+
+          if [ "$(printf '%s' "$RESPONSE" | jq -r '.success // false')" != "true" ]; then
+            echo "PII rollback API returned unsuccessful response." >&2
+            exit 11
+          fi
+
+          BOOKMARK="$(printf '%s' "$RESPONSE" | jq -r '.result.bookmark // empty')"
+          PREVIOUS="$(printf '%s' "$RESPONSE" | jq -r '.result.previous_bookmark // empty')"
+
+          if [ -z "$BOOKMARK" ] || [ -z "$PREVIOUS" ]; then
+            echo "PII rollback response is missing bookmark data." >&2
+            exit 11
+          fi
+
+          NOW_ISO="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+
+          npx --yes wrangler@"$WRANGLER_VERSION" d1 execute "$OPS_DB" \
+            --remote \
+            --command "
+              UPDATE restore_execution_journal
+              SET
+                pii_rollback_bookmark = '$BOOKMARK',
+                pii_rollback_previous_bookmark = '$PREVIOUS',
+                updated_at = '$NOW_ISO'
+              WHERE restore_execution_id = $EXECUTION_ID;
+            "
+
+          echo "pii_rollback_bookmark=$BOOKMARK" >> "$GITHUB_OUTPUT"
+          echo "pii_rollback_previous_bookmark=$PREVIOUS" >> "$GITHUB_OUTPUT"
+
+      - name: Recreate current restore control-plane schema
+        id: schema
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          MIGRATION_FILE="migrations/restore-control-plane-schema.sql"
+
+          if [ ! -f "$MIGRATION_FILE" ]; then
+            echo "Restore control-plane migration file is missing." >&2
+            exit 12
+          fi
+
+          npx --yes wrangler@"$WRANGLER_VERSION" d1 execute "$MAIN_DB" \
+            --remote \
+            --file "$MIGRATION_FILE"
+
+          RAW="$(
+            npx --yes wrangler@"$WRANGLER_VERSION" d1 execute "$MAIN_DB" \
+              --remote \
+              --json \
+              --command "
+                SELECT COUNT(*) AS restore_table_count
+                FROM sqlite_schema
+                WHERE type = 'table'
+                  AND name IN (
+                    'restore_requests',
+                    'restore_validations',
+                    'restore_offsite_checks',
+                    'restore_readiness',
+                    'restore_execution_arms',
+                    'restore_executions'
+                  );
+              "
+          )"
+
+          COUNT="$(
+            printf '%s' "$RAW" | jq -r '
+              if type == "array" then
+                .[0].results[0].restore_table_count // 0
+              else
+                .results[0].restore_table_count // 0
+              end
+            '
+          )"
+
+          if [ "$COUNT" != "6" ]; then
+            echo "Restore control-plane schema is incomplete." >&2
+            exit 12
+          fi
+
+          echo "restore_schema_ready=true" >> "$GITHUB_OUTPUT"
+
+      - name: Verify post-rollback database readability
+        id: verify
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          EXECUTION_ID="${{ inputs.restore_execution_id }}"
+
+          run_scalar() {
+            local db_name="$1"
+            local sql="$2"
+            local field="$3"
+
+            RAW="$(
+              npx --yes wrangler@"$WRANGLER_VERSION" d1 execute "$db_name" \
+                --remote \
+                --json \
+                --command "$sql"
+            )"
+
+            printf '%s' "$RAW" | jq -r --arg field "$field" '
+              if type == "array" then
+                .[0].results[0][$field] // empty
+              else
+                .results[0][$field] // empty
+              end
+            '
+          }
+
+          MAIN_COUNT="$(
+            run_scalar "$MAIN_DB" \
+              "SELECT COUNT(*) AS row_count FROM users;" \
+              "row_count"
+          )"
+
+          PII_COUNT="$(
+            run_scalar "$PII_DB" \
+              "SELECT COUNT(*) AS row_count FROM user_pii;" \
+              "row_count"
+          )"
+
+          if ! [[ "$MAIN_COUNT" =~ ^[0-9]+$ ]]; then
+            echo "Main D1 is not readable after rollback." >&2
+            exit 13
+          fi
+
+          if ! [[ "$PII_COUNT" =~ ^[0-9]+$ ]]; then
+            echo "PII D1 is not readable after rollback." >&2
+            exit 13
+          fi
+
+          NOW_ISO="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+
+          npx --yes wrangler@"$WRANGLER_VERSION" d1 execute "$OPS_DB" \
+            --remote \
+            --command "
+              UPDATE restore_execution_journal
+              SET
+                status = 'rolled_back',
+                rollback_status = 'success',
+                failure_code = NULL,
+                rollback_completed_at = '$NOW_ISO',
+                updated_at = '$NOW_ISO'
+              WHERE restore_execution_id = $EXECUTION_ID;
+            "
+
+          echo "main_read_verified=true" >> "$GITHUB_OUTPUT"
+          echo "pii_read_verified=true" >> "$GITHUB_OUTPUT"
+          echo "main_user_count=$MAIN_COUNT" >> "$GITHUB_OUTPUT"
+          echo "pii_user_count=$PII_COUNT" >> "$GITHUB_OUTPUT"
+
+      - name: Mark rollback failure
+        if: failure() && steps.claim.outcome == 'success'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          EXECUTION_ID="${{ inputs.restore_execution_id }}"
+          NOW_ISO="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+
+          npx --yes wrangler@"$WRANGLER_VERSION" d1 execute "$OPS_DB" \
+            --remote \
+            --command "
+              UPDATE restore_execution_journal
+              SET
+                status = 'rollback_required',
+                rollback_status = 'failed',
+                failure_code = COALESCE(
+                  failure_code,
+                  'ROLLBACK_FAILED_OR_INCOMPLETE'
+                ),
+                rollback_completed_at = '$NOW_ISO',
+                updated_at = '$NOW_ISO'
+              WHERE restore_execution_id = $EXECUTION_ID;
+            " || true
+
+          echo "Maintenance mode intentionally remains enabled."
+
+      - name: Write rollback summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "## MVX Controlled D1 Rollback"
+            echo
+            echo "- Restore execution: ${{ inputs.restore_execution_id }}"
+            echo "- Rollback GitHub run ID: $GITHUB_RUN_ID"
+            echo "- Confirmation accepted: ${{ steps.confirm.outputs.confirmed || 'false' }}"
+            echo "- Rollback journal claimed: ${{ steps.claim.outcome == 'success' && 'yes' || 'no' }}"
+            echo "- Maintenance lock enabled: ${{ steps.maintenance.outputs.enabled || 'false' }}"
+            echo "- Main rollback attempted: ${{ steps.rollback_main.outcome != 'skipped' && 'yes' || 'no' }}"
+            echo "- PII rollback attempted: ${{ steps.rollback_pii.outcome != 'skipped' && 'yes' || 'no' }}"
+            echo "- Restore control-plane schema recreated: ${{ steps.schema.outputs.restore_schema_ready || 'false' }}"
+            echo "- Main readable after rollback: ${{ steps.verify.outputs.main_read_verified || 'not-verified' }}"
+            echo "- PII readable after rollback: ${{ steps.verify.outputs.pii_read_verified || 'not-verified' }}"
+            echo "- Main users readable: ${{ steps.verify.outputs.main_user_count || 'not-verified' }}"
+            echo "- PII records readable: ${{ steps.verify.outputs.pii_user_count || 'not-verified' }}"
+            echo "- Maintenance automatically disabled: no"
+            echo "- Automatic second rollback performed: no"
+            echo
+            if [ "${{ steps.maintenance.outputs.enabled || 'false' }}" = "true" ]; then
+              echo "Maintenance remains enabled for manual production verification."
+            else
+              echo "Maintenance was not enabled by this run."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
