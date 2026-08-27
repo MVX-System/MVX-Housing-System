@@ -310,21 +310,6 @@ jobs:
           if mega-ls -l "$MEGA_DESTINATION/$ARCHIVE_NAME" > /tmp/mega-restore-check.txt 2>&1; then
             cat /tmp/mega-restore-check.txt
 
-            NOW_ISO="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
-
-            npx --yes wrangler@"$WRANGLER_VERSION" d1 execute "$MAIN_DB" \
-              --remote \
-              --command "
-                UPDATE restore_offsite_checks
-                SET
-                  status = 'present',
-                  failure_code = NULL,
-                  completed_at = '$NOW_ISO',
-                  updated_at = '$NOW_ISO'
-                WHERE id = $CHECK_ID
-                  AND status = 'running';
-              "
-
             echo "Archive is present in MEGA."
             echo "presence=present" >> "$GITHUB_OUTPUT"
           else
@@ -348,6 +333,149 @@ jobs:
             echo "Archive is not present at the expected MEGA path." >&2
             exit 1
           fi
+
+      - name: Download encrypted archive to temporary runner storage
+        id: download
+        shell: bash
+        env:
+          CHECK_ID: ${{ steps.check.outputs.check_id }}
+          ARCHIVE_NAME: ${{ steps.resolve.outputs.archive_name }}
+        run: |
+          set -euo pipefail
+          umask 077
+
+          DOWNLOAD_DIR="$RUNNER_TEMP/mvx-restore-verify-$GITHUB_RUN_ID"
+          ARCHIVE_PATH="$DOWNLOAD_DIR/$ARCHIVE_NAME"
+
+          mkdir -p "$DOWNLOAD_DIR"
+
+          echo "Downloading encrypted archive to temporary runner storage..."
+
+          mega-get \
+            "$MEGA_DESTINATION/$ARCHIVE_NAME" \
+            "$DOWNLOAD_DIR/"
+
+          if [ ! -f "$ARCHIVE_PATH" ]; then
+            echo "Downloaded archive not found at expected local path." >&2
+            exit 1
+          fi
+
+          if [ ! -s "$ARCHIVE_PATH" ]; then
+            echo "Downloaded archive is empty." >&2
+            exit 1
+          fi
+
+          ARCHIVE_SIZE="$(
+            stat -c '%s' "$ARCHIVE_PATH"
+          )"
+
+          DOWNLOADED_AT="$(
+            date -u +"%Y-%m-%dT%H:%M:%SZ"
+          )"
+
+          echo "archive_path=$ARCHIVE_PATH" >> "$GITHUB_OUTPUT"
+          echo "archive_size_bytes=$ARCHIVE_SIZE" >> "$GITHUB_OUTPUT"
+          echo "downloaded_at=$DOWNLOADED_AT" >> "$GITHUB_OUTPUT"
+
+          echo "Encrypted archive downloaded."
+          echo "Downloaded size: $ARCHIVE_SIZE bytes"
+
+      - name: Verify downloaded archive SHA-256
+        id: sha
+        shell: bash
+        env:
+          CHECK_ID: ${{ steps.check.outputs.check_id }}
+          ARCHIVE_PATH: ${{ steps.download.outputs.archive_path }}
+          ARCHIVE_SIZE_BYTES: ${{ steps.download.outputs.archive_size_bytes }}
+          DOWNLOADED_AT: ${{ steps.download.outputs.downloaded_at }}
+          EXPECTED_SHA256: ${{ steps.resolve.outputs.archive_sha256 }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${ARCHIVE_PATH:-}" ] || [ ! -f "$ARCHIVE_PATH" ]; then
+            echo "Temporary archive path is unavailable." >&2
+            exit 1
+          fi
+
+          if [[ ! "$ARCHIVE_SIZE_BYTES" =~ ^[0-9]+$ ]]; then
+            echo "Invalid downloaded archive size." >&2
+            exit 1
+          fi
+
+          if [[ ! "$EXPECTED_SHA256" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "Invalid expected SHA-256." >&2
+            exit 1
+          fi
+
+          ACTUAL_SHA256="$(
+            sha256sum "$ARCHIVE_PATH" | awk '{print $1}'
+          )"
+
+          NOW_ISO="$(
+            date -u +"%Y-%m-%dT%H:%M:%SZ"
+          )"
+
+          if [ "$ACTUAL_SHA256" != "$EXPECTED_SHA256" ]; then
+            npx --yes wrangler@"$WRANGLER_VERSION" d1 execute "$MAIN_DB" \
+              --remote \
+              --command "
+                UPDATE restore_offsite_checks
+                SET
+                  status = 'failed',
+                  downloaded_size_bytes = $ARCHIVE_SIZE_BYTES,
+                  actual_sha256 = '$ACTUAL_SHA256',
+                  sha256_verified = 0,
+                  downloaded_at = '$DOWNLOADED_AT',
+                  failure_code = 'SHA256_MISMATCH',
+                  completed_at = '$NOW_ISO',
+                  updated_at = '$NOW_ISO'
+                WHERE id = $CHECK_ID
+                  AND status = 'running';
+              "
+
+            echo "Downloaded archive SHA-256 does not match expected value." >&2
+            exit 1
+          fi
+
+          npx --yes wrangler@"$WRANGLER_VERSION" d1 execute "$MAIN_DB" \
+            --remote \
+            --command "
+              UPDATE restore_offsite_checks
+              SET
+                status = 'present',
+                downloaded_size_bytes = $ARCHIVE_SIZE_BYTES,
+                actual_sha256 = '$ACTUAL_SHA256',
+                sha256_verified = 1,
+                downloaded_at = '$DOWNLOADED_AT',
+                failure_code = NULL,
+                completed_at = '$NOW_ISO',
+                updated_at = '$NOW_ISO'
+              WHERE id = $CHECK_ID
+                AND status = 'running';
+            "
+
+          echo "Archive SHA-256 verified successfully."
+          echo "sha256_verified=true" >> "$GITHUB_OUTPUT"
+
+      - name: Remove temporary downloaded archive
+        if: always()
+        shell: bash
+        env:
+          ARCHIVE_PATH: ${{ steps.download.outputs.archive_path }}
+        run: |
+          set -euo pipefail
+
+          if [ -n "${ARCHIVE_PATH:-}" ] && [ -f "$ARCHIVE_PATH" ]; then
+            rm -f "$ARCHIVE_PATH"
+          fi
+
+          DOWNLOAD_DIR="$RUNNER_TEMP/mvx-restore-verify-$GITHUB_RUN_ID"
+
+          if [ -d "$DOWNLOAD_DIR" ]; then
+            rm -rf "$DOWNLOAD_DIR"
+          fi
+
+          echo "Temporary restore-verification files removed."
 
       - name: Mark unfinished verification as failed
         if: failure() && steps.check.outputs.check_id != ''
@@ -401,7 +529,9 @@ jobs:
             echo "- Destination: $MEGA_DESTINATION"
             echo "- Archive: ${ARCHIVE_NAME:-not-resolved}"
             echo "- Presence: ${PRESENCE:-not-confirmed}"
-            echo "- Download performed: no"
+            echo "- Download performed: yes, temporary runner storage only"
+            echo "- SHA-256 verified: ${{ steps.sha.outputs.sha256_verified || 'false' }}"
+            echo "- Temporary archive retained: no"
             echo "- Decryption performed: no"
             echo "- Restore performed: no"
           } >> "$GITHUB_STEP_SUMMARY"
