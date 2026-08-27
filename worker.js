@@ -2768,6 +2768,75 @@ const ADMIN_PII_DETAIL_LIMIT = {
   blockSeconds: 5 * 60,
 };
 
+// Stage 2I-SR14F-B:
+// Protected restore-request creation is deliberately throttled.
+// The first limiter caps all request attempts; the second applies
+// specifically to failed administrator password confirmation.
+const ADMIN_RESTORE_REQUEST_LIMIT = {
+  maxRequests: 10,
+  windowSeconds: 15 * 60,
+  blockSeconds: 30 * 60,
+};
+
+const ADMIN_RESTORE_CANCEL_LIMIT = {
+  maxRequests: 30,
+  windowSeconds: 15 * 60,
+  blockSeconds: 15 * 60,
+};
+
+// Stage 2I-SR14F-C:
+// Preview / validation is read-only with respect to Cloudflare D1,
+// MEGA and R2, but it writes a validation record to Main D1.
+const ADMIN_RESTORE_VALIDATE_LIMIT = {
+  maxRequests: 30,
+  windowSeconds: 15 * 60,
+  blockSeconds: 15 * 60,
+};
+
+// Stage 2I-SR14F-D4:
+// Final readiness remains non-destructive, but it persists a signed-off
+// pre-restore readiness record in Main D1.
+const ADMIN_RESTORE_READINESS_LIMIT = {
+  maxRequests: 30,
+  windowSeconds: 15 * 60,
+  blockSeconds: 15 * 60,
+};
+
+// Stage 2I-SR14F-D5A:
+// Final execution arming is still non-destructive, but it is a more
+// sensitive control surface because it creates a short-lived one-time
+// credential for a later restore-execution phase.
+const ADMIN_RESTORE_ARM_LIMIT = {
+  maxRequests: 10,
+  windowSeconds: 15 * 60,
+  blockSeconds: 30 * 60,
+};
+
+// Stage 2I-SR14F-D5B-1:
+// Token verification dry-run. It never consumes an arm and never starts
+// a restore, but repeated guesses against an execution token are rate-limited.
+const ADMIN_RESTORE_EXECUTION_DRY_RUN_LIMIT = {
+  maxRequests: 10,
+  windowSeconds: 15 * 60,
+  blockSeconds: 30 * 60,
+};
+
+// Stage 2I-SR14F-D5B-2B:
+// Final control-plane dispatch is deliberately rare and heavily rate-limited.
+// The endpoint consumes the arm and creates a durable execution journal entry,
+// but the workflow introduced in D5B-2B remains non-destructive.
+const ADMIN_RESTORE_EXECUTION_DISPATCH_LIMIT = {
+  maxRequests: 5,
+  windowSeconds: 30 * 60,
+  blockSeconds: 60 * 60,
+};
+
+const ADMIN_RESTORE_PASSWORD_FAILURE_LIMIT = {
+  maxAttempts: 5,
+  windowSeconds: 15 * 60,
+  blockSeconds: 30 * 60,
+};
+
 // Fixed PBKDF2 record used only to equalize the expensive password
 // verification path for unknown Nick values. It is not a user password.
 const LOGIN_DUMMY_PASSWORD_HASH =
@@ -3424,9 +3493,34 @@ const BACKUP_RUNS_MAX_LIMIT = 100;
 
 // Stage 2I-SR14F-A:
 // Read-only restore catalogue.
-// No restore endpoint or destructive operation is exposed here.
 const RESTORE_POINTS_DEFAULT_LIMIT = 20;
 const RESTORE_POINTS_MAX_LIMIT = 100;
+
+// Stage 2I-SR14F-B:
+// A restore request is only an authenticated, short-lived intent record.
+// It does not execute a restore and grants no Cloudflare/MEGA write power.
+const RESTORE_REQUEST_TTL_MINUTES = 15;
+const RESTORE_REQUEST_SUPPORTED_TYPES =
+  new Set([
+    "offsite_backup",
+  ]);
+const RESTORE_REQUEST_CONFIRMATION_PREFIX =
+  "CREATE RESTORE REQUEST";
+
+// Stage 2I-SR14F-D5A:
+// The arm is intentionally much shorter-lived than the protected request.
+// The execution token is returned once and only its SHA-256 digest is kept
+// in D1. D5A itself exposes no destructive restore endpoint.
+const RESTORE_EXECUTION_ARM_TTL_MINUTES = 5;
+const RESTORE_READINESS_MAX_AGE_MINUTES = 5;
+const RESTORE_EXECUTION_ARM_CONFIRMATION_PREFIX =
+  "ARM RESTORE EXECUTION";
+
+// Stage 2I-SR14F-D5B-2B.
+const RESTORE_EXECUTION_DISPATCH_CONFIRMATION_PREFIX =
+  "DISPATCH RESTORE EXECUTION";
+const DEFAULT_GITHUB_RESTORE_WORKFLOW =
+  "mvx-restore-execute.yml";
 
 async function ensureBackupStatusTables(env) {
   await env.DB.prepare(`
@@ -3822,6 +3916,53 @@ function getGitHubBackupConfiguration(
 }
 
 
+function getGitHubRestoreExecutionConfiguration(
+  env
+) {
+  const owner =
+    String(
+      env?.GITHUB_OWNER || ""
+    ).trim();
+
+  const repo =
+    String(
+      env?.GITHUB_REPO || ""
+    ).trim();
+
+  const workflow =
+    String(
+      env?.GITHUB_RESTORE_WORKFLOW ||
+      DEFAULT_GITHUB_RESTORE_WORKFLOW
+    ).trim();
+
+  const token =
+    String(
+      env?.GITHUB_BACKUP_TOKEN || ""
+    ).trim();
+
+  if (
+    !owner ||
+    !repo ||
+    !workflow ||
+    !token
+  ) {
+    return {
+      ok: false,
+      error:
+        "restore_github_not_configured",
+    };
+  }
+
+  return {
+    ok: true,
+    owner,
+    repo,
+    workflow,
+    token,
+  };
+}
+
+
 // =========================
 // RESTORE STATUS HELPERS
 // Stage 2I-SR14F-A
@@ -4178,6 +4319,866 @@ async function getOffsiteRestorePoints(
         ),
     })
   );
+}
+
+// =========================
+// PROTECTED RESTORE REQUESTS
+// Stage 2I-SR14F-B
+//
+// The request table records a short-lived, explicitly confirmed intent.
+// No restore execution is implemented in this stage.
+// =========================
+
+async function ensureRestoreRequestSchema(
+  env
+) {
+  await env.DB.prepare(`
+    CREATE TABLE IF NOT EXISTS restore_requests (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      restore_type TEXT NOT NULL
+        CHECK (
+          restore_type IN (
+            'main_d1_time_travel',
+            'pii_d1_time_travel',
+            'offsite_backup'
+          )
+        ),
+      status TEXT NOT NULL DEFAULT 'pending'
+        CHECK (
+          status IN (
+            'pending',
+            'cancelled',
+            'expired',
+            'executed',
+            'failed'
+          )
+        ),
+      requested_by INTEGER NOT NULL,
+      backup_run_id INTEGER,
+      target_timestamp TEXT,
+      target_bookmark TEXT,
+      archive_name TEXT,
+      archive_sha256 TEXT,
+      confirmed_at TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      executed_at TEXT,
+      cancelled_at TEXT,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (requested_by)
+        REFERENCES users(id)
+        ON DELETE RESTRICT,
+      FOREIGN KEY (backup_run_id)
+        REFERENCES backup_runs(id)
+        ON DELETE RESTRICT
+    )
+  `).run();
+
+  await env.DB.prepare(`
+    CREATE INDEX IF NOT EXISTS idx_restore_requests_status
+    ON restore_requests(status)
+  `).run();
+
+  await env.DB.prepare(`
+    CREATE INDEX IF NOT EXISTS idx_restore_requests_requested_by
+    ON restore_requests(requested_by)
+  `).run();
+
+  await env.DB.prepare(`
+    CREATE INDEX IF NOT EXISTS idx_restore_requests_expires_at
+    ON restore_requests(expires_at)
+  `).run();
+
+  await env.DB.prepare(`
+    CREATE INDEX IF NOT EXISTS idx_restore_requests_backup_run_id
+    ON restore_requests(backup_run_id)
+  `).run();
+
+  // Concurrency guard: one pending request per administrator.
+  // Expired rows are first moved to status='expired' by the POST flow.
+  await env.DB.prepare(`
+    CREATE UNIQUE INDEX IF NOT EXISTS
+      idx_restore_requests_one_pending_per_admin
+    ON restore_requests(requested_by)
+    WHERE status = 'pending'
+  `).run();
+}
+
+function getRestoreRequestConfirmationPhrase(
+  backupRunId
+) {
+  return `${RESTORE_REQUEST_CONFIRMATION_PREFIX} ${backupRunId}`;
+}
+
+function normalizeRestoreRequestRow(
+  row
+) {
+  if (!row) {
+    return null;
+  }
+
+  return {
+    id:
+      Number(row.id),
+    restore_type:
+      row.restore_type,
+    status:
+      row.status,
+    requested_by:
+      Number(row.requested_by),
+    requested_by_nick:
+      row.requested_by_nick ||
+      null,
+    backup_run_id:
+      row.backup_run_id === null ||
+      row.backup_run_id === undefined
+        ? null
+        : Number(
+            row.backup_run_id
+          ),
+    target_timestamp:
+      row.target_timestamp ||
+      null,
+    target_bookmark:
+      row.target_bookmark ||
+      null,
+    archive_name:
+      row.archive_name ||
+      null,
+    archive_sha256:
+      row.archive_sha256 ||
+      null,
+    confirmed_at:
+      row.confirmed_at,
+    expires_at:
+      row.expires_at,
+    executed_at:
+      row.executed_at ||
+      null,
+    cancelled_at:
+      row.cancelled_at ||
+      null,
+    created_at:
+      row.created_at,
+    updated_at:
+      row.updated_at,
+  };
+}
+
+async function getActiveRestoreRequest(
+  env,
+  requestedBy
+) {
+  const userId =
+    normalizePositiveInteger(
+      requestedBy
+    );
+
+  if (!userId) {
+    return null;
+  }
+
+  const row =
+    await env.DB.prepare(`
+      SELECT
+        rr.id,
+        rr.restore_type,
+        rr.status,
+        rr.requested_by,
+        requester.nick
+          AS requested_by_nick,
+        rr.backup_run_id,
+        rr.target_timestamp,
+        rr.target_bookmark,
+        rr.archive_name,
+        rr.archive_sha256,
+        rr.confirmed_at,
+        rr.expires_at,
+        rr.executed_at,
+        rr.cancelled_at,
+        rr.created_at,
+        rr.updated_at
+      FROM restore_requests rr
+      LEFT JOIN users requester
+        ON requester.id =
+          rr.requested_by
+      WHERE rr.requested_by = ?
+        AND rr.status = 'pending'
+        AND datetime(rr.expires_at) >
+          datetime('now')
+      ORDER BY
+        datetime(rr.created_at) DESC,
+        rr.id DESC
+      LIMIT 1
+    `)
+      .bind(
+        userId
+      )
+      .first();
+
+  return normalizeRestoreRequestRow(
+    row
+  );
+}
+
+async function getRestoreRequestById(
+  env,
+  restoreRequestId,
+  requestedBy
+) {
+  const requestId =
+    normalizePositiveInteger(
+      restoreRequestId
+    );
+
+  const userId =
+    normalizePositiveInteger(
+      requestedBy
+    );
+
+  if (
+    !requestId ||
+    !userId
+  ) {
+    return null;
+  }
+
+  const row =
+    await env.DB.prepare(`
+      SELECT
+        rr.id,
+        rr.restore_type,
+        rr.status,
+        rr.requested_by,
+        requester.nick
+          AS requested_by_nick,
+        rr.backup_run_id,
+        rr.target_timestamp,
+        rr.target_bookmark,
+        rr.archive_name,
+        rr.archive_sha256,
+        rr.confirmed_at,
+        rr.expires_at,
+        rr.executed_at,
+        rr.cancelled_at,
+        rr.created_at,
+        rr.updated_at
+      FROM restore_requests rr
+      LEFT JOIN users requester
+        ON requester.id =
+          rr.requested_by
+      WHERE rr.id = ?
+        AND rr.requested_by = ?
+      LIMIT 1
+    `)
+      .bind(
+        requestId,
+        userId
+      )
+      .first();
+
+  return normalizeRestoreRequestRow(
+    row
+  );
+}
+
+async function expireRestoreRequests(
+  env,
+  requestedBy
+) {
+  const userId =
+    normalizePositiveInteger(
+      requestedBy
+    );
+
+  if (!userId) {
+    return;
+  }
+
+  const nowIso =
+    new Date().toISOString();
+
+  await env.DB.prepare(`
+    UPDATE restore_requests
+    SET
+      status = 'expired',
+      updated_at = ?
+    WHERE requested_by = ?
+      AND status = 'pending'
+      AND datetime(expires_at) <=
+        datetime(?)
+  `)
+    .bind(
+      nowIso,
+      userId,
+      nowIso
+    )
+    .run();
+}
+
+async function getVerifiedOffsiteRestorePoint(
+  env,
+  backupRunId
+) {
+  const run =
+    await getBackupRunById(
+      env,
+      backupRunId
+    );
+
+  if (!run) {
+    return {
+      ok: false,
+      error:
+        "restore_point_not_found",
+    };
+  }
+
+  const restorable =
+    run.status === "success" &&
+    Boolean(
+      run.archive_name &&
+      run.archive_sha256 &&
+      run.main_integrity ===
+        "ok" &&
+      run.pii_integrity ===
+        "ok"
+    );
+
+  if (!restorable) {
+    return {
+      ok: false,
+      error:
+        "restore_point_not_verified",
+    };
+  }
+
+  return {
+    ok: true,
+    point: run,
+  };
+}
+
+
+// =========================
+// RESTORE PREVIEW / VALIDATION
+// Stage 2I-SR14F-C
+//
+// Validation is a preflight only.
+// It records:
+// - whether the protected request is still live;
+// - whether the selected offsite backup metadata is still verified;
+// - current Main/PII D1 Time Travel bookmarks as safety checkpoints.
+//
+// It NEVER calls a destructive D1 restore endpoint and never writes
+// to MEGA or R2.
+// =========================
+
+async function ensureRestoreValidationSchema(
+  env
+) {
+  await env.DB.prepare(`
+    CREATE TABLE IF NOT EXISTS restore_validations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      restore_request_id INTEGER NOT NULL,
+      validation_status TEXT NOT NULL
+        CHECK (
+          validation_status IN (
+            'ready',
+            'blocked',
+            'failed'
+          )
+        ),
+      main_ready INTEGER NOT NULL DEFAULT 0
+        CHECK (main_ready IN (0, 1)),
+      pii_ready INTEGER NOT NULL DEFAULT 0
+        CHECK (pii_ready IN (0, 1)),
+      offsite_ready INTEGER NOT NULL DEFAULT 0
+        CHECK (offsite_ready IN (0, 1)),
+      target_timestamp TEXT,
+      main_bookmark TEXT,
+      pii_bookmark TEXT,
+      failure_code TEXT,
+      validated_by INTEGER NOT NULL,
+      validated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (restore_request_id)
+        REFERENCES restore_requests(id)
+        ON DELETE CASCADE,
+      FOREIGN KEY (validated_by)
+        REFERENCES users(id)
+        ON DELETE RESTRICT
+    )
+  `).run();
+
+  await env.DB.prepare(`
+    CREATE INDEX IF NOT EXISTS idx_restore_validations_request
+    ON restore_validations(restore_request_id)
+  `).run();
+
+  await env.DB.prepare(`
+    CREATE INDEX IF NOT EXISTS idx_restore_validations_status
+    ON restore_validations(validation_status)
+  `).run();
+
+  await env.DB.prepare(`
+    CREATE INDEX IF NOT EXISTS idx_restore_validations_validated_at
+    ON restore_validations(validated_at)
+  `).run();
+}
+
+function normalizeRestoreValidationRow(
+  row
+) {
+  if (!row) {
+    return null;
+  }
+
+  return {
+    id:
+      Number(row.id),
+    restore_request_id:
+      Number(
+        row.restore_request_id
+      ),
+    validation_status:
+      row.validation_status,
+    main_ready:
+      Number(row.main_ready) === 1,
+    pii_ready:
+      Number(row.pii_ready) === 1,
+    offsite_ready:
+      Number(row.offsite_ready) === 1,
+    target_timestamp:
+      row.target_timestamp ||
+      null,
+    main_bookmark:
+      row.main_bookmark ||
+      null,
+    pii_bookmark:
+      row.pii_bookmark ||
+      null,
+    failure_code:
+      row.failure_code ||
+      null,
+    validated_by:
+      Number(row.validated_by),
+    validated_at:
+      row.validated_at,
+    created_at:
+      row.created_at,
+  };
+}
+
+async function getLatestRestoreValidation(
+  env,
+  restoreRequestId,
+  requestedBy
+) {
+  const requestId =
+    normalizePositiveInteger(
+      restoreRequestId
+    );
+
+  const userId =
+    normalizePositiveInteger(
+      requestedBy
+    );
+
+  if (
+    !requestId ||
+    !userId
+  ) {
+    return null;
+  }
+
+  await ensureRestoreValidationSchema(
+    env
+  );
+
+  const row =
+    await env.DB.prepare(`
+      SELECT
+        rv.id,
+        rv.restore_request_id,
+        rv.validation_status,
+        rv.main_ready,
+        rv.pii_ready,
+        rv.offsite_ready,
+        rv.target_timestamp,
+        rv.main_bookmark,
+        rv.pii_bookmark,
+        rv.failure_code,
+        rv.validated_by,
+        rv.validated_at,
+        rv.created_at
+      FROM restore_validations rv
+      JOIN restore_requests rr
+        ON rr.id =
+          rv.restore_request_id
+      WHERE rv.restore_request_id = ?
+        AND rr.requested_by = ?
+      ORDER BY
+        datetime(rv.validated_at) DESC,
+        rv.id DESC
+      LIMIT 1
+    `)
+      .bind(
+        requestId,
+        userId
+      )
+      .first();
+
+  return normalizeRestoreValidationRow(
+    row
+  );
+}
+
+async function getRestoreTimeTravelSafetyCheckpoints(
+  env
+) {
+  const cloudflare =
+    getCloudflareD1ReadConfiguration(
+      env
+    );
+
+  if (!cloudflare.configured) {
+    const checkedAt =
+      new Date().toISOString();
+
+    return {
+      configured: false,
+      main: {
+        database:
+          "housing-db",
+        database_id:
+          cloudflare
+            .main_database_id,
+        available: false,
+        bookmark: null,
+        checked_at:
+          checkedAt,
+        error:
+          "time_travel_status_not_configured",
+      },
+      pii: {
+        database:
+          "housing-pii-db",
+        database_id:
+          cloudflare
+            .pii_database_id,
+        available: false,
+        bookmark: null,
+        checked_at:
+          checkedAt,
+        error:
+          "time_travel_status_not_configured",
+      },
+    };
+  }
+
+  const [
+    main,
+    pii,
+  ] =
+    await Promise.all([
+      getD1TimeTravelBookmark({
+        accountId:
+          cloudflare.account_id,
+        databaseId:
+          cloudflare.main_database_id,
+        apiToken:
+          cloudflare.api_token,
+        databaseName:
+          "housing-db",
+      }),
+
+      getD1TimeTravelBookmark({
+        accountId:
+          cloudflare.account_id,
+        databaseId:
+          cloudflare.pii_database_id,
+        apiToken:
+          cloudflare.api_token,
+        databaseName:
+          "housing-pii-db",
+      }),
+    ]);
+
+  return {
+    configured: true,
+    main,
+    pii,
+  };
+}
+
+function getRestoreValidationFailureCode({
+  offsiteReady,
+  mainReady,
+  piiReady,
+  offsiteError = null,
+  timeTravelConfigured = true,
+}) {
+  if (!offsiteReady) {
+    return (
+      offsiteError ||
+      "offsite_restore_point_not_verified"
+    );
+  }
+
+  if (!timeTravelConfigured) {
+    return "time_travel_status_not_configured";
+  }
+
+  if (!mainReady) {
+    return "main_time_travel_unavailable";
+  }
+
+  if (!piiReady) {
+    return "pii_time_travel_unavailable";
+  }
+
+  return null;
+}
+
+
+// =========================
+// RESTORE READINESS / FINAL PRE-RESTORE VALIDATION
+// Stage 2I-SR14F-D4
+//
+// This layer combines the protected request, preview validation,
+// verified offsite archive checks and fresh D1 Time Travel safety
+// checkpoints into one immutable readiness record.
+//
+// It NEVER performs a restore, import, overwrite, MEGA write or R2 write.
+// =========================
+
+function normalizeRestoreReadinessRow(row) {
+  if (!row) {
+    return null;
+  }
+
+  return {
+    id: Number(row.id),
+    restore_request_id:
+      Number(row.restore_request_id),
+    validation_id:
+      row.validation_id === null
+        ? null
+        : Number(row.validation_id),
+    offsite_check_id:
+      row.offsite_check_id === null
+        ? null
+        : Number(row.offsite_check_id),
+    status: row.status,
+    request_active:
+      Number(row.request_active) === 1,
+    preview_ready:
+      Number(row.preview_ready) === 1,
+    offsite_present:
+      Number(row.offsite_present) === 1,
+    sha256_verified:
+      Number(row.sha256_verified) === 1,
+    decryption_verified:
+      Number(row.decryption_verified) === 1,
+    archive_structure_verified:
+      Number(row.archive_structure_verified) === 1,
+    internal_checksums_verified:
+      Number(row.internal_checksums_verified) === 1,
+    main_sql_integrity:
+      row.main_sql_integrity || null,
+    pii_sql_integrity:
+      row.pii_sql_integrity || null,
+    main_checkpoint_bookmark:
+      row.main_checkpoint_bookmark || null,
+    pii_checkpoint_bookmark:
+      row.pii_checkpoint_bookmark || null,
+    failure_code:
+      row.failure_code || null,
+    checked_by:
+      Number(row.checked_by),
+    checked_at:
+      row.checked_at,
+    created_at:
+      row.created_at,
+  };
+}
+
+async function getLatestRestoreReadiness(
+  env,
+  restoreRequestId,
+  requestedBy
+) {
+  const requestId =
+    normalizePositiveInteger(
+      restoreRequestId
+    );
+
+  const userId =
+    normalizePositiveInteger(
+      requestedBy
+    );
+
+  if (!requestId || !userId) {
+    return null;
+  }
+
+  const row =
+    await env.DB.prepare(`
+      SELECT
+        rrdy.id,
+        rrdy.restore_request_id,
+        rrdy.validation_id,
+        rrdy.offsite_check_id,
+        rrdy.status,
+        rrdy.request_active,
+        rrdy.preview_ready,
+        rrdy.offsite_present,
+        rrdy.sha256_verified,
+        rrdy.decryption_verified,
+        rrdy.archive_structure_verified,
+        rrdy.internal_checksums_verified,
+        rrdy.main_sql_integrity,
+        rrdy.pii_sql_integrity,
+        rrdy.main_checkpoint_bookmark,
+        rrdy.pii_checkpoint_bookmark,
+        rrdy.failure_code,
+        rrdy.checked_by,
+        rrdy.checked_at,
+        rrdy.created_at
+      FROM restore_readiness rrdy
+      JOIN restore_requests rr
+        ON rr.id = rrdy.restore_request_id
+      WHERE rrdy.restore_request_id = ?
+        AND rr.requested_by = ?
+      ORDER BY
+        datetime(rrdy.checked_at) DESC,
+        rrdy.id DESC
+      LIMIT 1
+    `)
+      .bind(requestId, userId)
+      .first();
+
+  return normalizeRestoreReadinessRow(
+    row
+  );
+}
+
+async function getLatestCompletedOffsiteCheck(
+  env,
+  restoreRequestId,
+  requestedBy
+) {
+  const requestId =
+    normalizePositiveInteger(
+      restoreRequestId
+    );
+
+  const userId =
+    normalizePositiveInteger(
+      requestedBy
+    );
+
+  if (!requestId || !userId) {
+    return null;
+  }
+
+  return await env.DB.prepare(`
+    SELECT
+      roc.id,
+      roc.restore_request_id,
+      roc.status,
+      roc.archive_name,
+      roc.expected_sha256,
+      roc.actual_sha256,
+      roc.sha256_verified,
+      roc.decryption_verified,
+      roc.archive_structure_verified,
+      roc.internal_checksums_verified,
+      roc.main_sql_integrity,
+      roc.pii_sql_integrity,
+      roc.failure_code,
+      roc.completed_at,
+      roc.content_validated_at,
+      roc.created_at
+    FROM restore_offsite_checks roc
+    JOIN restore_requests rr
+      ON rr.id = roc.restore_request_id
+    WHERE roc.restore_request_id = ?
+      AND rr.requested_by = ?
+    ORDER BY
+      datetime(
+        COALESCE(
+          roc.content_validated_at,
+          roc.completed_at,
+          roc.created_at
+        )
+      ) DESC,
+      roc.id DESC
+    LIMIT 1
+  `)
+    .bind(requestId, userId)
+    .first();
+}
+
+function getRestoreReadinessFailureCode({
+  requestActive,
+  previewReady,
+  offsitePresent,
+  sha256Verified,
+  decryptionVerified,
+  archiveStructureVerified,
+  internalChecksumsVerified,
+  mainSqlIntegrity,
+  piiSqlIntegrity,
+  mainCheckpointReady,
+  piiCheckpointReady,
+}) {
+  if (!requestActive) {
+    return "restore_request_not_active";
+  }
+
+  if (!previewReady) {
+    return "preview_validation_not_ready";
+  }
+
+  if (!offsitePresent) {
+    return "offsite_archive_not_present";
+  }
+
+  if (!sha256Verified) {
+    return "offsite_sha256_not_verified";
+  }
+
+  if (!decryptionVerified) {
+    return "offsite_decryption_not_verified";
+  }
+
+  if (!archiveStructureVerified) {
+    return "archive_structure_not_verified";
+  }
+
+  if (!internalChecksumsVerified) {
+    return "internal_checksums_not_verified";
+  }
+
+  if (mainSqlIntegrity !== "ok") {
+    return "main_sql_integrity_not_ok";
+  }
+
+  if (piiSqlIntegrity !== "ok") {
+    return "pii_sql_integrity_not_ok";
+  }
+
+  if (!mainCheckpointReady) {
+    return "main_time_travel_checkpoint_unavailable";
+  }
+
+  if (!piiCheckpointReady) {
+    return "pii_time_travel_checkpoint_unavailable";
+  }
+
+  return null;
 }
 
 function getDatePartsInTimeZone(date, timeZone) {
@@ -4547,6 +5548,294 @@ async function upsertManagedWaterReportingPeriod({
     calculated_period: calculatedPeriod,
   };
 }
+
+function getRestoreExecutionArmConfirmationPhrase(
+  restoreRequestId
+) {
+  return `${RESTORE_EXECUTION_ARM_CONFIRMATION_PREFIX} ${restoreRequestId}`;
+}
+
+
+function getRestoreExecutionDispatchConfirmationPhrase(
+  restoreRequestId
+) {
+  return `${RESTORE_EXECUTION_DISPATCH_CONFIRMATION_PREFIX} ${restoreRequestId}`;
+}
+
+function normalizeRestoreExecutionArmRow(row) {
+  if (!row) {
+    return null;
+  }
+
+  return {
+    id:
+      Number(row.id),
+    restore_request_id:
+      Number(row.restore_request_id),
+    readiness_id:
+      Number(row.readiness_id),
+    status:
+      row.status,
+    armed_by:
+      Number(row.armed_by),
+    armed_at:
+      row.armed_at,
+    expires_at:
+      row.expires_at,
+    consumed_at:
+      row.consumed_at || null,
+    cancelled_at:
+      row.cancelled_at || null,
+    created_at:
+      row.created_at,
+    updated_at:
+      row.updated_at,
+  };
+}
+
+async function expireRestoreExecutionArms(
+  env,
+  armedBy = null
+) {
+  const nowIso =
+    new Date().toISOString();
+
+  if (armedBy) {
+    await env.DB.prepare(`
+      UPDATE restore_execution_arms
+      SET
+        status = 'expired',
+        updated_at = ?
+      WHERE status = 'armed'
+        AND armed_by = ?
+        AND datetime(expires_at) <= datetime(?)
+    `)
+      .bind(
+        nowIso,
+        armedBy,
+        nowIso
+      )
+      .run();
+
+    return;
+  }
+
+  await env.DB.prepare(`
+    UPDATE restore_execution_arms
+    SET
+      status = 'expired',
+      updated_at = ?
+    WHERE status = 'armed'
+      AND datetime(expires_at) <= datetime(?)
+  `)
+    .bind(
+      nowIso,
+      nowIso
+    )
+    .run();
+}
+
+async function getActiveRestoreExecutionArm(
+  env,
+  armedBy
+) {
+  const userId =
+    normalizePositiveInteger(
+      armedBy
+    );
+
+  if (!userId) {
+    return null;
+  }
+
+  await expireRestoreExecutionArms(
+    env,
+    userId
+  );
+
+  const row =
+    await env.DB.prepare(`
+      SELECT
+        id,
+        restore_request_id,
+        readiness_id,
+        status,
+        armed_by,
+        armed_at,
+        expires_at,
+        consumed_at,
+        cancelled_at,
+        created_at,
+        updated_at
+      FROM restore_execution_arms
+      WHERE armed_by = ?
+        AND status = 'armed'
+        AND datetime(expires_at) > datetime(?)
+      ORDER BY id DESC
+      LIMIT 1
+    `)
+      .bind(
+        userId,
+        new Date().toISOString()
+      )
+      .first();
+
+  return normalizeRestoreExecutionArmRow(
+    row
+  );
+}
+
+async function sha256Hex(value) {
+  const bytes =
+    encoder.encode(
+      String(value)
+    );
+
+  const digest =
+    await crypto.subtle.digest(
+      "SHA-256",
+      bytes
+    );
+
+  return Array.from(
+    new Uint8Array(digest)
+  )
+    .map((byte) =>
+      byte
+        .toString(16)
+        .padStart(2, "0")
+    )
+    .join("");
+}
+
+function generateRestoreExecutionToken() {
+  const bytes =
+    new Uint8Array(32);
+
+  crypto.getRandomValues(bytes);
+
+  return base64url(bytes);
+}
+
+function isRestoreReadinessFresh(
+  readiness
+) {
+  if (
+    !readiness ||
+    !readiness.checked_at
+  ) {
+    return false;
+  }
+
+  const checkedAt =
+    Date.parse(
+      readiness.checked_at
+    );
+
+  if (!Number.isFinite(checkedAt)) {
+    return false;
+  }
+
+  const ageMs =
+    Date.now() - checkedAt;
+
+  return (
+    ageMs >= 0 &&
+    ageMs <=
+      RESTORE_READINESS_MAX_AGE_MINUTES *
+        60 *
+        1000
+  );
+}
+
+
+function constantTimeEqualHex(
+  left,
+  right
+) {
+  const a =
+    String(left || "")
+      .toLowerCase();
+
+  const b =
+    String(right || "")
+      .toLowerCase();
+
+  if (
+    !/^[0-9a-f]{64}$/.test(a) ||
+    !/^[0-9a-f]{64}$/.test(b)
+  ) {
+    return false;
+  }
+
+  let diff = 0;
+
+  for (
+    let index = 0;
+    index < 64;
+    index += 1
+  ) {
+    diff |=
+      a.charCodeAt(index) ^
+      b.charCodeAt(index);
+  }
+
+  return diff === 0;
+}
+
+async function getRestoreExecutionArmForDryRun(
+  env,
+  armId,
+  armedBy
+) {
+  const normalizedArmId =
+    normalizePositiveInteger(
+      armId
+    );
+
+  const normalizedUserId =
+    normalizePositiveInteger(
+      armedBy
+    );
+
+  if (
+    !normalizedArmId ||
+    !normalizedUserId
+  ) {
+    return null;
+  }
+
+  await expireRestoreExecutionArms(
+    env,
+    normalizedUserId
+  );
+
+  return env.DB.prepare(`
+    SELECT
+      id,
+      restore_request_id,
+      readiness_id,
+      status,
+      execution_token_hash,
+      armed_by,
+      armed_at,
+      expires_at,
+      consumed_at,
+      cancelled_at,
+      created_at,
+      updated_at
+    FROM restore_execution_arms
+    WHERE id = ?
+      AND armed_by = ?
+    LIMIT 1
+  `)
+    .bind(
+      normalizedArmId,
+      normalizedUserId
+    )
+    .first();
+}
+
 
 // =========================
 // WATER CERTIFICATE STORAGE
@@ -8874,7 +10163,7 @@ Router.register("GET", "/api/admin/apartments", async (ctx) => {
   if (!admin) return { error: "forbidden" };
 
   const r = await ctx.env.DB.prepare(`
-    SELECT 
+    SELECT
       id,
       number,
       section,
@@ -10271,12 +11560,18 @@ Router.register(
 
 // =========================
 // ADMIN RESTORE MANAGEMENT
-// Stage 2I-SR14F-A:
-// Read-only restore status and restore-point catalogue.
+// Stage 2I-SR14F-A / SR14F-B / SR14F-C / SR14F-D4 / SR14F-D5A / SR14F-D5B-1:
+// - read-only restore status and restore-point catalogue;
+// - protected creation/cancellation of a short-lived restore request;
+// - non-destructive preview / validation with D1 safety checkpoints;
+// - final readiness gate;
+// - short-lived one-time execution arming;
+// - non-destructive execution-token verification dry-run.
 //
 // IMPORTANT:
-// There is intentionally no POST restore route in SR14F-A.
-// This endpoint cannot modify D1, R2, MEGA, or backup history.
+// SR14F-D5B-1 still does NOT execute any restore.
+// No route below restores D1, imports MEGA data, overwrites R2,
+// or changes backup contents.
 // =========================
 Router.register(
   "GET",
@@ -10392,6 +11687,36 @@ Router.register(
         limit
       );
 
+    const activeRequest =
+      await getActiveRestoreRequest(
+        ctx.env,
+        admin.user_id
+      );
+
+    const latestValidation =
+      activeRequest
+        ? await getLatestRestoreValidation(
+            ctx.env,
+            activeRequest.id,
+            admin.user_id
+          )
+        : null;
+
+    const latestReadiness =
+      activeRequest
+        ? await getLatestRestoreReadiness(
+            ctx.env,
+            activeRequest.id,
+            admin.user_id
+          )
+        : null;
+
+    const activeExecutionArm =
+      await getActiveRestoreExecutionArm(
+        ctx.env,
+        admin.user_id
+      );
+
     return {
       ok: true,
 
@@ -10400,6 +11725,51 @@ Router.register(
 
       destructive_operations_exposed:
         false,
+
+      request_policy: {
+        request_creation_enabled:
+          true,
+        request_cancellation_enabled:
+          true,
+        preview_validation_enabled:
+          true,
+        final_readiness_enabled:
+          true,
+        execution_arm_enabled:
+          true,
+        execution_dry_run_enabled:
+          true,
+        execution_dispatch_enabled:
+          true,
+        destructive_restore_enabled:
+          false,
+        restore_execution_enabled:
+          false,
+        ttl_minutes:
+          RESTORE_REQUEST_TTL_MINUTES,
+        execution_arm_ttl_minutes:
+          RESTORE_EXECUTION_ARM_TTL_MINUTES,
+        readiness_max_age_minutes:
+          RESTORE_READINESS_MAX_AGE_MINUTES,
+        supported_restore_types:
+          Array.from(
+            RESTORE_REQUEST_SUPPORTED_TYPES
+          ),
+        confirmation_phrase_template:
+          `${RESTORE_REQUEST_CONFIRMATION_PREFIX} {backup_run_id}`,
+      },
+
+      active_request:
+        activeRequest,
+
+      latest_validation:
+        latestValidation,
+
+      latest_readiness:
+        latestReadiness,
+
+      active_execution_arm:
+        activeExecutionArm,
 
       time_travel: {
         configured:
@@ -10432,6 +11802,3366 @@ Router.register(
 
         limit,
       },
+    };
+  }
+);
+
+
+
+// =========================
+// ADMIN CREATE PROTECTED RESTORE REQUEST
+// Stage 2I-SR14F-B
+//
+// This route ONLY creates a 15-minute intent record.
+// It does not execute a restore.
+// =========================
+Router.register(
+  "POST",
+  "/api/admin/restore/request",
+  async (ctx) => {
+    const admin =
+      await Auth.requireAdmin(ctx);
+
+    if (!admin) {
+      return {
+        error: "forbidden"
+      };
+    }
+
+    const requestLimit =
+      await SecurityRateLimit.consume({
+        env: ctx.env,
+        scope:
+          "admin-restore-request",
+        key:
+          `user:${admin.user_id}`,
+        ...ADMIN_RESTORE_REQUEST_LIMIT,
+      });
+
+    if (!requestLimit.allowed) {
+      return SecurityRateLimit.response(
+        requestLimit
+      );
+    }
+
+    const body =
+      await ctx.request
+        .json()
+        .catch(() => ({}));
+
+    const restoreType =
+      String(
+        body.restore_type || ""
+      )
+        .trim()
+        .toLowerCase();
+
+    const backupRunId =
+      normalizePositiveInteger(
+        body.backup_run_id
+      );
+
+    const currentPassword =
+      String(
+        body.current_password || ""
+      );
+
+    const confirmationPhrase =
+      String(
+        body.confirmation_phrase || ""
+      ).trim();
+
+    if (
+      !RESTORE_REQUEST_SUPPORTED_TYPES
+        .has(restoreType)
+    ) {
+      return {
+        error:
+          "restore_type_not_enabled"
+      };
+    }
+
+    if (!backupRunId) {
+      return {
+        error:
+          "invalid_backup_run_id"
+      };
+    }
+
+    if (
+      !currentPassword ||
+      currentPassword.length > 1024
+    ) {
+      return {
+        error:
+          "current_password_required"
+      };
+    }
+
+    const expectedConfirmationPhrase =
+      getRestoreRequestConfirmationPhrase(
+        backupRunId
+      );
+
+    if (
+      confirmationPhrase !==
+      expectedConfirmationPhrase
+    ) {
+      await SecurityAudit.recordSafe(
+        ctx,
+        {
+          actorUserId:
+            admin.user_id,
+          action:
+            "admin.restore_request_create",
+          targetType:
+            "backup_run",
+          targetId:
+            String(
+              backupRunId
+            ),
+          result:
+            "failure",
+          details: {
+            failure_type:
+              "confirmation_phrase_mismatch",
+            restore_type:
+              restoreType,
+          },
+        }
+      );
+
+      return {
+        error:
+          "restore_confirmation_phrase_incorrect",
+        required_confirmation_phrase:
+          expectedConfirmationPhrase,
+      };
+    }
+
+    const passwordLimitKey =
+      `user:${admin.user_id}`;
+
+    const passwordLimitCheck =
+      await SecurityRateLimit.check({
+        env: ctx.env,
+        scope:
+          "admin-restore-password-failure",
+        key:
+          passwordLimitKey,
+        windowSeconds:
+          ADMIN_RESTORE_PASSWORD_FAILURE_LIMIT
+            .windowSeconds,
+      });
+
+    if (!passwordLimitCheck.allowed) {
+      return SecurityRateLimit.response(
+        passwordLimitCheck
+      );
+    }
+
+    const user =
+      await ctx.env.DB.prepare(`
+        SELECT
+          id,
+          password_hash,
+          is_active
+        FROM users
+        WHERE id = ?
+        LIMIT 1
+      `)
+        .bind(
+          admin.user_id
+        )
+        .first();
+
+    if (
+      !user ||
+      Number(user.is_active) !== 1
+    ) {
+      return {
+        error:
+          "user_not_found_or_inactive"
+      };
+    }
+
+    const passwordCheck =
+      await verifyPassword(
+        currentPassword,
+        user.password_hash || ""
+      );
+
+    if (!passwordCheck.ok) {
+      const failureResult =
+        await SecurityRateLimit.recordFailure({
+          env: ctx.env,
+          scope:
+            "admin-restore-password-failure",
+          key:
+            passwordLimitKey,
+          ...ADMIN_RESTORE_PASSWORD_FAILURE_LIMIT,
+        });
+
+      await SecurityAudit.recordSafe(
+        ctx,
+        {
+          actorUserId:
+            admin.user_id,
+          action:
+            "admin.restore_request_create",
+          targetType:
+            "backup_run",
+          targetId:
+            String(
+              backupRunId
+            ),
+          result:
+            "failure",
+          details: {
+            failure_type:
+              "password_incorrect",
+            restore_type:
+              restoreType,
+          },
+        }
+      );
+
+      if (!failureResult.allowed) {
+        return SecurityRateLimit.response(
+          failureResult
+        );
+      }
+
+      return {
+        error:
+          "current_password_incorrect"
+      };
+    }
+
+    await SecurityRateLimit.clear({
+      env: ctx.env,
+      scope:
+        "admin-restore-password-failure",
+      key:
+        passwordLimitKey,
+    });
+
+    const restorePoint =
+      await getVerifiedOffsiteRestorePoint(
+        ctx.env,
+        backupRunId
+      );
+
+    if (!restorePoint.ok) {
+      await SecurityAudit.recordSafe(
+        ctx,
+        {
+          actorUserId:
+            admin.user_id,
+          action:
+            "admin.restore_request_create",
+          targetType:
+            "backup_run",
+          targetId:
+            String(
+              backupRunId
+            ),
+          result:
+            "failure",
+          details: {
+            failure_type:
+              restorePoint.error,
+            restore_type:
+              restoreType,
+          },
+        }
+      );
+
+      return {
+        error:
+          restorePoint.error
+      };
+    }
+
+    await ensureRestoreRequestSchema(
+      ctx.env
+    );
+
+    await expireRestoreRequests(
+      ctx.env,
+      admin.user_id
+    );
+
+    const activeRequest =
+      await getActiveRestoreRequest(
+        ctx.env,
+        admin.user_id
+      );
+
+    if (activeRequest) {
+      return {
+        error:
+          "restore_request_already_active",
+        active_request:
+          activeRequest,
+      };
+    }
+
+    const now =
+      new Date();
+
+    const confirmedAt =
+      now.toISOString();
+
+    const expiresAt =
+      new Date(
+        now.getTime() +
+        RESTORE_REQUEST_TTL_MINUTES *
+          60 *
+          1000
+      ).toISOString();
+
+    let insertResult;
+
+    try {
+      insertResult =
+        await ctx.env.DB.prepare(`
+          INSERT INTO restore_requests (
+            restore_type,
+            status,
+            requested_by,
+            backup_run_id,
+            target_timestamp,
+            target_bookmark,
+            archive_name,
+            archive_sha256,
+            confirmed_at,
+            expires_at,
+            created_at,
+            updated_at
+          )
+          VALUES (
+            ?,
+            'pending',
+            ?,
+            ?,
+            NULL,
+            NULL,
+            ?,
+            ?,
+            ?,
+            ?,
+            ?,
+            ?
+          )
+        `)
+          .bind(
+            restoreType,
+            admin.user_id,
+            backupRunId,
+            restorePoint.point
+              .archive_name,
+            restorePoint.point
+              .archive_sha256,
+            confirmedAt,
+            expiresAt,
+            confirmedAt,
+            confirmedAt
+          )
+          .run();
+    } catch (error) {
+      const concurrentRequest =
+        await getActiveRestoreRequest(
+          ctx.env,
+          admin.user_id
+        );
+
+      if (concurrentRequest) {
+        return {
+          error:
+            "restore_request_already_active",
+          active_request:
+            concurrentRequest,
+        };
+      }
+
+      throw error;
+    }
+
+    const restoreRequestId =
+      normalizePositiveInteger(
+        insertResult?.meta
+          ?.last_row_id
+      );
+
+    if (!restoreRequestId) {
+      throw new Error(
+        "restore_request_insert_failed"
+      );
+    }
+
+    const createdRequest =
+      await getActiveRestoreRequest(
+        ctx.env,
+        admin.user_id
+      );
+
+    await SecurityAudit.recordSafe(
+      ctx,
+      {
+        actorUserId:
+          admin.user_id,
+        action:
+          "admin.restore_request_create",
+        targetType:
+          "restore_request",
+        targetId:
+          String(
+            restoreRequestId
+          ),
+        details: {
+          restore_type:
+            restoreType,
+          backup_run_id:
+            backupRunId,
+          ttl_minutes:
+            RESTORE_REQUEST_TTL_MINUTES,
+          restore_execution_enabled:
+            false,
+        },
+      }
+    );
+
+    return {
+      ok: true,
+      restore_execution_started:
+        false,
+      restore_execution_enabled:
+        false,
+      request:
+        createdRequest,
+    };
+  }
+);
+
+// =========================
+// ADMIN RESTORE PREVIEW / VALIDATION
+// Stage 2I-SR14F-C
+//
+// This route performs preflight checks only.
+// It does NOT execute a restore.
+//
+// For the currently enabled offsite_backup flow:
+// - the backup_run metadata must still match the protected request;
+// - Main and PII D1 Time Travel must both be readable;
+// - current D1 bookmarks are captured only as safety checkpoints.
+// =========================
+Router.register(
+  "POST",
+  "/api/admin/restore/validate",
+  async (ctx) => {
+    const admin =
+      await Auth.requireAdmin(ctx);
+
+    if (!admin) {
+      return {
+        error: "forbidden"
+      };
+    }
+
+    const validateLimit =
+      await SecurityRateLimit.consume({
+        env: ctx.env,
+        scope:
+          "admin-restore-validate",
+        key:
+          `user:${admin.user_id}`,
+        ...ADMIN_RESTORE_VALIDATE_LIMIT,
+      });
+
+    if (!validateLimit.allowed) {
+      return SecurityRateLimit.response(
+        validateLimit
+      );
+    }
+
+    const body =
+      await ctx.request
+        .json()
+        .catch(() => ({}));
+
+    const restoreRequestId =
+      normalizePositiveInteger(
+        body.restore_request_id
+      );
+
+    if (!restoreRequestId) {
+      return {
+        error:
+          "invalid_restore_request_id"
+      };
+    }
+
+    await ensureRestoreRequestSchema(
+      ctx.env
+    );
+
+    await ensureRestoreValidationSchema(
+      ctx.env
+    );
+
+    await expireRestoreRequests(
+      ctx.env,
+      admin.user_id
+    );
+
+    const restoreRequest =
+      await getRestoreRequestById(
+        ctx.env,
+        restoreRequestId,
+        admin.user_id
+      );
+
+    if (
+      !restoreRequest ||
+      restoreRequest.status !==
+        "pending"
+    ) {
+      await SecurityAudit.recordSafe(
+        ctx,
+        {
+          actorUserId:
+            admin.user_id,
+          action:
+            "admin.restore_validate",
+          targetType:
+            "restore_request",
+          targetId:
+            String(
+              restoreRequestId
+            ),
+          result:
+            "failure",
+          details: {
+            failure_type:
+              "request_not_active",
+            restore_execution_enabled:
+              false,
+          },
+        }
+      );
+
+      return {
+        error:
+          "restore_request_not_active"
+      };
+    }
+
+    if (
+      restoreRequest.restore_type !==
+        "offsite_backup"
+    ) {
+      await SecurityAudit.recordSafe(
+        ctx,
+        {
+          actorUserId:
+            admin.user_id,
+          action:
+            "admin.restore_validate",
+          targetType:
+            "restore_request",
+          targetId:
+            String(
+              restoreRequestId
+            ),
+          result:
+            "failure",
+          details: {
+            failure_type:
+              "restore_type_not_enabled",
+            restore_type:
+              restoreRequest
+                .restore_type,
+            restore_execution_enabled:
+              false,
+          },
+        }
+      );
+
+      return {
+        error:
+          "restore_type_not_enabled"
+      };
+    }
+
+    const verifiedPoint =
+      await getVerifiedOffsiteRestorePoint(
+        ctx.env,
+        restoreRequest.backup_run_id
+      );
+
+    let offsiteReady = false;
+    let offsiteError = null;
+    let targetTimestamp = null;
+
+    if (verifiedPoint.ok) {
+      const point =
+        verifiedPoint.point;
+
+      const metadataMatches =
+        point.archive_name ===
+          String(
+            restoreRequest
+              .archive_name || ""
+          ) &&
+        point.archive_sha256 ===
+          String(
+            restoreRequest
+              .archive_sha256 || ""
+          );
+
+      if (metadataMatches) {
+        offsiteReady = true;
+        targetTimestamp =
+          point.completed_at ||
+          point.created_at ||
+          null;
+      } else {
+        offsiteError =
+          "restore_point_metadata_changed";
+      }
+    } else {
+      offsiteError =
+        verifiedPoint.error;
+    }
+
+    const safetyCheckpoints =
+      await getRestoreTimeTravelSafetyCheckpoints(
+        ctx.env
+      );
+
+    const mainReady =
+      safetyCheckpoints
+        .main?.available ===
+      true;
+
+    const piiReady =
+      safetyCheckpoints
+        .pii?.available ===
+      true;
+
+    const failureCode =
+      getRestoreValidationFailureCode({
+        offsiteReady,
+        mainReady,
+        piiReady,
+        offsiteError,
+        timeTravelConfigured:
+          safetyCheckpoints
+            .configured,
+      });
+
+    const ready =
+      !failureCode;
+
+    const validatedAt =
+      new Date().toISOString();
+
+    const insertResult =
+      await ctx.env.DB.prepare(`
+        INSERT INTO restore_validations (
+          restore_request_id,
+          validation_status,
+          main_ready,
+          pii_ready,
+          offsite_ready,
+          target_timestamp,
+          main_bookmark,
+          pii_bookmark,
+          failure_code,
+          validated_by,
+          validated_at,
+          created_at
+        )
+        VALUES (
+          ?,
+          ?,
+          ?,
+          ?,
+          ?,
+          ?,
+          ?,
+          ?,
+          ?,
+          ?,
+          ?,
+          ?
+        )
+      `)
+        .bind(
+          restoreRequestId,
+          ready
+            ? "ready"
+            : "blocked",
+          mainReady ? 1 : 0,
+          piiReady ? 1 : 0,
+          offsiteReady ? 1 : 0,
+          targetTimestamp,
+          safetyCheckpoints
+            .main?.bookmark ||
+            null,
+          safetyCheckpoints
+            .pii?.bookmark ||
+            null,
+          failureCode,
+          admin.user_id,
+          validatedAt,
+          validatedAt
+        )
+        .run();
+
+    const validationId =
+      normalizePositiveInteger(
+        insertResult?.meta
+          ?.last_row_id
+      );
+
+    if (!validationId) {
+      throw new Error(
+        "restore_validation_insert_failed"
+      );
+    }
+
+    const validation =
+      await getLatestRestoreValidation(
+        ctx.env,
+        restoreRequestId,
+        admin.user_id
+      );
+
+    await SecurityAudit.recordSafe(
+      ctx,
+      {
+        actorUserId:
+          admin.user_id,
+        action:
+          "admin.restore_validate",
+        targetType:
+          "restore_request",
+        targetId:
+          String(
+            restoreRequestId
+          ),
+        result:
+          ready
+            ? "success"
+            : "blocked",
+        details: {
+          restore_type:
+            restoreRequest
+              .restore_type,
+          backup_run_id:
+            restoreRequest
+              .backup_run_id,
+          main_ready:
+            mainReady,
+          pii_ready:
+            piiReady,
+          offsite_ready:
+            offsiteReady,
+          validation_status:
+            ready
+              ? "ready"
+              : "blocked",
+          failure_type:
+            failureCode,
+          restore_execution_enabled:
+            false,
+        },
+      }
+    );
+
+    return {
+      ok: true,
+
+      mode:
+        "preview_validation",
+
+      ready_for_execution:
+        ready,
+
+      restore_execution_started:
+        false,
+
+      restore_execution_enabled:
+        false,
+
+      request:
+        restoreRequest,
+
+      validation,
+
+      preview: {
+        restore_type:
+          restoreRequest
+            .restore_type,
+
+        backup_run_id:
+          restoreRequest
+            .backup_run_id,
+
+        target_timestamp:
+          targetTimestamp,
+
+        archive_name:
+          restoreRequest
+            .archive_name,
+
+        checks: {
+          protected_request_active:
+            true,
+
+          offsite_backup_metadata_verified:
+            offsiteReady,
+
+          main_d1_time_travel_available:
+            mainReady,
+
+          pii_d1_time_travel_available:
+            piiReady,
+        },
+
+        safety_checkpoints: {
+          role:
+            "pre_restore_current_state",
+
+          main: {
+            available:
+              mainReady,
+            checked_at:
+              safetyCheckpoints
+                .main
+                ?.checked_at ||
+              null,
+          },
+
+          pii: {
+            available:
+              piiReady,
+            checked_at:
+              safetyCheckpoints
+                .pii
+                ?.checked_at ||
+              null,
+          },
+        },
+
+        limitations: {
+          live_mega_archive_fetch_performed:
+            false,
+
+          destructive_restore_performed:
+            false,
+        },
+      },
+    };
+  }
+);
+
+
+
+// =========================
+// ADMIN FINAL RESTORE READINESS
+// Stage 2I-SR14F-D4
+//
+// Final readiness is a non-destructive gate. It requires a live protected
+// request, a READY preview validation, a fully verified SR14F-D3 offsite
+// check, and fresh Main/PII Time Travel safety checkpoints.
+//
+// This endpoint only records readiness. It NEVER executes a restore.
+// =========================
+Router.register(
+  "POST",
+  "/api/admin/restore/readiness",
+  async (ctx) => {
+    const admin =
+      await Auth.requireAdmin(ctx);
+
+    if (!admin) {
+      return {
+        error: "forbidden"
+      };
+    }
+
+    const readinessLimit =
+      await SecurityRateLimit.consume({
+        env: ctx.env,
+        scope:
+          "admin-restore-readiness",
+        key:
+          `user:${admin.user_id}`,
+        ...ADMIN_RESTORE_READINESS_LIMIT,
+      });
+
+    if (!readinessLimit.allowed) {
+      return SecurityRateLimit.response(
+        readinessLimit
+      );
+    }
+
+    const body =
+      await ctx.request
+        .json()
+        .catch(() => ({}));
+
+    const restoreRequestId =
+      normalizePositiveInteger(
+        body.restore_request_id
+      );
+
+    if (!restoreRequestId) {
+      return {
+        error:
+          "invalid_restore_request_id"
+      };
+    }
+
+    await ensureRestoreRequestSchema(
+      ctx.env
+    );
+
+    await ensureRestoreValidationSchema(
+      ctx.env
+    );
+
+    await expireRestoreRequests(
+      ctx.env,
+      admin.user_id
+    );
+
+    const restoreRequest =
+      await getRestoreRequestById(
+        ctx.env,
+        restoreRequestId,
+        admin.user_id
+      );
+
+    const requestActive =
+      Boolean(
+        restoreRequest &&
+        restoreRequest.status ===
+          "pending"
+      );
+
+    if (!requestActive) {
+      await SecurityAudit.recordSafe(
+        ctx,
+        {
+          actorUserId:
+            admin.user_id,
+          action:
+            "admin.restore_readiness",
+          targetType:
+            "restore_request",
+          targetId:
+            String(restoreRequestId),
+          result:
+            "failure",
+          details: {
+            failure_type:
+              "restore_request_not_active",
+            restore_execution_enabled:
+              false,
+          },
+        }
+      );
+
+      return {
+        error:
+          "restore_request_not_active"
+      };
+    }
+
+    if (
+      restoreRequest.restore_type !==
+        "offsite_backup"
+    ) {
+      return {
+        error:
+          "restore_type_not_enabled"
+      };
+    }
+
+    const validation =
+      await getLatestRestoreValidation(
+        ctx.env,
+        restoreRequestId,
+        admin.user_id
+      );
+
+    const previewReady =
+      Boolean(
+        validation &&
+        validation.validation_status ===
+          "ready" &&
+        validation.main_ready === true &&
+        validation.pii_ready === true &&
+        validation.offsite_ready === true
+      );
+
+    const offsiteCheck =
+      await getLatestCompletedOffsiteCheck(
+        ctx.env,
+        restoreRequestId,
+        admin.user_id
+      );
+
+    const metadataMatches =
+      Boolean(
+        offsiteCheck &&
+        offsiteCheck.archive_name ===
+          restoreRequest.archive_name &&
+        String(
+          offsiteCheck.expected_sha256 || ""
+        ) ===
+          String(
+            restoreRequest.archive_sha256 || ""
+          ) &&
+        String(
+          offsiteCheck.actual_sha256 || ""
+        ) ===
+          String(
+            restoreRequest.archive_sha256 || ""
+          )
+      );
+
+    const offsitePresent =
+      Boolean(
+        metadataMatches &&
+        offsiteCheck.status === "present"
+      );
+
+    const sha256Verified =
+      Boolean(
+        metadataMatches &&
+        Number(
+          offsiteCheck.sha256_verified
+        ) === 1
+      );
+
+    const decryptionVerified =
+      Boolean(
+        metadataMatches &&
+        Number(
+          offsiteCheck.decryption_verified
+        ) === 1
+      );
+
+    const archiveStructureVerified =
+      Boolean(
+        metadataMatches &&
+        Number(
+          offsiteCheck.archive_structure_verified
+        ) === 1
+      );
+
+    const internalChecksumsVerified =
+      Boolean(
+        metadataMatches &&
+        Number(
+          offsiteCheck.internal_checksums_verified
+        ) === 1
+      );
+
+    const mainSqlIntegrity =
+      metadataMatches
+        ? offsiteCheck?.main_sql_integrity || null
+        : null;
+
+    const piiSqlIntegrity =
+      metadataMatches
+        ? offsiteCheck?.pii_sql_integrity || null
+        : null;
+
+    const safetyCheckpoints =
+      await getRestoreTimeTravelSafetyCheckpoints(
+        ctx.env
+      );
+
+    const mainCheckpointReady =
+      safetyCheckpoints.main?.available ===
+        true &&
+      Boolean(
+        safetyCheckpoints.main?.bookmark
+      );
+
+    const piiCheckpointReady =
+      safetyCheckpoints.pii?.available ===
+        true &&
+      Boolean(
+        safetyCheckpoints.pii?.bookmark
+      );
+
+    const failureCode =
+      getRestoreReadinessFailureCode({
+        requestActive,
+        previewReady,
+        offsitePresent,
+        sha256Verified,
+        decryptionVerified,
+        archiveStructureVerified,
+        internalChecksumsVerified,
+        mainSqlIntegrity,
+        piiSqlIntegrity,
+        mainCheckpointReady,
+        piiCheckpointReady,
+      });
+
+    const ready = !failureCode;
+    const checkedAt =
+      new Date().toISOString();
+
+    const insertResult =
+      await ctx.env.DB.prepare(`
+        INSERT INTO restore_readiness (
+          restore_request_id,
+          validation_id,
+          offsite_check_id,
+          status,
+          request_active,
+          preview_ready,
+          offsite_present,
+          sha256_verified,
+          decryption_verified,
+          archive_structure_verified,
+          internal_checksums_verified,
+          main_sql_integrity,
+          pii_sql_integrity,
+          main_checkpoint_bookmark,
+          pii_checkpoint_bookmark,
+          failure_code,
+          checked_by,
+          checked_at,
+          created_at
+        )
+        VALUES (
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+        )
+      `)
+        .bind(
+          restoreRequestId,
+          validation?.id || null,
+          offsiteCheck?.id || null,
+          ready ? "ready" : "blocked",
+          requestActive ? 1 : 0,
+          previewReady ? 1 : 0,
+          offsitePresent ? 1 : 0,
+          sha256Verified ? 1 : 0,
+          decryptionVerified ? 1 : 0,
+          archiveStructureVerified ? 1 : 0,
+          internalChecksumsVerified ? 1 : 0,
+          mainSqlIntegrity,
+          piiSqlIntegrity,
+          safetyCheckpoints.main?.bookmark || null,
+          safetyCheckpoints.pii?.bookmark || null,
+          failureCode,
+          admin.user_id,
+          checkedAt,
+          checkedAt
+        )
+        .run();
+
+    const readinessId =
+      normalizePositiveInteger(
+        insertResult?.meta?.last_row_id
+      );
+
+    if (!readinessId) {
+      throw new Error(
+        "restore_readiness_insert_failed"
+      );
+    }
+
+    const readiness =
+      await getLatestRestoreReadiness(
+        ctx.env,
+        restoreRequestId,
+        admin.user_id
+      );
+
+    await SecurityAudit.recordSafe(
+      ctx,
+      {
+        actorUserId:
+          admin.user_id,
+        action:
+          "admin.restore_readiness",
+        targetType:
+          "restore_request",
+        targetId:
+          String(restoreRequestId),
+        result:
+          ready ? "success" : "blocked",
+        details: {
+          restore_type:
+            restoreRequest.restore_type,
+          backup_run_id:
+            restoreRequest.backup_run_id,
+          readiness_status:
+            ready ? "ready" : "blocked",
+          preview_ready:
+            previewReady,
+          offsite_present:
+            offsitePresent,
+          sha256_verified:
+            sha256Verified,
+          decryption_verified:
+            decryptionVerified,
+          archive_structure_verified:
+            archiveStructureVerified,
+          internal_checksums_verified:
+            internalChecksumsVerified,
+          main_sql_integrity:
+            mainSqlIntegrity,
+          pii_sql_integrity:
+            piiSqlIntegrity,
+          main_checkpoint_ready:
+            mainCheckpointReady,
+          pii_checkpoint_ready:
+            piiCheckpointReady,
+          failure_type:
+            failureCode,
+          restore_execution_enabled:
+            false,
+        },
+      }
+    );
+
+    return {
+      ok: true,
+      mode:
+        "final_pre_restore_readiness",
+      ready_for_execution:
+        ready,
+      restore_execution_started:
+        false,
+      restore_execution_enabled:
+        false,
+      request:
+        restoreRequest,
+      validation,
+      readiness,
+      checks: {
+        protected_request_active:
+          requestActive,
+        preview_validation_ready:
+          previewReady,
+        offsite_archive_present:
+          offsitePresent,
+        sha256_verified:
+          sha256Verified,
+        decryption_verified:
+          decryptionVerified,
+        archive_structure_verified:
+          archiveStructureVerified,
+        internal_checksums_verified:
+          internalChecksumsVerified,
+        main_sql_integrity:
+          mainSqlIntegrity,
+        pii_sql_integrity:
+          piiSqlIntegrity,
+        main_time_travel_checkpoint_available:
+          mainCheckpointReady,
+        pii_time_travel_checkpoint_available:
+          piiCheckpointReady,
+      },
+      limitations: {
+        destructive_restore_performed:
+          false,
+        restore_execution_endpoint_exposed:
+          false,
+      },
+    };
+  }
+);
+
+
+// =========================
+// ADMIN ARM RESTORE EXECUTION
+// Stage 2I-SR14F-D5A
+//
+// This endpoint creates a five-minute one-time execution credential only.
+// It requires:
+// - administrator authorization;
+// - a still-active protected restore request;
+// - the latest restore readiness to be READY and fresh;
+// - current-password re-verification;
+// - an exact confirmation phrase.
+//
+// The raw execution token is returned once. Only its SHA-256 digest is
+// persisted. D5A still exposes NO destructive restore endpoint.
+// =========================
+Router.register(
+  "POST",
+  "/api/admin/restore/arm",
+  async (ctx) => {
+    const admin =
+      await Auth.requireAdmin(ctx);
+
+    if (!admin) {
+      return {
+        error: "forbidden"
+      };
+    }
+
+    const armLimit =
+      await SecurityRateLimit.consume({
+        env: ctx.env,
+        scope:
+          "admin-restore-arm",
+        key:
+          `user:${admin.user_id}`,
+        ...ADMIN_RESTORE_ARM_LIMIT,
+      });
+
+    if (!armLimit.allowed) {
+      return SecurityRateLimit.response(
+        armLimit
+      );
+    }
+
+    const body =
+      await ctx.request
+        .json()
+        .catch(() => ({}));
+
+    const restoreRequestId =
+      normalizePositiveInteger(
+        body.restore_request_id
+      );
+
+    const currentPassword =
+      typeof body.current_password ===
+        "string"
+        ? body.current_password
+        : "";
+
+    const confirmationPhrase =
+      typeof body.confirmation_phrase ===
+        "string"
+        ? body.confirmation_phrase
+        : "";
+
+    if (!restoreRequestId) {
+      return {
+        error:
+          "invalid_restore_request_id"
+      };
+    }
+
+    if (
+      !currentPassword ||
+      currentPassword.length > 1024
+    ) {
+      return {
+        error:
+          "current_password_required"
+      };
+    }
+
+    const expectedConfirmationPhrase =
+      getRestoreExecutionArmConfirmationPhrase(
+        restoreRequestId
+      );
+
+    if (
+      confirmationPhrase !==
+        expectedConfirmationPhrase
+    ) {
+      await SecurityAudit.recordSafe(
+        ctx,
+        {
+          actorUserId:
+            admin.user_id,
+          action:
+            "admin.restore_execution_arm",
+          targetType:
+            "restore_request",
+          targetId:
+            String(
+              restoreRequestId
+            ),
+          result:
+            "failure",
+          details: {
+            failure_type:
+              "confirmation_phrase_mismatch",
+            restore_execution_enabled:
+              false,
+          },
+        }
+      );
+
+      return {
+        error:
+          "restore_execution_arm_confirmation_incorrect",
+        required_confirmation_phrase:
+          expectedConfirmationPhrase,
+      };
+    }
+
+    await ensureRestoreRequestSchema(
+      ctx.env
+    );
+
+    await expireRestoreRequests(
+      ctx.env,
+      admin.user_id
+    );
+
+    await expireRestoreExecutionArms(
+      ctx.env,
+      admin.user_id
+    );
+
+    const restoreRequest =
+      await getRestoreRequestById(
+        ctx.env,
+        restoreRequestId,
+        admin.user_id
+      );
+
+    if (
+      !restoreRequest ||
+      restoreRequest.status !==
+        "pending"
+    ) {
+      return {
+        error:
+          "restore_request_not_active"
+      };
+    }
+
+    if (
+      restoreRequest.restore_type !==
+        "offsite_backup"
+    ) {
+      return {
+        error:
+          "restore_type_not_enabled"
+      };
+    }
+
+    const readiness =
+      await getLatestRestoreReadiness(
+        ctx.env,
+        restoreRequestId,
+        admin.user_id
+      );
+
+    if (
+      !readiness ||
+      readiness.status !== "ready"
+    ) {
+      return {
+        error:
+          "restore_readiness_not_ready"
+      };
+    }
+
+    if (
+      !isRestoreReadinessFresh(
+        readiness
+      )
+    ) {
+      return {
+        error:
+          "restore_readiness_stale",
+        max_age_minutes:
+          RESTORE_READINESS_MAX_AGE_MINUTES,
+      };
+    }
+
+    const readinessStillComplete =
+      readiness.request_active === true &&
+      readiness.preview_ready === true &&
+      readiness.offsite_present === true &&
+      readiness.sha256_verified === true &&
+      readiness.decryption_verified === true &&
+      readiness.archive_structure_verified === true &&
+      readiness.internal_checksums_verified === true &&
+      readiness.main_sql_integrity === "ok" &&
+      readiness.pii_sql_integrity === "ok" &&
+      Boolean(
+        readiness.main_checkpoint_bookmark
+      ) &&
+      Boolean(
+        readiness.pii_checkpoint_bookmark
+      ) &&
+      !readiness.failure_code;
+
+    if (!readinessStillComplete) {
+      return {
+        error:
+          "restore_readiness_incomplete"
+      };
+    }
+
+    const existingArm =
+      await getActiveRestoreExecutionArm(
+        ctx.env,
+        admin.user_id
+      );
+
+    if (existingArm) {
+      return {
+        error:
+          "restore_execution_arm_already_active",
+        active_execution_arm:
+          existingArm,
+      };
+    }
+
+    const passwordLimitKey =
+      `user:${admin.user_id}`;
+
+    const passwordLimitCheck =
+      await SecurityRateLimit.check({
+        env: ctx.env,
+        scope:
+          "admin-restore-password-failure",
+        key:
+          passwordLimitKey,
+        windowSeconds:
+          ADMIN_RESTORE_PASSWORD_FAILURE_LIMIT
+            .windowSeconds,
+      });
+
+    if (!passwordLimitCheck.allowed) {
+      return SecurityRateLimit.response(
+        passwordLimitCheck
+      );
+    }
+
+    const user =
+      await ctx.env.DB.prepare(`
+        SELECT
+          id,
+          password_hash,
+          is_active
+        FROM users
+        WHERE id = ?
+        LIMIT 1
+      `)
+        .bind(
+          admin.user_id
+        )
+        .first();
+
+    if (
+      !user ||
+      Number(user.is_active) !== 1
+    ) {
+      return {
+        error:
+          "user_not_found_or_inactive"
+      };
+    }
+
+    const passwordCheck =
+      await verifyPassword(
+        currentPassword,
+        user.password_hash || ""
+      );
+
+    if (!passwordCheck.ok) {
+      const failureResult =
+        await SecurityRateLimit.recordFailure({
+          env: ctx.env,
+          scope:
+            "admin-restore-password-failure",
+          key:
+            passwordLimitKey,
+          ...ADMIN_RESTORE_PASSWORD_FAILURE_LIMIT,
+        });
+
+      await SecurityAudit.recordSafe(
+        ctx,
+        {
+          actorUserId:
+            admin.user_id,
+          action:
+            "admin.restore_execution_arm",
+          targetType:
+            "restore_request",
+          targetId:
+            String(
+              restoreRequestId
+            ),
+          result:
+            "failure",
+          details: {
+            failure_type:
+              "password_incorrect",
+            readiness_id:
+              readiness.id,
+            restore_execution_enabled:
+              false,
+          },
+        }
+      );
+
+      if (!failureResult.allowed) {
+        return SecurityRateLimit.response(
+          failureResult
+        );
+      }
+
+      return {
+        error:
+          "current_password_incorrect"
+      };
+    }
+
+    await SecurityRateLimit.clear({
+      env: ctx.env,
+      scope:
+        "admin-restore-password-failure",
+      key:
+        passwordLimitKey,
+    });
+
+    const executionToken =
+      generateRestoreExecutionToken();
+
+    const executionTokenHash =
+      await sha256Hex(
+        executionToken
+      );
+
+    const now =
+      new Date();
+
+    const armedAt =
+      now.toISOString();
+
+    const expiresAt =
+      new Date(
+        now.getTime() +
+        RESTORE_EXECUTION_ARM_TTL_MINUTES *
+          60 *
+          1000
+      ).toISOString();
+
+    let insertResult;
+
+    try {
+      insertResult =
+        await ctx.env.DB.prepare(`
+          INSERT INTO restore_execution_arms (
+            restore_request_id,
+            readiness_id,
+            status,
+            execution_token_hash,
+            armed_by,
+            armed_at,
+            expires_at,
+            created_at,
+            updated_at
+          )
+          VALUES (
+            ?, ?, 'armed', ?, ?, ?, ?, ?, ?
+          )
+        `)
+          .bind(
+            restoreRequestId,
+            readiness.id,
+            executionTokenHash,
+            admin.user_id,
+            armedAt,
+            expiresAt,
+            armedAt,
+            armedAt
+          )
+          .run();
+    } catch (error) {
+      const concurrentArm =
+        await getActiveRestoreExecutionArm(
+          ctx.env,
+          admin.user_id
+        );
+
+      if (concurrentArm) {
+        return {
+          error:
+            "restore_execution_arm_already_active",
+          active_execution_arm:
+            concurrentArm,
+        };
+      }
+
+      throw error;
+    }
+
+    const armId =
+      normalizePositiveInteger(
+        insertResult?.meta?.last_row_id
+      );
+
+    if (!armId) {
+      throw new Error(
+        "restore_execution_arm_insert_failed"
+      );
+    }
+
+    const arm =
+      await getActiveRestoreExecutionArm(
+        ctx.env,
+        admin.user_id
+      );
+
+    await SecurityAudit.recordSafe(
+      ctx,
+      {
+        actorUserId:
+          admin.user_id,
+        action:
+          "admin.restore_execution_arm",
+        targetType:
+          "restore_execution_arm",
+        targetId:
+          String(armId),
+        result:
+          "success",
+        details: {
+          restore_request_id:
+            restoreRequestId,
+          readiness_id:
+            readiness.id,
+          ttl_minutes:
+            RESTORE_EXECUTION_ARM_TTL_MINUTES,
+          raw_execution_token_stored:
+            false,
+          restore_execution_enabled:
+            false,
+        },
+      }
+    );
+
+    return {
+      ok: true,
+      mode:
+        "restore_execution_armed",
+      execution_arm:
+        arm,
+      execution_token:
+        executionToken,
+      execution_token_returned_once:
+        true,
+      token_storage:
+        "sha256_only",
+      restore_execution_started:
+        false,
+      restore_execution_enabled:
+        false,
+      destructive_operations_exposed:
+        false,
+      warning:
+        "Keep the execution token private. It expires in 5 minutes and is intended only for a later protected restore-execution phase.",
+    };
+  }
+);
+
+
+// =========================
+// ADMIN RESTORE EXECUTION DRY RUN
+// Stage 2I-SR14F-D5B-1
+//
+// Verifies the final execution barrier without consuming the arm and
+// without starting any restore. The supplied raw token is hashed in memory
+// and compared with the SHA-256 digest stored in D1. The raw token is never
+// persisted, returned, or included in audit details.
+// =========================
+Router.register(
+  "POST",
+  "/api/admin/restore/execution-dry-run",
+  async (ctx) => {
+    const admin =
+      await Auth.requireAdmin(ctx);
+
+    if (!admin) {
+      return {
+        error: "forbidden"
+      };
+    }
+
+    const dryRunLimit =
+      await SecurityRateLimit.consume({
+        env: ctx.env,
+        scope:
+          "admin-restore-execution-dry-run",
+        key:
+          `user:${admin.user_id}`,
+        ...ADMIN_RESTORE_EXECUTION_DRY_RUN_LIMIT,
+      });
+
+    if (!dryRunLimit.allowed) {
+      return SecurityRateLimit.response(
+        dryRunLimit
+      );
+    }
+
+    const body =
+      await ctx.request
+        .json()
+        .catch(() => ({}));
+
+    const restoreRequestId =
+      normalizePositiveInteger(
+        body.restore_request_id
+      );
+
+    const armId =
+      normalizePositiveInteger(
+        body.arm_id
+      );
+
+    const executionToken =
+      typeof body.execution_token ===
+        "string"
+        ? body.execution_token
+        : "";
+
+    if (!restoreRequestId) {
+      return {
+        error:
+          "invalid_restore_request_id",
+        execution_allowed:
+          false,
+      };
+    }
+
+    if (!armId) {
+      return {
+        error:
+          "invalid_restore_execution_arm_id",
+        execution_allowed:
+          false,
+      };
+    }
+
+    // A generated token is 32 random bytes encoded as base64url.
+    // Keep the validation deliberately narrow and never echo the value.
+    if (
+      executionToken.length < 40 ||
+      executionToken.length > 64 ||
+      !/^[A-Za-z0-9_-]+$/.test(
+        executionToken
+      )
+    ) {
+      await SecurityAudit.recordSafe(
+        ctx,
+        {
+          actorUserId:
+            admin.user_id,
+          action:
+            "admin.restore_execution_dry_run",
+          targetType:
+            "restore_execution_arm",
+          targetId:
+            String(armId),
+          result:
+            "failure",
+          details: {
+            restore_request_id:
+              restoreRequestId,
+            failure_type:
+              "execution_token_invalid_format",
+            execution_allowed:
+              false,
+            token_logged:
+              false,
+            restore_execution_enabled:
+              false,
+          },
+        }
+      );
+
+      return {
+        error:
+          "execution_token_invalid",
+        execution_allowed:
+          false,
+        restore_execution_started:
+          false,
+        restore_execution_enabled:
+          false,
+        destructive_operations_exposed:
+          false,
+      };
+    }
+
+    await ensureRestoreRequestSchema(
+      ctx.env
+    );
+
+    await expireRestoreRequests(
+      ctx.env,
+      admin.user_id
+    );
+
+    await expireRestoreExecutionArms(
+      ctx.env,
+      admin.user_id
+    );
+
+    const restoreRequest =
+      await getRestoreRequestById(
+        ctx.env,
+        restoreRequestId,
+        admin.user_id
+      );
+
+    if (
+      !restoreRequest ||
+      restoreRequest.status !==
+        "pending"
+    ) {
+      return {
+        error:
+          "restore_request_not_active",
+        execution_allowed:
+          false,
+        restore_execution_started:
+          false,
+        restore_execution_enabled:
+          false,
+        destructive_operations_exposed:
+          false,
+      };
+    }
+
+    if (
+      restoreRequest.restore_type !==
+        "offsite_backup"
+    ) {
+      return {
+        error:
+          "restore_type_not_enabled",
+        execution_allowed:
+          false,
+        restore_execution_started:
+          false,
+        restore_execution_enabled:
+          false,
+        destructive_operations_exposed:
+          false,
+      };
+    }
+
+    const arm =
+      await getRestoreExecutionArmForDryRun(
+        ctx.env,
+        armId,
+        admin.user_id
+      );
+
+    if (
+      !arm ||
+      arm.status !== "armed" ||
+      Number(
+        arm.restore_request_id
+      ) !== restoreRequestId
+    ) {
+      return {
+        error:
+          "restore_execution_arm_not_active",
+        execution_allowed:
+          false,
+        restore_execution_started:
+          false,
+        restore_execution_enabled:
+          false,
+        destructive_operations_exposed:
+          false,
+      };
+    }
+
+    const armExpiresAt =
+      Date.parse(
+        arm.expires_at
+      );
+
+    if (
+      !Number.isFinite(
+        armExpiresAt
+      ) ||
+      armExpiresAt <= Date.now()
+    ) {
+      await expireRestoreExecutionArms(
+        ctx.env,
+        admin.user_id
+      );
+
+      return {
+        error:
+          "restore_execution_arm_expired",
+        execution_allowed:
+          false,
+        restore_execution_started:
+          false,
+        restore_execution_enabled:
+          false,
+        destructive_operations_exposed:
+          false,
+      };
+    }
+
+    const readiness =
+      await getLatestRestoreReadiness(
+        ctx.env,
+        restoreRequestId,
+        admin.user_id
+      );
+
+    if (
+      !readiness ||
+      Number(readiness.id) !==
+        Number(arm.readiness_id) ||
+      readiness.status !== "ready"
+    ) {
+      return {
+        error:
+          "restore_readiness_not_ready",
+        execution_allowed:
+          false,
+        restore_execution_started:
+          false,
+        restore_execution_enabled:
+          false,
+        destructive_operations_exposed:
+          false,
+      };
+    }
+
+    if (
+      !isRestoreReadinessFresh(
+        readiness
+      )
+    ) {
+      return {
+        error:
+          "restore_readiness_stale",
+        max_age_minutes:
+          RESTORE_READINESS_MAX_AGE_MINUTES,
+        execution_allowed:
+          false,
+        restore_execution_started:
+          false,
+        restore_execution_enabled:
+          false,
+        destructive_operations_exposed:
+          false,
+      };
+    }
+
+    const readinessStillComplete =
+      readiness.request_active === true &&
+      readiness.preview_ready === true &&
+      readiness.offsite_present === true &&
+      readiness.sha256_verified === true &&
+      readiness.decryption_verified === true &&
+      readiness.archive_structure_verified === true &&
+      readiness.internal_checksums_verified === true &&
+      readiness.main_sql_integrity === "ok" &&
+      readiness.pii_sql_integrity === "ok" &&
+      Boolean(
+        readiness.main_checkpoint_bookmark
+      ) &&
+      Boolean(
+        readiness.pii_checkpoint_bookmark
+      ) &&
+      !readiness.failure_code;
+
+    if (!readinessStillComplete) {
+      return {
+        error:
+          "restore_readiness_incomplete",
+        execution_allowed:
+          false,
+        restore_execution_started:
+          false,
+        restore_execution_enabled:
+          false,
+        destructive_operations_exposed:
+          false,
+      };
+    }
+
+    const suppliedTokenHash =
+      await sha256Hex(
+        executionToken
+      );
+
+    const tokenMatches =
+      constantTimeEqualHex(
+        suppliedTokenHash,
+        arm.execution_token_hash
+      );
+
+    if (!tokenMatches) {
+      await SecurityAudit.recordSafe(
+        ctx,
+        {
+          actorUserId:
+            admin.user_id,
+          action:
+            "admin.restore_execution_dry_run",
+          targetType:
+            "restore_execution_arm",
+          targetId:
+            String(armId),
+          result:
+            "failure",
+          details: {
+            restore_request_id:
+              restoreRequestId,
+            readiness_id:
+              readiness.id,
+            failure_type:
+              "execution_token_mismatch",
+            execution_allowed:
+              false,
+            token_logged:
+              false,
+            arm_consumed:
+              false,
+            restore_execution_enabled:
+              false,
+          },
+        }
+      );
+
+      return {
+        error:
+          "execution_token_incorrect",
+        execution_allowed:
+          false,
+        arm_consumed:
+          false,
+        restore_execution_started:
+          false,
+        restore_execution_enabled:
+          false,
+        destructive_operations_exposed:
+          false,
+      };
+    }
+
+    await SecurityAudit.recordSafe(
+      ctx,
+      {
+        actorUserId:
+          admin.user_id,
+        action:
+          "admin.restore_execution_dry_run",
+        targetType:
+          "restore_execution_arm",
+        targetId:
+          String(armId),
+        result:
+          "success",
+        details: {
+          restore_request_id:
+            restoreRequestId,
+          readiness_id:
+            readiness.id,
+          execution_allowed:
+            true,
+          token_verified:
+            true,
+          token_logged:
+            false,
+          arm_consumed:
+            false,
+          restore_execution_enabled:
+            false,
+        },
+      }
+    );
+
+    return {
+      ok: true,
+      mode:
+        "restore_execution_dry_run",
+      execution_allowed:
+        true,
+      token_verified:
+        true,
+      execution_arm: {
+        id:
+          Number(arm.id),
+        restore_request_id:
+          Number(
+            arm.restore_request_id
+          ),
+        readiness_id:
+          Number(
+            arm.readiness_id
+          ),
+        status:
+          arm.status,
+        expires_at:
+          arm.expires_at,
+      },
+      arm_consumed:
+        false,
+      restore_request_status:
+        restoreRequest.status,
+      readiness_status:
+        readiness.status,
+      restore_execution_started:
+        false,
+      restore_execution_enabled:
+        false,
+      destructive_operations_exposed:
+        false,
+      dry_run_only:
+        true,
+    };
+  }
+);
+
+
+// =========================
+// ADMIN DISPATCH RESTORE EXECUTION
+// Stage 2I-SR14F-D5B-2B
+//
+// CONTROL-PLANE ONLY in this stage.
+// Consumes the arm exactly once, creates restore_executions journal entry,
+// and dispatches a dedicated GitHub workflow. The workflow used in D5B-2B
+// still performs NO destructive restore.
+// =========================
+Router.register(
+  "POST",
+  "/api/admin/restore/execution/dispatch",
+  async (ctx) => {
+    const admin =
+      await Auth.requireAdmin(ctx);
+
+    if (!admin) {
+      return {
+        error: "forbidden"
+      };
+    }
+
+    const dispatchLimit =
+      await SecurityRateLimit.consume({
+        env: ctx.env,
+        scope:
+          "admin-restore-execution-dispatch",
+        key:
+          `user:${admin.user_id}`,
+        ...ADMIN_RESTORE_EXECUTION_DISPATCH_LIMIT,
+      });
+
+    if (!dispatchLimit.allowed) {
+      return SecurityRateLimit.response(
+        dispatchLimit
+      );
+    }
+
+    const body =
+      await ctx.request
+        .json()
+        .catch(() => ({}));
+
+    const restoreRequestId =
+      normalizePositiveInteger(
+        body.restore_request_id
+      );
+
+    const armId =
+      normalizePositiveInteger(
+        body.arm_id
+      );
+
+    const currentPassword =
+      typeof body.current_password ===
+        "string"
+        ? body.current_password
+        : "";
+
+    const executionToken =
+      typeof body.execution_token ===
+        "string"
+        ? body.execution_token
+        : "";
+
+    const confirmationPhrase =
+      typeof body.confirmation_phrase ===
+        "string"
+        ? body.confirmation_phrase
+        : "";
+
+    if (!restoreRequestId) {
+      return {
+        error:
+          "invalid_restore_request_id"
+      };
+    }
+
+    if (!armId) {
+      return {
+        error:
+          "invalid_restore_execution_arm_id"
+      };
+    }
+
+    if (
+      !currentPassword ||
+      currentPassword.length > 1024
+    ) {
+      return {
+        error:
+          "current_password_required"
+      };
+    }
+
+    if (
+      executionToken.length < 40 ||
+      executionToken.length > 64 ||
+      !/^[A-Za-z0-9_-]+$/.test(
+        executionToken
+      )
+    ) {
+      return {
+        error:
+          "execution_token_invalid"
+      };
+    }
+
+    const expectedConfirmationPhrase =
+      getRestoreExecutionDispatchConfirmationPhrase(
+        restoreRequestId
+      );
+
+    if (
+      confirmationPhrase !==
+        expectedConfirmationPhrase
+    ) {
+      await SecurityAudit.recordSafe(
+        ctx,
+        {
+          actorUserId:
+            admin.user_id,
+          action:
+            "admin.restore_execution_dispatch",
+          targetType:
+            "restore_execution_arm",
+          targetId:
+            String(armId),
+          result:
+            "failure",
+          details: {
+            restore_request_id:
+              restoreRequestId,
+            failure_type:
+              "confirmation_phrase_mismatch",
+            token_logged:
+              false,
+            destructive_restore_enabled:
+              false,
+          },
+        }
+      );
+
+      return {
+        error:
+          "restore_execution_dispatch_confirmation_incorrect",
+        required_confirmation_phrase:
+          expectedConfirmationPhrase,
+      };
+    }
+
+    const github =
+      getGitHubRestoreExecutionConfiguration(
+        ctx.env
+      );
+
+    if (!github.ok) {
+      return {
+        error:
+          github.error
+      };
+    }
+
+    await ensureRestoreRequestSchema(
+      ctx.env
+    );
+
+    await expireRestoreRequests(
+      ctx.env,
+      admin.user_id
+    );
+
+    await expireRestoreExecutionArms(
+      ctx.env,
+      admin.user_id
+    );
+
+    const restoreRequest =
+      await getRestoreRequestById(
+        ctx.env,
+        restoreRequestId,
+        admin.user_id
+      );
+
+    if (
+      !restoreRequest ||
+      restoreRequest.status !==
+        "pending"
+    ) {
+      return {
+        error:
+          "restore_request_not_active"
+      };
+    }
+
+    if (
+      restoreRequest.restore_type !==
+        "offsite_backup"
+    ) {
+      return {
+        error:
+          "restore_type_not_enabled"
+      };
+    }
+
+    const arm =
+      await getRestoreExecutionArmForDryRun(
+        ctx.env,
+        armId,
+        admin.user_id
+      );
+
+    if (
+      !arm ||
+      arm.status !== "armed" ||
+      Number(
+        arm.restore_request_id
+      ) !== restoreRequestId
+    ) {
+      return {
+        error:
+          "restore_execution_arm_not_active"
+      };
+    }
+
+    const readiness =
+      await getLatestRestoreReadiness(
+        ctx.env,
+        restoreRequestId,
+        admin.user_id
+      );
+
+    if (
+      !readiness ||
+      Number(readiness.id) !==
+        Number(arm.readiness_id) ||
+      readiness.status !== "ready"
+    ) {
+      return {
+        error:
+          "restore_readiness_not_ready"
+      };
+    }
+
+    if (
+      !isRestoreReadinessFresh(
+        readiness
+      )
+    ) {
+      return {
+        error:
+          "restore_readiness_stale",
+        max_age_minutes:
+          RESTORE_READINESS_MAX_AGE_MINUTES,
+      };
+    }
+
+    const readinessStillComplete =
+      readiness.request_active === true &&
+      readiness.preview_ready === true &&
+      readiness.offsite_present === true &&
+      readiness.sha256_verified === true &&
+      readiness.decryption_verified === true &&
+      readiness.archive_structure_verified === true &&
+      readiness.internal_checksums_verified === true &&
+      readiness.main_sql_integrity === "ok" &&
+      readiness.pii_sql_integrity === "ok" &&
+      Boolean(
+        readiness.main_checkpoint_bookmark
+      ) &&
+      Boolean(
+        readiness.pii_checkpoint_bookmark
+      ) &&
+      !readiness.failure_code;
+
+    if (!readinessStillComplete) {
+      return {
+        error:
+          "restore_readiness_incomplete"
+      };
+    }
+
+    const suppliedTokenHash =
+      await sha256Hex(
+        executionToken
+      );
+
+    if (
+      !constantTimeEqualHex(
+        suppliedTokenHash,
+        arm.execution_token_hash
+      )
+    ) {
+      await SecurityAudit.recordSafe(
+        ctx,
+        {
+          actorUserId:
+            admin.user_id,
+          action:
+            "admin.restore_execution_dispatch",
+          targetType:
+            "restore_execution_arm",
+          targetId:
+            String(armId),
+          result:
+            "failure",
+          details: {
+            restore_request_id:
+              restoreRequestId,
+            readiness_id:
+              readiness.id,
+            failure_type:
+              "execution_token_mismatch",
+            token_logged:
+              false,
+            destructive_restore_enabled:
+              false,
+          },
+        }
+      );
+
+      return {
+        error:
+          "execution_token_incorrect"
+      };
+    }
+
+    const passwordLimitKey =
+      `user:${admin.user_id}`;
+
+    const passwordLimitCheck =
+      await SecurityRateLimit.check({
+        env: ctx.env,
+        scope:
+          "admin-restore-password-failure",
+        key:
+          passwordLimitKey,
+        windowSeconds:
+          ADMIN_RESTORE_PASSWORD_FAILURE_LIMIT
+            .windowSeconds,
+      });
+
+    if (!passwordLimitCheck.allowed) {
+      return SecurityRateLimit.response(
+        passwordLimitCheck
+      );
+    }
+
+    const user =
+      await ctx.env.DB.prepare(`
+        SELECT
+          id,
+          password_hash,
+          is_active
+        FROM users
+        WHERE id = ?
+        LIMIT 1
+      `)
+        .bind(
+          admin.user_id
+        )
+        .first();
+
+    if (
+      !user ||
+      Number(user.is_active) !== 1
+    ) {
+      return {
+        error:
+          "user_not_found_or_inactive"
+      };
+    }
+
+    const passwordCheck =
+      await verifyPassword(
+        currentPassword,
+        user.password_hash || ""
+      );
+
+    if (!passwordCheck.ok) {
+      const failureResult =
+        await SecurityRateLimit.recordFailure({
+          env: ctx.env,
+          scope:
+            "admin-restore-password-failure",
+          key:
+            passwordLimitKey,
+          ...ADMIN_RESTORE_PASSWORD_FAILURE_LIMIT,
+        });
+
+      if (!failureResult.allowed) {
+        return SecurityRateLimit.response(
+          failureResult
+        );
+      }
+
+      return {
+        error:
+          "current_password_incorrect"
+      };
+    }
+
+    await SecurityRateLimit.clear({
+      env: ctx.env,
+      scope:
+        "admin-restore-password-failure",
+      key:
+        passwordLimitKey,
+    });
+
+    const backupRun =
+      await getBackupRunById(
+        ctx.env,
+        restoreRequest.backup_run_id
+      );
+
+    if (
+      !backupRun ||
+      backupRun.status !== "success" ||
+      !backupRun.archive_name ||
+      !backupRun.archive_sha256 ||
+      backupRun.archive_name !==
+        restoreRequest.archive_name ||
+      backupRun.archive_sha256 !==
+        restoreRequest.archive_sha256 ||
+      backupRun.main_integrity !== "ok" ||
+      backupRun.pii_integrity !== "ok"
+    ) {
+      return {
+        error:
+          "backup_run_not_restorable"
+      };
+    }
+
+    const targetTimestamp =
+      backupRun.completed_at ||
+      backupRun.created_at;
+
+    if (!targetTimestamp) {
+      return {
+        error:
+          "restore_target_timestamp_unavailable"
+      };
+    }
+
+    const nowIso =
+      new Date().toISOString();
+
+    let batchResults;
+
+    try {
+      batchResults =
+        await ctx.env.DB.batch([
+          ctx.env.DB.prepare(`
+            INSERT INTO restore_executions (
+              restore_request_id,
+              readiness_id,
+              execution_arm_id,
+              backup_run_id,
+              status,
+              archive_name,
+              archive_sha256,
+              main_pre_restore_bookmark,
+              pii_pre_restore_bookmark,
+              target_timestamp,
+              requested_by,
+              requested_at,
+              created_at,
+              updated_at
+            )
+            SELECT
+              rr.restore_request_id,
+              rr.id,
+              arm.id,
+              rq.backup_run_id,
+              'requested',
+              rq.archive_name,
+              rq.archive_sha256,
+              rr.main_checkpoint_bookmark,
+              rr.pii_checkpoint_bookmark,
+              ?,
+              ?,
+              ?,
+              ?,
+              ?
+            FROM restore_execution_arms arm
+            JOIN restore_readiness rr
+              ON rr.id = arm.readiness_id
+            JOIN restore_requests rq
+              ON rq.id = arm.restore_request_id
+            WHERE arm.id = ?
+              AND arm.armed_by = ?
+              AND arm.status = 'armed'
+              AND datetime(arm.expires_at) >
+                  datetime(?)
+              AND rq.id = ?
+              AND rq.status = 'pending'
+              AND rr.status = 'ready'
+              AND rr.request_active = 1
+              AND rr.preview_ready = 1
+              AND rr.offsite_present = 1
+              AND rr.sha256_verified = 1
+              AND rr.decryption_verified = 1
+              AND rr.archive_structure_verified = 1
+              AND rr.internal_checksums_verified = 1
+              AND rr.main_sql_integrity = 'ok'
+              AND rr.pii_sql_integrity = 'ok'
+              AND rr.failure_code IS NULL
+          `)
+            .bind(
+              targetTimestamp,
+              admin.user_id,
+              nowIso,
+              nowIso,
+              nowIso,
+              armId,
+              admin.user_id,
+              nowIso,
+              restoreRequestId
+            ),
+
+          ctx.env.DB.prepare(`
+            UPDATE restore_execution_arms
+            SET
+              status = 'consumed',
+              consumed_at = ?,
+              updated_at = ?
+            WHERE id = ?
+              AND armed_by = ?
+              AND status = 'armed'
+              AND EXISTS (
+                SELECT 1
+                FROM restore_executions re
+                WHERE re.execution_arm_id =
+                  restore_execution_arms.id
+              )
+          `)
+            .bind(
+              nowIso,
+              nowIso,
+              armId,
+              admin.user_id
+            ),
+        ]);
+    } catch (error) {
+      const existing =
+        await ctx.env.DB.prepare(`
+          SELECT id, status
+          FROM restore_executions
+          WHERE execution_arm_id = ?
+          LIMIT 1
+        `)
+          .bind(
+            armId
+          )
+          .first();
+
+      if (existing) {
+        return {
+          error:
+            "restore_execution_arm_already_consumed",
+          restore_execution_id:
+            Number(existing.id),
+          status:
+            existing.status,
+        };
+      }
+
+      throw error;
+    }
+
+    const insertChanges =
+      Number(
+        batchResults?.[0]?.meta
+          ?.changes || 0
+      );
+
+    const armChanges =
+      Number(
+        batchResults?.[1]?.meta
+          ?.changes || 0
+      );
+
+    if (
+      insertChanges !== 1 ||
+      armChanges !== 1
+    ) {
+      return {
+        error:
+          "restore_execution_authorization_failed"
+      };
+    }
+
+    const execution =
+      await ctx.env.DB.prepare(`
+        SELECT
+          id,
+          status
+        FROM restore_executions
+        WHERE execution_arm_id = ?
+        LIMIT 1
+      `)
+        .bind(
+          armId
+        )
+        .first();
+
+    if (!execution) {
+      throw new Error(
+        "restore_execution_journal_missing"
+      );
+    }
+
+    const executionId =
+      Number(execution.id);
+
+    const dispatchUrl =
+      `https://api.github.com/repos/${encodeURIComponent(
+        github.owner
+      )}/${encodeURIComponent(
+        github.repo
+      )}/actions/workflows/${encodeURIComponent(
+        github.workflow
+      )}/dispatches`;
+
+    let dispatchResponse;
+
+    try {
+      dispatchResponse =
+        await fetch(
+          dispatchUrl,
+          {
+            method: "POST",
+            headers: {
+              "Accept":
+                "application/vnd.github+json",
+              "Authorization":
+                `Bearer ${github.token}`,
+              "Content-Type":
+                "application/json",
+              "X-GitHub-Api-Version":
+                "2022-11-28",
+              "User-Agent":
+                "MVX-Housing-System",
+            },
+            body:
+              JSON.stringify({
+                ref: "main",
+                inputs: {
+                  restore_execution_id:
+                    String(
+                      executionId
+                    ),
+                  control_plane_only:
+                    "true",
+                },
+              }),
+          }
+        );
+    } catch (error) {
+      const failedAt =
+        new Date().toISOString();
+
+      await ctx.env.DB.prepare(`
+        UPDATE restore_executions
+        SET
+          status = 'failed',
+          failure_code =
+            'GITHUB_DISPATCH_ERROR',
+          completed_at = ?,
+          updated_at = ?
+        WHERE id = ?
+          AND status = 'requested'
+      `)
+        .bind(
+          failedAt,
+          failedAt,
+          executionId
+        )
+        .run();
+
+      return {
+        error:
+          "restore_execution_dispatch_failed",
+        restore_execution_id:
+          executionId,
+        arm_consumed:
+          true,
+        destructive_restore_enabled:
+          false,
+      };
+    }
+
+    if (!dispatchResponse.ok) {
+      const failedAt =
+        new Date().toISOString();
+
+      await ctx.env.DB.prepare(`
+        UPDATE restore_executions
+        SET
+          status = 'failed',
+          failure_code =
+            'GITHUB_DISPATCH_FAILED',
+          completed_at = ?,
+          updated_at = ?
+        WHERE id = ?
+          AND status = 'requested'
+      `)
+        .bind(
+          failedAt,
+          failedAt,
+          executionId
+        )
+        .run();
+
+      return {
+        error:
+          "restore_execution_dispatch_failed",
+        restore_execution_id:
+          executionId,
+        github_status:
+          Number(
+            dispatchResponse.status
+          ),
+        arm_consumed:
+          true,
+        destructive_restore_enabled:
+          false,
+      };
+    }
+
+    await SecurityAudit.recordSafe(
+      ctx,
+      {
+        actorUserId:
+          admin.user_id,
+        action:
+          "admin.restore_execution_dispatch",
+        targetType:
+          "restore_execution",
+        targetId:
+          String(executionId),
+        result:
+          "success",
+        details: {
+          restore_request_id:
+            restoreRequestId,
+          readiness_id:
+            readiness.id,
+          execution_arm_id:
+            armId,
+          backup_run_id:
+            restoreRequest.backup_run_id,
+          arm_consumed:
+            true,
+          token_verified:
+            true,
+          token_logged:
+            false,
+          control_plane_only:
+            true,
+          destructive_restore_enabled:
+            false,
+        },
+      }
+    );
+
+    return {
+      ok: true,
+      mode:
+        "restore_execution_dispatched_control_plane",
+      restore_execution_id:
+        executionId,
+      restore_request_id:
+        restoreRequestId,
+      execution_arm_id:
+        armId,
+      arm_consumed:
+        true,
+      github_workflow:
+        github.workflow,
+      dispatch_accepted:
+        true,
+      control_plane_only:
+        true,
+      destructive_restore_started:
+        false,
+      destructive_restore_enabled:
+        false,
+      restore_execution_enabled:
+        false,
+    };
+  }
+);
+
+
+// =========================
+// ADMIN CANCEL RESTORE EXECUTION ARM
+// Stage 2I-SR14F-D5A
+//
+// Cancels only the administrator's own still-live arm.
+// No restore execution is performed.
+// =========================
+Router.register(
+  "POST",
+  "/api/admin/restore/arm/cancel",
+  async (ctx) => {
+    const admin =
+      await Auth.requireAdmin(ctx);
+
+    if (!admin) {
+      return {
+        error: "forbidden"
+      };
+    }
+
+    const body =
+      await ctx.request
+        .json()
+        .catch(() => ({}));
+
+    const armId =
+      normalizePositiveInteger(
+        body.arm_id
+      );
+
+    if (!armId) {
+      return {
+        error:
+          "invalid_restore_execution_arm_id"
+      };
+    }
+
+    await expireRestoreExecutionArms(
+      ctx.env,
+      admin.user_id
+    );
+
+    const nowIso =
+      new Date().toISOString();
+
+    const updateResult =
+      await ctx.env.DB.prepare(`
+        UPDATE restore_execution_arms
+        SET
+          status = 'cancelled',
+          cancelled_at = ?,
+          updated_at = ?
+        WHERE id = ?
+          AND armed_by = ?
+          AND status = 'armed'
+          AND datetime(expires_at) > datetime(?)
+      `)
+        .bind(
+          nowIso,
+          nowIso,
+          armId,
+          admin.user_id,
+          nowIso
+        )
+        .run();
+
+    if (
+      Number(
+        updateResult?.meta?.changes ||
+        0
+      ) !== 1
+    ) {
+      return {
+        error:
+          "restore_execution_arm_not_active"
+      };
+    }
+
+    await SecurityAudit.recordSafe(
+      ctx,
+      {
+        actorUserId:
+          admin.user_id,
+        action:
+          "admin.restore_execution_arm_cancel",
+        targetType:
+          "restore_execution_arm",
+        targetId:
+          String(armId),
+        result:
+          "success",
+        details: {
+          restore_execution_enabled:
+            false,
+        },
+      }
+    );
+
+    return {
+      ok: true,
+      restore_execution_started:
+        false,
+      restore_execution_enabled:
+        false,
+      destructive_operations_exposed:
+        false,
+    };
+  }
+);
+
+
+// =========================
+// ADMIN CANCEL PROTECTED RESTORE REQUEST
+// Stage 2I-SR14F-B
+//
+// Cancellation is deliberately non-destructive. It can only revoke
+// the requesting administrator's own still-pending intent record.
+// No restore execution, Cloudflare write, MEGA write, or R2 write
+// is performed by this route.
+// =========================
+Router.register(
+  "POST",
+  "/api/admin/restore/cancel",
+  async (ctx) => {
+    const admin =
+      await Auth.requireAdmin(ctx);
+
+    if (!admin) {
+      return {
+        error: "forbidden"
+      };
+    }
+
+    const cancelLimit =
+      await SecurityRateLimit.consume({
+        env: ctx.env,
+        scope:
+          "admin-restore-cancel",
+        key:
+          `user:${admin.user_id}`,
+        ...ADMIN_RESTORE_CANCEL_LIMIT,
+      });
+
+    if (!cancelLimit.allowed) {
+      return SecurityRateLimit.response(
+        cancelLimit
+      );
+    }
+
+    const body =
+      await ctx.request
+        .json()
+        .catch(() => ({}));
+
+    const restoreRequestId =
+      normalizePositiveInteger(
+        body.restore_request_id
+      );
+
+    if (!restoreRequestId) {
+      return {
+        error:
+          "invalid_restore_request_id"
+      };
+    }
+
+    await ensureRestoreRequestSchema(
+      ctx.env
+    );
+
+    // Move an already elapsed request to 'expired' first. This keeps
+    // cancellation semantics strict: only a live pending request can
+    // become cancelled.
+    await expireRestoreRequests(
+      ctx.env,
+      admin.user_id
+    );
+
+    const existingRequest =
+      await getRestoreRequestById(
+        ctx.env,
+        restoreRequestId,
+        admin.user_id
+      );
+
+    if (
+      !existingRequest ||
+      existingRequest.status !==
+        "pending"
+    ) {
+      await SecurityAudit.recordSafe(
+        ctx,
+        {
+          actorUserId:
+            admin.user_id,
+          action:
+            "admin.restore_request_cancel",
+          targetType:
+            "restore_request",
+          targetId:
+            String(
+              restoreRequestId
+            ),
+          result:
+            "failure",
+          details: {
+            failure_type:
+              "request_not_active",
+            restore_execution_enabled:
+              false,
+          },
+        }
+      );
+
+      return {
+        error:
+          "restore_request_not_active"
+      };
+    }
+
+    const nowIso =
+      new Date().toISOString();
+
+    const updateResult =
+      await ctx.env.DB.prepare(`
+        UPDATE restore_requests
+        SET
+          status = 'cancelled',
+          cancelled_at = ?,
+          updated_at = ?
+        WHERE id = ?
+          AND requested_by = ?
+          AND status = 'pending'
+          AND datetime(expires_at) >
+            datetime(?)
+      `)
+        .bind(
+          nowIso,
+          nowIso,
+          restoreRequestId,
+          admin.user_id,
+          nowIso
+        )
+        .run();
+
+    if (
+      Number(
+        updateResult?.meta?.changes ||
+        0
+      ) !== 1
+    ) {
+      // A race or expiry between the read and update must never turn
+      // into a successful-looking cancellation.
+      await expireRestoreRequests(
+        ctx.env,
+        admin.user_id
+      );
+
+      await SecurityAudit.recordSafe(
+        ctx,
+        {
+          actorUserId:
+            admin.user_id,
+          action:
+            "admin.restore_request_cancel",
+          targetType:
+            "restore_request",
+          targetId:
+            String(
+              restoreRequestId
+            ),
+          result:
+            "failure",
+          details: {
+            failure_type:
+              "request_not_active",
+            restore_execution_enabled:
+              false,
+          },
+        }
+      );
+
+      return {
+        error:
+          "restore_request_not_active"
+      };
+    }
+
+    const cancelledRequest =
+      await getRestoreRequestById(
+        ctx.env,
+        restoreRequestId,
+        admin.user_id
+      );
+
+    await SecurityAudit.recordSafe(
+      ctx,
+      {
+        actorUserId:
+          admin.user_id,
+        action:
+          "admin.restore_request_cancel",
+        targetType:
+          "restore_request",
+        targetId:
+          String(
+            restoreRequestId
+          ),
+        details: {
+          restore_type:
+            cancelledRequest
+              ?.restore_type ||
+            existingRequest
+              .restore_type,
+          backup_run_id:
+            cancelledRequest
+              ?.backup_run_id ||
+            existingRequest
+              .backup_run_id,
+          restore_execution_enabled:
+            false,
+        },
+      }
+    );
+
+    return {
+      ok: true,
+      restore_execution_started:
+        false,
+      restore_execution_enabled:
+        false,
+      request:
+        cancelledRequest,
     };
   }
 );

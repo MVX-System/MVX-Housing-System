@@ -1,0 +1,179 @@
+name: MVX Restore Execution Control Plane
+
+on:
+  workflow_dispatch:
+    inputs:
+      restore_execution_id:
+        description: "Restore execution journal ID"
+        required: true
+        type: string
+      control_plane_only:
+        description: "Must remain true in SR14F-D5B-2B"
+        required: true
+        default: "true"
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mvx-restore-execution-${{ inputs.restore_execution_id }}
+  cancel-in-progress: false
+
+jobs:
+  verify-dispatch:
+    runs-on: ubuntu-latest
+
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      MAIN_DB: housing-db
+      WRANGLER_VERSION: "4.127.0"
+
+    steps:
+      - name: Validate control-plane inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if ! [[ "${{ inputs.restore_execution_id }}" =~ ^[1-9][0-9]*$ ]]; then
+            echo "Invalid restore_execution_id." >&2
+            exit 2
+          fi
+
+          if [ "${{ inputs.control_plane_only }}" != "true" ]; then
+            echo "SR14F-D5B-2B requires control_plane_only=true." >&2
+            exit 2
+          fi
+
+      - name: Install Wrangler
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx --yes wrangler@"$WRANGLER_VERSION" --version
+
+      - name: Resolve execution journal
+        id: execution
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          EXECUTION_ID="${{ inputs.restore_execution_id }}"
+
+          RAW="$(
+            npx --yes wrangler@"$WRANGLER_VERSION" d1 execute "$MAIN_DB" \
+              --remote \
+              --json \
+              --command "
+                SELECT
+                  re.id,
+                  re.status,
+                  re.github_run_id,
+                  re.archive_name,
+                  re.target_timestamp,
+                  arm.status AS arm_status,
+                  rr.status AS readiness_status
+                FROM restore_executions re
+                JOIN restore_execution_arms arm
+                  ON arm.id = re.execution_arm_id
+                JOIN restore_readiness rr
+                  ON rr.id = re.readiness_id
+                WHERE re.id = $EXECUTION_ID
+                LIMIT 1;
+              "
+          )"
+
+          ROW="$(
+            printf '%s' "$RAW" | jq -c '
+              if type == "array" then
+                .[0].results[0] // empty
+              else
+                .results[0] // empty
+              end
+            '
+          )"
+
+          if [ -z "$ROW" ]; then
+            echo "Restore execution record not found." >&2
+            exit 3
+          fi
+
+          STATUS="$(printf '%s' "$ROW" | jq -r '.status // ""')"
+          ARM_STATUS="$(printf '%s' "$ROW" | jq -r '.arm_status // ""')"
+          READINESS_STATUS="$(printf '%s' "$ROW" | jq -r '.readiness_status // ""')"
+          EXISTING_RUN_ID="$(printf '%s' "$ROW" | jq -r '.github_run_id // ""')"
+
+          if [ "$STATUS" != "requested" ]; then
+            echo "Execution is not in requested state: $STATUS" >&2
+            exit 4
+          fi
+
+          if [ "$ARM_STATUS" != "consumed" ]; then
+            echo "Execution arm is not consumed: $ARM_STATUS" >&2
+            exit 4
+          fi
+
+          if [ "$READINESS_STATUS" != "ready" ]; then
+            echo "Readiness is not ready: $READINESS_STATUS" >&2
+            exit 4
+          fi
+
+          if [ -n "$EXISTING_RUN_ID" ] && [ "$EXISTING_RUN_ID" != "$GITHUB_RUN_ID" ]; then
+            echo "Execution is already attached to another GitHub run." >&2
+            exit 4
+          fi
+
+          echo "archive_name=$(printf '%s' "$ROW" | jq -r '.archive_name // ""')" >> "$GITHUB_OUTPUT"
+          echo "target_timestamp=$(printf '%s' "$ROW" | jq -r '.target_timestamp // ""')" >> "$GITHUB_OUTPUT"
+
+      - name: Attach GitHub run to execution journal
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          EXECUTION_ID="${{ inputs.restore_execution_id }}"
+          NOW_ISO="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+
+          npx --yes wrangler@"$WRANGLER_VERSION" d1 execute "$MAIN_DB" \
+            --remote \
+            --command "
+              UPDATE restore_executions
+              SET
+                github_run_id = '$GITHUB_RUN_ID',
+                updated_at = '$NOW_ISO'
+              WHERE id = $EXECUTION_ID
+                AND status = 'requested'
+                AND (
+                  github_run_id IS NULL OR
+                  github_run_id = '$GITHUB_RUN_ID'
+                );
+            "
+
+      - name: Confirm destructive restore remains disabled
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "SR14F-D5B-2B control-plane dispatch verified."
+          echo "No D1 Time Travel restore call is present."
+          echo "No SQL import into production is present."
+          echo "No R2 mutation is present."
+
+      - name: Write summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "## MVX Restore Execution Control Plane"
+            echo
+            echo "- Restore execution: ${{ inputs.restore_execution_id }}"
+            echo "- GitHub run ID: $GITHUB_RUN_ID"
+            echo "- Archive: ${{ steps.execution.outputs.archive_name || 'not-resolved' }}"
+            echo "- Target timestamp: ${{ steps.execution.outputs.target_timestamp || 'not-resolved' }}"
+            echo "- Arm consumed before dispatch: yes"
+            echo "- Execution journal attached to run: yes"
+            echo "- Control-plane only: true"
+            echo "- Destructive D1 restore performed: no"
+            echo "- Production SQL import performed: no"
+            echo "- R2 mutation performed: no"
+          } >> "$GITHUB_STEP_SUMMARY"
