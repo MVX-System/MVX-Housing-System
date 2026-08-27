@@ -104,7 +104,7 @@ jobs:
           STATUS="$(printf '%s' "$ROW" | jq -r '.status // ""')"
           ARM_STATUS="$(printf '%s' "$ROW" | jq -r '.arm_status // ""')"
           READINESS_STATUS="$(printf '%s' "$ROW" | jq -r '.readiness_status // ""')"
-          EXISTING_RUN_ID="$(printf '%s' "$ROW" | jq -r '.github_run_id // ""')"
+          CONTROL_PLANE_RUN_ID="$(printf '%s' "$ROW" | jq -r '.github_run_id // ""')"
 
           if [ "$STATUS" != "requested" ]; then
             echo "Execution is not in requested state: $STATUS" >&2
@@ -121,10 +121,12 @@ jobs:
             exit 4
           fi
 
-          if [ -n "$EXISTING_RUN_ID" ] && [ "$EXISTING_RUN_ID" != "$GITHUB_RUN_ID" ]; then
-            echo "Execution is already attached to another GitHub run." >&2
+          if [ -z "$CONTROL_PLANE_RUN_ID" ]; then
+            echo "Control-plane GitHub run ID is missing from execution journal." >&2
             exit 4
           fi
+
+          echo "control_plane_run_id=$CONTROL_PLANE_RUN_ID" >> "$GITHUB_OUTPUT"
 
           echo "archive_name=$(printf '%s' "$ROW" | jq -r '.archive_name // ""')" >> "$GITHUB_OUTPUT"
           echo "target_timestamp=$(printf '%s' "$ROW" | jq -r '.target_timestamp // ""')" >> "$GITHUB_OUTPUT"
@@ -233,29 +235,6 @@ jobs:
               ON CONFLICT(restore_execution_id) DO UPDATE SET
                 github_run_id = excluded.github_run_id,
                 updated_at = excluded.updated_at;
-            "
-
-      - name: Attach GitHub run to execution journal
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          EXECUTION_ID="${{ inputs.restore_execution_id }}"
-          NOW_ISO="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
-
-          npx --yes wrangler@"$WRANGLER_VERSION" d1 execute "$MAIN_DB" \
-            --remote \
-            --command "
-              UPDATE restore_executions
-              SET
-                github_run_id = '$GITHUB_RUN_ID',
-                updated_at = '$NOW_ISO'
-              WHERE id = $EXECUTION_ID
-                AND status = 'requested'
-                AND (
-                  github_run_id IS NULL OR
-                  github_run_id = '$GITHUB_RUN_ID'
-                );
             "
 
       - name: Resolve current and target D1 bookmarks
@@ -385,10 +364,11 @@ jobs:
             echo "## MVX Restore Execution Preflight"
             echo
             echo "- Restore execution: ${{ inputs.restore_execution_id }}"
-            echo "- GitHub run ID: $GITHUB_RUN_ID"
+            echo "- Preflight GitHub run ID: $GITHUB_RUN_ID"
+            echo "- Control-plane GitHub run ID: ${{ steps.execution.outputs.control_plane_run_id || 'not-resolved' }}"
             echo "- Archive: ${{ steps.execution.outputs.archive_name || 'not-resolved' }}"
             echo "- Target timestamp: ${{ steps.execution.outputs.target_timestamp || 'not-resolved' }}"
-            echo "- OPS journal mirror: prepared"
+            echo "- OPS journal mirror: prepared with preflight run ID"
             echo "- Main current bookmark resolved: ${{ steps.bookmarks.outputs.main_current_bookmark && 'yes' || 'no' }}"
             echo "- PII current bookmark resolved: ${{ steps.bookmarks.outputs.pii_current_bookmark && 'yes' || 'no' }}"
             echo "- Main target bookmark resolved: ${{ steps.bookmarks.outputs.main_target_bookmark && 'yes' || 'no' }}"
