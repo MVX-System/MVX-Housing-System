@@ -1,4 +1,4 @@
-name: MVX Restore Execution Control Plane
+name: MVX Restore Execution Preflight
 
 on:
   workflow_dispatch:
@@ -28,6 +28,9 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       MAIN_DB: housing-db
+      OPS_DB: housing-ops-db
+      MAIN_D1_DATABASE_ID: ebf27bcc-9980-4564-afe9-db14e444220f
+      PII_D1_DATABASE_ID: 5f20d702-446a-4a22-9d91-7ecbdc931bd0
       WRANGLER_VERSION: "4.127.0"
 
     steps:
@@ -126,6 +129,112 @@ jobs:
           echo "archive_name=$(printf '%s' "$ROW" | jq -r '.archive_name // ""')" >> "$GITHUB_OUTPUT"
           echo "target_timestamp=$(printf '%s' "$ROW" | jq -r '.target_timestamp // ""')" >> "$GITHUB_OUTPUT"
 
+      - name: Mirror execution journal to OPS DB
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          EXECUTION_ID="${{ inputs.restore_execution_id }}"
+
+          RAW="$(
+            npx --yes wrangler@"$WRANGLER_VERSION" d1 execute "$MAIN_DB" \
+              --remote \
+              --json \
+              --command "
+                SELECT
+                  id,
+                  restore_request_id,
+                  readiness_id,
+                  execution_arm_id,
+                  backup_run_id,
+                  archive_name,
+                  archive_sha256,
+                  target_timestamp,
+                  main_pre_restore_bookmark,
+                  pii_pre_restore_bookmark
+                FROM restore_executions
+                WHERE id = $EXECUTION_ID
+                LIMIT 1;
+              "
+          )"
+
+          ROW="$(
+            printf '%s' "$RAW" | jq -c '
+              if type == "array" then
+                .[0].results[0] // empty
+              else
+                .results[0] // empty
+              end
+            '
+          )"
+
+          if [ -z "$ROW" ]; then
+            echo "Restore execution row not found for OPS mirror." >&2
+            exit 5
+          fi
+
+          RESTORE_REQUEST_ID="$(printf '%s' "$ROW" | jq -r '.restore_request_id')"
+          READINESS_ID="$(printf '%s' "$ROW" | jq -r '.readiness_id')"
+          EXECUTION_ARM_ID="$(printf '%s' "$ROW" | jq -r '.execution_arm_id')"
+          BACKUP_RUN_ID="$(printf '%s' "$ROW" | jq -r '.backup_run_id')"
+          ARCHIVE_NAME="$(printf '%s' "$ROW" | jq -r '.archive_name')"
+          ARCHIVE_SHA256="$(printf '%s' "$ROW" | jq -r '.archive_sha256')"
+          TARGET_TIMESTAMP="$(printf '%s' "$ROW" | jq -r '.target_timestamp')"
+          MAIN_PRE_BOOKMARK="$(printf '%s' "$ROW" | jq -r '.main_pre_restore_bookmark')"
+          PII_PRE_BOOKMARK="$(printf '%s' "$ROW" | jq -r '.pii_pre_restore_bookmark')"
+          NOW_ISO="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+
+          # Escape single quotes for SQLite string literals.
+          sql_escape() {
+            printf "%s" "$1" | sed "s/'/''/g"
+          }
+
+          ARCHIVE_NAME_SQL="$(sql_escape "$ARCHIVE_NAME")"
+          ARCHIVE_SHA256_SQL="$(sql_escape "$ARCHIVE_SHA256")"
+          TARGET_TIMESTAMP_SQL="$(sql_escape "$TARGET_TIMESTAMP")"
+          MAIN_PRE_SQL="$(sql_escape "$MAIN_PRE_BOOKMARK")"
+          PII_PRE_SQL="$(sql_escape "$PII_PRE_BOOKMARK")"
+
+          npx --yes wrangler@"$WRANGLER_VERSION" d1 execute "$OPS_DB" \
+            --remote \
+            --command "
+              INSERT INTO restore_execution_journal (
+                restore_execution_id,
+                restore_request_id,
+                readiness_id,
+                execution_arm_id,
+                backup_run_id,
+                archive_name,
+                archive_sha256,
+                target_timestamp,
+                main_pre_restore_bookmark,
+                pii_pre_restore_bookmark,
+                status,
+                github_run_id,
+                created_at,
+                updated_at
+              )
+              VALUES (
+                $EXECUTION_ID,
+                $RESTORE_REQUEST_ID,
+                $READINESS_ID,
+                $EXECUTION_ARM_ID,
+                $BACKUP_RUN_ID,
+                '$ARCHIVE_NAME_SQL',
+                '$ARCHIVE_SHA256_SQL',
+                '$TARGET_TIMESTAMP_SQL',
+                '$MAIN_PRE_SQL',
+                '$PII_PRE_SQL',
+                'preflight',
+                '$GITHUB_RUN_ID',
+                '$NOW_ISO',
+                '$NOW_ISO'
+              )
+              ON CONFLICT(restore_execution_id) DO UPDATE SET
+                github_run_id = excluded.github_run_id,
+                updated_at = excluded.updated_at;
+            "
+
       - name: Attach GitHub run to execution journal
         shell: bash
         run: |
@@ -149,30 +258,142 @@ jobs:
                 );
             "
 
+      - name: Resolve current and target D1 bookmarks
+        id: bookmarks
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          EXECUTION_ID="${{ inputs.restore_execution_id }}"
+          TARGET_TIMESTAMP="${{ steps.execution.outputs.target_timestamp }}"
+
+          if [ -z "$TARGET_TIMESTAMP" ]; then
+            echo "Target timestamp is empty." >&2
+            exit 6
+          fi
+
+          api_get_bookmark() {
+            local db_id="$1"
+            local timestamp="${2:-}"
+            local url
+
+            url="https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/d1/database/${db_id}/time_travel/bookmark"
+
+            if [ -n "$timestamp" ]; then
+              url="${url}?timestamp=$(python3 -c 'import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$timestamp")"
+            fi
+
+            curl --fail-with-body --silent --show-error \
+              -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+              -H "Content-Type: application/json" \
+              "$url"
+          }
+
+          MAIN_CURRENT_JSON="$(api_get_bookmark "$MAIN_D1_DATABASE_ID")"
+          PII_CURRENT_JSON="$(api_get_bookmark "$PII_D1_DATABASE_ID")"
+          MAIN_TARGET_JSON="$(api_get_bookmark "$MAIN_D1_DATABASE_ID" "$TARGET_TIMESTAMP")"
+          PII_TARGET_JSON="$(api_get_bookmark "$PII_D1_DATABASE_ID" "$TARGET_TIMESTAMP")"
+
+          for label in MAIN_CURRENT PII_CURRENT MAIN_TARGET PII_TARGET; do
+            var_name="${label}_JSON"
+            payload="${!var_name}"
+
+            if [ "$(printf '%s' "$payload" | jq -r '.success // false')" != "true" ]; then
+              echo "$label bookmark lookup failed." >&2
+              printf '%s\n' "$payload" | jq '{success, errors, messages}' >&2
+              exit 7
+            fi
+          done
+
+          MAIN_CURRENT_BOOKMARK="$(printf '%s' "$MAIN_CURRENT_JSON" | jq -r '.result.bookmark // empty')"
+          PII_CURRENT_BOOKMARK="$(printf '%s' "$PII_CURRENT_JSON" | jq -r '.result.bookmark // empty')"
+          MAIN_TARGET_BOOKMARK="$(printf '%s' "$MAIN_TARGET_JSON" | jq -r '.result.bookmark // empty')"
+          PII_TARGET_BOOKMARK="$(printf '%s' "$PII_TARGET_JSON" | jq -r '.result.bookmark // empty')"
+
+          if [ -z "$MAIN_CURRENT_BOOKMARK" ] || \
+             [ -z "$PII_CURRENT_BOOKMARK" ] || \
+             [ -z "$MAIN_TARGET_BOOKMARK" ] || \
+             [ -z "$PII_TARGET_BOOKMARK" ]; then
+            echo "One or more D1 bookmarks are empty." >&2
+            exit 8
+          fi
+
+          echo "main_current_bookmark=$MAIN_CURRENT_BOOKMARK" >> "$GITHUB_OUTPUT"
+          echo "pii_current_bookmark=$PII_CURRENT_BOOKMARK" >> "$GITHUB_OUTPUT"
+          echo "main_target_bookmark=$MAIN_TARGET_BOOKMARK" >> "$GITHUB_OUTPUT"
+          echo "pii_target_bookmark=$PII_TARGET_BOOKMARK" >> "$GITHUB_OUTPUT"
+
+      - name: Persist preflight bookmarks to OPS and Main journals
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          EXECUTION_ID="${{ inputs.restore_execution_id }}"
+          NOW_ISO="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+
+          MAIN_CURRENT="${{ steps.bookmarks.outputs.main_current_bookmark }}"
+          PII_CURRENT="${{ steps.bookmarks.outputs.pii_current_bookmark }}"
+          MAIN_TARGET="${{ steps.bookmarks.outputs.main_target_bookmark }}"
+          PII_TARGET="${{ steps.bookmarks.outputs.pii_target_bookmark }}"
+
+          npx --yes wrangler@"$WRANGLER_VERSION" d1 execute "$OPS_DB" \
+            --remote \
+            --command "
+              UPDATE restore_execution_journal
+              SET
+                main_pre_restore_bookmark = '$MAIN_CURRENT',
+                pii_pre_restore_bookmark = '$PII_CURRENT',
+                main_target_bookmark = '$MAIN_TARGET',
+                pii_target_bookmark = '$PII_TARGET',
+                status = 'ready',
+                preflight_status = 'ready',
+                updated_at = '$NOW_ISO'
+              WHERE restore_execution_id = $EXECUTION_ID;
+            "
+
+          npx --yes wrangler@"$WRANGLER_VERSION" d1 execute "$MAIN_DB" \
+            --remote \
+            --command "
+              UPDATE restore_executions
+              SET
+                main_pre_restore_bookmark = '$MAIN_CURRENT',
+                pii_pre_restore_bookmark = '$PII_CURRENT',
+                main_target_bookmark = '$MAIN_TARGET',
+                pii_target_bookmark = '$PII_TARGET',
+                preflight_status = 'ready',
+                preflight_checked_at = '$NOW_ISO',
+                updated_at = '$NOW_ISO'
+              WHERE id = $EXECUTION_ID;
+            "
+
       - name: Confirm destructive restore remains disabled
         shell: bash
         run: |
           set -euo pipefail
 
-          echo "SR14F-D5B-2B control-plane dispatch verified."
-          echo "No D1 Time Travel restore call is present."
-          echo "No SQL import into production is present."
-          echo "No R2 mutation is present."
+          echo "D5B-2C preflight completed."
+          echo "Current and target bookmarks were resolved and journaled."
+          echo "No D1 Time Travel restore call was performed."
+          echo "No production SQL import was performed."
+          echo "No R2 mutation was performed."
 
       - name: Write summary
         if: always()
         shell: bash
         run: |
           {
-            echo "## MVX Restore Execution Control Plane"
+            echo "## MVX Restore Execution Preflight"
             echo
             echo "- Restore execution: ${{ inputs.restore_execution_id }}"
             echo "- GitHub run ID: $GITHUB_RUN_ID"
             echo "- Archive: ${{ steps.execution.outputs.archive_name || 'not-resolved' }}"
             echo "- Target timestamp: ${{ steps.execution.outputs.target_timestamp || 'not-resolved' }}"
-            echo "- Arm consumed before dispatch: yes"
-            echo "- Execution journal attached to run: yes"
-            echo "- Control-plane only: true"
+            echo "- OPS journal mirror: prepared"
+            echo "- Main current bookmark resolved: ${{ steps.bookmarks.outputs.main_current_bookmark && 'yes' || 'no' }}"
+            echo "- PII current bookmark resolved: ${{ steps.bookmarks.outputs.pii_current_bookmark && 'yes' || 'no' }}"
+            echo "- Main target bookmark resolved: ${{ steps.bookmarks.outputs.main_target_bookmark && 'yes' || 'no' }}"
+            echo "- PII target bookmark resolved: ${{ steps.bookmarks.outputs.pii_target_bookmark && 'yes' || 'no' }}"
+            echo "- Preflight status: ${{ steps.bookmarks.outcome == 'success' && 'ready' || 'not-ready' }}"
             echo "- Destructive D1 restore performed: no"
             echo "- Production SQL import performed: no"
             echo "- R2 mutation performed: no"
