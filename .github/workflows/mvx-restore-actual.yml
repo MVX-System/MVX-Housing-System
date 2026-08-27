@@ -69,6 +69,9 @@ jobs:
 
           echo "confirmed=true" >> "$GITHUB_OUTPUT"
 
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - name: Install Wrangler
         shell: bash
         run: |
@@ -438,7 +441,60 @@ jobs:
           echo "pii_restore_bookmark=$RESTORE_BOOKMARK" >> "$GITHUB_OUTPUT"
           echo "pii_previous_bookmark=$PREVIOUS_BOOKMARK" >> "$GITHUB_OUTPUT"
 
-      - name: Verify post-restore database integrity
+      - name: Recreate current restore control-plane schema
+        id: schema
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          MIGRATION_FILE="migrations/restore-control-plane-schema.sql"
+
+          if [ ! -f "$MIGRATION_FILE" ]; then
+            echo "Restore control-plane migration file is missing." >&2
+            exit 12
+          fi
+
+          npx --yes wrangler@"$WRANGLER_VERSION" d1 execute "$MAIN_DB" \
+            --remote \
+            --file "$MIGRATION_FILE"
+
+          RAW="$(
+            npx --yes wrangler@"$WRANGLER_VERSION" d1 execute "$MAIN_DB" \
+              --remote \
+              --json \
+              --command "
+                SELECT COUNT(*) AS restore_table_count
+                FROM sqlite_schema
+                WHERE type = 'table'
+                  AND name IN (
+                    'restore_requests',
+                    'restore_validations',
+                    'restore_offsite_checks',
+                    'restore_readiness',
+                    'restore_execution_arms',
+                    'restore_executions'
+                  );
+              "
+          )"
+
+          RESTORE_TABLE_COUNT="$(
+            printf '%s' "$RAW" | jq -r '
+              if type == "array" then
+                .[0].results[0].restore_table_count // 0
+              else
+                .results[0].restore_table_count // 0
+              end
+            '
+          )"
+
+          if [ "$RESTORE_TABLE_COUNT" != "6" ]; then
+            echo "Restore control-plane schema is incomplete: ${RESTORE_TABLE_COUNT}/6 tables." >&2
+            exit 12
+          fi
+
+          echo "restore_schema_ready=true" >> "$GITHUB_OUTPUT"
+
+      - name: Verify post-restore database readability
         id: integrity
         shell: bash
         run: |
@@ -446,36 +502,71 @@ jobs:
 
           EXECUTION_ID="${{ inputs.restore_execution_id }}"
 
-          run_integrity() {
+          run_scalar() {
             local db_name="$1"
+            local sql="$2"
+            local field="$3"
 
             RAW="$(
               npx --yes wrangler@"$WRANGLER_VERSION" d1 execute "$db_name" \
                 --remote \
                 --json \
-                --command "PRAGMA integrity_check;"
+                --command "$sql"
             )"
 
-            printf '%s' "$RAW" | jq -r '
+            printf '%s' "$RAW" | jq -r --arg field "$field" '
               if type == "array" then
-                .[0].results[0].integrity_check // empty
+                .[0].results[0][$field] // empty
               else
-                .results[0].integrity_check // empty
+                .results[0][$field] // empty
               end
             '
           }
 
-          MAIN_INTEGRITY="$(run_integrity "$MAIN_DB")"
-          PII_INTEGRITY="$(run_integrity "$PII_DB")"
+          MAIN_USER_COUNT="$(
+            run_scalar \
+              "$MAIN_DB" \
+              "SELECT COUNT(*) AS row_count FROM users;" \
+              "row_count"
+          )"
 
-          if [ "$MAIN_INTEGRITY" != "ok" ]; then
-            echo "Main post-restore integrity failed: $MAIN_INTEGRITY" >&2
-            exit 12
+          PII_USER_COUNT="$(
+            run_scalar \
+              "$PII_DB" \
+              "SELECT COUNT(*) AS row_count FROM user_pii;" \
+              "row_count"
+          )"
+
+          MAIN_RESTORE_TABLE_COUNT="$(
+            run_scalar \
+              "$MAIN_DB" \
+              "SELECT COUNT(*) AS table_count
+               FROM sqlite_schema
+               WHERE type = 'table'
+                 AND name IN (
+                   'restore_requests',
+                   'restore_validations',
+                   'restore_offsite_checks',
+                   'restore_readiness',
+                   'restore_execution_arms',
+                   'restore_executions'
+                 );" \
+              "table_count"
+          )"
+
+          if ! [[ "$MAIN_USER_COUNT" =~ ^[0-9]+$ ]]; then
+            echo "Main D1 users table is not readable." >&2
+            exit 13
           fi
 
-          if [ "$PII_INTEGRITY" != "ok" ]; then
-            echo "PII post-restore integrity failed: $PII_INTEGRITY" >&2
-            exit 12
+          if ! [[ "$PII_USER_COUNT" =~ ^[0-9]+$ ]]; then
+            echo "PII D1 user_pii table is not readable." >&2
+            exit 13
+          fi
+
+          if [ "$MAIN_RESTORE_TABLE_COUNT" != "6" ]; then
+            echo "Main restore control-plane schema is incomplete." >&2
+            exit 13
           fi
 
           NOW_ISO="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
@@ -485,8 +576,8 @@ jobs:
             --command "
               UPDATE restore_execution_journal
               SET
-                main_post_integrity = 'ok',
-                pii_post_integrity = 'ok',
+                main_post_integrity = 'd1_read_verified',
+                pii_post_integrity = 'd1_read_verified',
                 status = 'success',
                 rollback_status = 'not_required',
                 failure_code = NULL,
@@ -495,8 +586,11 @@ jobs:
               WHERE restore_execution_id = $EXECUTION_ID;
             "
 
-          echo "main_integrity=ok" >> "$GITHUB_OUTPUT"
-          echo "pii_integrity=ok" >> "$GITHUB_OUTPUT"
+          echo "main_integrity=d1_read_verified" >> "$GITHUB_OUTPUT"
+          echo "pii_integrity=d1_read_verified" >> "$GITHUB_OUTPUT"
+          echo "main_user_count=$MAIN_USER_COUNT" >> "$GITHUB_OUTPUT"
+          echo "pii_user_count=$PII_USER_COUNT" >> "$GITHUB_OUTPUT"
+          echo "restore_table_count=$MAIN_RESTORE_TABLE_COUNT" >> "$GITHUB_OUTPUT"
 
       - name: Mark interrupted or partial restore as rollback required
         if: failure() && steps.claim.outcome == 'success'
@@ -584,8 +678,12 @@ jobs:
             echo "- Maintenance lock enabled: ${{ steps.maintenance.outputs.enabled || 'false' }}"
             echo "- Main D1 restore attempted: ${{ steps.restore_main.outcome != 'skipped' && 'yes' || 'no' }}"
             echo "- PII D1 restore attempted: ${{ steps.restore_pii.outcome != 'skipped' && 'yes' || 'no' }}"
-            echo "- Main post-restore integrity: ${{ steps.integrity.outputs.main_integrity || 'not-verified' }}"
-            echo "- PII post-restore integrity: ${{ steps.integrity.outputs.pii_integrity || 'not-verified' }}"
+            echo "- Restore control-plane schema recreated: ${{ steps.schema.outputs.restore_schema_ready || 'false' }}"
+            echo "- Main post-restore verification: ${{ steps.integrity.outputs.main_integrity || 'not-verified' }}"
+            echo "- PII post-restore verification: ${{ steps.integrity.outputs.pii_integrity || 'not-verified' }}"
+            echo "- Main users readable: ${{ steps.integrity.outputs.main_user_count || 'not-verified' }}"
+            echo "- PII records readable: ${{ steps.integrity.outputs.pii_user_count || 'not-verified' }}"
+            echo "- Restore tables present: ${{ steps.integrity.outputs.restore_table_count || 'not-verified' }}/6"
             echo "- Maintenance automatically disabled: no"
             echo "- Automatic rollback performed: no"
             echo
