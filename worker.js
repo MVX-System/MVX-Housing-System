@@ -34,6 +34,43 @@ static async handle(request, env) {
       return this.json({ error: "not found" }, 404, cors);
     }
 
+    // Stage 2I-SR14F-D5B-2D:
+    // Independent maintenance gate stored in OPS_DB.
+    //
+    // During a controlled restore, all potentially mutating HTTP methods
+    // are blocked before their route handlers can touch Main D1, PII D1,
+    // R2, sessions, notifications, or other production state.
+    //
+    // Read-only GET/HEAD requests remain available so administrators can
+    // inspect status while the restore is in progress.
+    //
+    // Fail-safe behavior: if OPS_DB is unavailable while evaluating a
+    // mutating request, reject the mutation rather than risk writes during
+    // an uncertain restore state.
+    const maintenanceDecision =
+      await SystemOperationsControl.checkMutationAllowed(
+        ctx
+      );
+
+    if (!maintenanceDecision.allowed) {
+      return this.json(
+        {
+          error:
+            maintenanceDecision.error ||
+            "maintenance_mode",
+          maintenance: true,
+          reason:
+            maintenanceDecision.reason ||
+            "controlled_restore",
+          restore_execution_id:
+            maintenanceDecision.restore_execution_id ||
+            null,
+        },
+        maintenanceDecision.status || 503,
+        cors
+      );
+    }
+
     try {
       const result = await route.handler(ctx);
 
@@ -1317,6 +1354,138 @@ class PiiStore {
     };
   }
 }
+
+// =========================
+// SYSTEM OPERATIONS CONTROL
+// Stage 2I-SR14F-D5B-2D
+// =========================
+class SystemOperationsControl {
+  static isMutationMethod(method) {
+    const normalized =
+      String(method || "")
+        .trim()
+        .toUpperCase();
+
+    return ![
+      "GET",
+      "HEAD",
+      "OPTIONS"
+    ].includes(normalized);
+  }
+
+  static async getState(env) {
+    if (!env?.OPS_DB) {
+      throw new Error(
+        "OPS_DB binding is not configured"
+      );
+    }
+
+    const row =
+      await env.OPS_DB.prepare(`
+        SELECT
+          maintenance_enabled,
+          maintenance_reason,
+          restore_execution_id,
+          enabled_at,
+          disabled_at,
+          updated_at
+        FROM system_operations_control
+        WHERE id = 1
+        LIMIT 1
+      `).first();
+
+    if (!row) {
+      throw new Error(
+        "system_operations_control singleton is missing"
+      );
+    }
+
+    return {
+      maintenance_enabled:
+        Number(
+          row.maintenance_enabled
+        ) === 1,
+      maintenance_reason:
+        row.maintenance_reason || null,
+      restore_execution_id:
+        row.restore_execution_id == null
+          ? null
+          : Number(
+              row.restore_execution_id
+            ),
+      enabled_at:
+        row.enabled_at || null,
+      disabled_at:
+        row.disabled_at || null,
+      updated_at:
+        row.updated_at || null,
+    };
+  }
+
+  static async checkMutationAllowed(ctx) {
+    if (
+      !this.isMutationMethod(
+        ctx?.request?.method
+      )
+    ) {
+      return {
+        allowed: true,
+      };
+    }
+
+    try {
+      const state =
+        await this.getState(
+          ctx.env
+        );
+
+      if (
+        !state.maintenance_enabled
+      ) {
+        return {
+          allowed: true,
+        };
+      }
+
+      return {
+        allowed: false,
+        status: 503,
+        error:
+          "maintenance_mode",
+        reason:
+          state.maintenance_reason ||
+          "controlled_restore",
+        restore_execution_id:
+          state.restore_execution_id,
+      };
+    } catch (error) {
+      App.logError(
+        "maintenance_gate_check_failed",
+        error,
+        {
+          path:
+            ctx?.url?.pathname ||
+            null,
+          method:
+            ctx?.request?.method ||
+            null,
+        }
+      );
+
+      return {
+        allowed: false,
+        status: 503,
+        error:
+          "maintenance_gate_unavailable",
+        reason:
+          "operations_control_unavailable",
+        restore_execution_id:
+          null,
+      };
+    }
+  }
+}
+
 
 // =========================
 // ROUTER
