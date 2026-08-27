@@ -38,12 +38,13 @@ jobs:
 
     steps:
       - name: Validate explicit destructive confirmation
+        id: confirm
         shell: bash
         run: |
           set -euo pipefail
 
           EXECUTION_ID="${{ inputs.restore_execution_id }}"
-          CONFIRMATION="${{ inputs.confirmation_phrase }}"
+          RAW_CONFIRMATION="${{ inputs.confirmation_phrase }}"
 
           if ! [[ "$EXECUTION_ID" =~ ^[1-9][0-9]*$ ]]; then
             echo "Invalid restore_execution_id." >&2
@@ -52,10 +53,21 @@ jobs:
 
           EXPECTED="RESTORE PRODUCTION EXECUTION ${EXECUTION_ID}"
 
+          # GitHub text inputs can accidentally contain surrounding spaces
+          # when pasted. Normalize only surrounding whitespace; the actual
+          # phrase, capitalization and execution ID must still match exactly.
+          CONFIRMATION="$(
+            printf '%s' "$RAW_CONFIRMATION" |
+              sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'
+          )"
+
           if [ "$CONFIRMATION" != "$EXPECTED" ]; then
-            echo "Confirmation phrase does not match exactly." >&2
+            echo "Confirmation phrase mismatch." >&2
+            echo "Required phrase: $EXPECTED" >&2
             exit 2
           fi
+
+          echo "confirmed=true" >> "$GITHUB_OUTPUT"
 
       - name: Install Wrangler
         shell: bash
@@ -157,6 +169,7 @@ jobs:
           echo "archive_name=$ARCHIVE_NAME" >> "$GITHUB_OUTPUT"
 
       - name: Claim actual restore run in OPS journal
+        id: claim
         shell: bash
         run: |
           set -euo pipefail
@@ -213,6 +226,7 @@ jobs:
           fi
 
       - name: Enable independent maintenance lock
+        id: maintenance
         shell: bash
         run: |
           set -euo pipefail
@@ -266,6 +280,8 @@ jobs:
             echo "Maintenance lock was not acquired." >&2
             exit 6
           fi
+
+          echo "enabled=true" >> "$GITHUB_OUTPUT"
 
       - name: Capture final pre-restore bookmarks
         id: current
@@ -483,7 +499,7 @@ jobs:
           echo "pii_integrity=ok" >> "$GITHUB_OUTPUT"
 
       - name: Mark interrupted or partial restore as rollback required
-        if: failure()
+        if: failure() && steps.claim.outcome == 'success'
         shell: bash
         run: |
           set -euo pipefail
@@ -533,7 +549,7 @@ jobs:
           else
             FINAL_STATUS="failed"
             ROLLBACK_STATUS="not_required"
-            FAILURE_CODE="PRE_RESTORE_OR_MAIN_RESTORE_FAILURE"
+            FAILURE_CODE="CONTROLLED_RESTORE_PRE_DESTRUCTIVE_FAILURE"
           fi
 
           npx --yes wrangler@"$WRANGLER_VERSION" d1 execute "$OPS_DB" \
@@ -561,9 +577,11 @@ jobs:
             echo
             echo "- Restore execution: ${{ inputs.restore_execution_id }}"
             echo "- Actual restore GitHub run ID: $GITHUB_RUN_ID"
+            echo "- Confirmation accepted: ${{ steps.confirm.outputs.confirmed || 'false' }}"
+            echo "- Execution journal claimed: ${{ steps.claim.outcome == 'success' && 'yes' || 'no' }}"
             echo "- Archive reference: ${{ steps.journal.outputs.archive_name || 'not-resolved' }}"
             echo "- Target timestamp: ${{ steps.journal.outputs.target_timestamp || 'not-resolved' }}"
-            echo "- Maintenance lock enabled: yes"
+            echo "- Maintenance lock enabled: ${{ steps.maintenance.outputs.enabled || 'false' }}"
             echo "- Main D1 restore attempted: ${{ steps.restore_main.outcome != 'skipped' && 'yes' || 'no' }}"
             echo "- PII D1 restore attempted: ${{ steps.restore_pii.outcome != 'skipped' && 'yes' || 'no' }}"
             echo "- Main post-restore integrity: ${{ steps.integrity.outputs.main_integrity || 'not-verified' }}"
@@ -571,5 +589,9 @@ jobs:
             echo "- Maintenance automatically disabled: no"
             echo "- Automatic rollback performed: no"
             echo
-            echo "Maintenance remains enabled for manual production verification."
+            if [ "${{ steps.maintenance.outputs.enabled || 'false' }}" = "true" ]; then
+              echo "Maintenance remains enabled for manual production verification."
+            else
+              echo "Maintenance was not enabled by this run."
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
