@@ -24,6 +24,7 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       MEGA_SESSION: ${{ secrets.MEGA_SESSION }}
+      MVX_BACKUP_ENCRYPTION_PASSWORD: ${{ secrets.MVX_BACKUP_ENCRYPTION_PASSWORD }}
       MAIN_DB: housing-db
       MEGA_DESTINATION: /MVX-Backups
       WRANGLER_VERSION: 4.126.0
@@ -47,7 +48,7 @@ jobs:
           set -euo pipefail
 
           sudo apt-get update
-          sudo apt-get install -y curl ca-certificates
+          sudo apt-get install -y curl ca-certificates sqlite3 openssl tar
 
           curl -fsSL \
             https://mega.nz/linux/repo/xUbuntu_22.04/amd64/megacmd-xUbuntu_22.04_amd64.deb \
@@ -55,6 +56,9 @@ jobs:
 
           sudo apt-get install -y /tmp/megacmd.deb
 
+          sqlite3 --version
+          openssl version
+          tar --version | head -n 1
           mega-version
           npx --yes wrangler@"$WRANGLER_VERSION" --version
 
@@ -457,7 +461,208 @@ jobs:
           echo "Archive SHA-256 verified successfully."
           echo "sha256_verified=true" >> "$GITHUB_OUTPUT"
 
-      - name: Remove temporary downloaded archive
+      - name: Decrypt and validate archive contents
+        id: content
+        shell: bash
+        env:
+          CHECK_ID: ${{ steps.check.outputs.check_id }}
+          ARCHIVE_PATH: ${{ steps.download.outputs.archive_path }}
+        run: |
+          set -euo pipefail
+          umask 077
+
+          WORK_DIR="$RUNNER_TEMP/mvx-restore-content-$GITHUB_RUN_ID"
+          DECRYPTED_ARCHIVE="$WORK_DIR/decrypted.tar.gz"
+          EXTRACT_DIR="$WORK_DIR/extracted"
+          MAIN_TEST_DB="$WORK_DIR/housing-db.sqlite"
+          PII_TEST_DB="$WORK_DIR/housing-pii-db.sqlite"
+          ENTRY_LIST="$WORK_DIR/archive-entries.txt"
+
+          mkdir -p "$WORK_DIR" "$EXTRACT_DIR"
+
+          fail_validation() {
+            local code="$1"
+            local decryption="${2:-0}"
+            local structure="${3:-0}"
+            local checksums="${4:-0}"
+            local main_integrity="${5:-}"
+            local pii_integrity="${6:-}"
+            local now_iso
+
+            now_iso="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+
+            npx --yes wrangler@"$WRANGLER_VERSION" d1 execute "$MAIN_DB" \
+              --remote \
+              --command "
+                UPDATE restore_offsite_checks
+                SET
+                  status = 'failed',
+                  decryption_verified = $decryption,
+                  archive_structure_verified = $structure,
+                  internal_checksums_verified = $checksums,
+                  main_sql_integrity = $( [ -n "$main_integrity" ] && printf "'%s'" "$main_integrity" || printf "NULL" ),
+                  pii_sql_integrity = $( [ -n "$pii_integrity" ] && printf "'%s'" "$pii_integrity" || printf "NULL" ),
+                  failure_code = '$code',
+                  content_validated_at = '$now_iso',
+                  completed_at = '$now_iso',
+                  updated_at = '$now_iso'
+                WHERE id = $CHECK_ID;
+              " >/dev/null
+
+            echo "Content validation failed: $code" >&2
+            exit 1
+          }
+
+          if [ -z "${ARCHIVE_PATH:-}" ] || [ ! -s "$ARCHIVE_PATH" ]; then
+            fail_validation "TEMP_ARCHIVE_UNAVAILABLE"
+          fi
+
+          echo "Decrypting encrypted backup in temporary runner storage..."
+
+          if ! openssl enc -d -aes-256-cbc \
+            -pbkdf2 \
+            -iter 200000 \
+            -pass env:MVX_BACKUP_ENCRYPTION_PASSWORD \
+            -in "$ARCHIVE_PATH" \
+            -out "$DECRYPTED_ARCHIVE"; then
+            fail_validation "DECRYPTION_FAILED"
+          fi
+
+          if [ ! -s "$DECRYPTED_ARCHIVE" ]; then
+            fail_validation "DECRYPTED_ARCHIVE_EMPTY"
+          fi
+
+          echo "Decryption completed."
+
+          if ! tar -tzf "$DECRYPTED_ARCHIVE" > "$ENTRY_LIST"; then
+            fail_validation "ARCHIVE_LIST_FAILED" 1
+          fi
+
+          # Reject absolute paths and path traversal before extraction.
+          if awk '
+            /^\/+/ { bad=1 }
+            /(^|\/)\.\.(\/|$)/ { bad=1 }
+            END { exit bad ? 0 : 1 }
+          ' "$ENTRY_LIST"; then
+            fail_validation "UNSAFE_ARCHIVE_PATH" 1
+          fi
+
+          TOP_LEVEL="$(
+            awk -F/ 'NF > 0 && $1 != "" { print $1 }' "$ENTRY_LIST" \
+              | sort -u
+          )"
+
+          TOP_LEVEL_COUNT="$(
+            printf '%s\n' "$TOP_LEVEL" \
+              | sed '/^$/d' \
+              | wc -l \
+              | tr -d ' '
+          )"
+
+          if [ "$TOP_LEVEL_COUNT" -ne 1 ]; then
+            fail_validation "INVALID_ARCHIVE_ROOT" 1
+          fi
+
+          BACKUP_ROOT_NAME="$(
+            printf '%s\n' "$TOP_LEVEL" | head -n 1
+          )"
+
+          if [[ ! "$BACKUP_ROOT_NAME" =~ ^backup-[0-9]{8}-[0-9]{6}$ ]]; then
+            fail_validation "INVALID_ARCHIVE_ROOT" 1
+          fi
+
+          if ! tar -xzf "$DECRYPTED_ARCHIVE" -C "$EXTRACT_DIR"; then
+            fail_validation "ARCHIVE_EXTRACTION_FAILED" 1
+          fi
+
+          BACKUP_ROOT="$EXTRACT_DIR/$BACKUP_ROOT_NAME"
+
+          REQUIRED_FILES=(
+            "housing-db.sql"
+            "housing-pii-db.sql"
+            "SHA256SUMS"
+            "manifest.txt"
+            "r2-manifest.tsv"
+          )
+
+          for required_file in "${REQUIRED_FILES[@]}"; do
+            if [ ! -f "$BACKUP_ROOT/$required_file" ]; then
+              fail_validation "ARCHIVE_STRUCTURE_INVALID" 1
+            fi
+          done
+
+          echo "Required archive structure verified."
+
+          if ! (
+            cd "$BACKUP_ROOT"
+            sha256sum -c SHA256SUMS
+          ); then
+            fail_validation "INTERNAL_CHECKSUM_FAILED" 1 1
+          fi
+
+          echo "Internal SHA-256 checks verified."
+
+          if ! sqlite3 "$MAIN_TEST_DB" < "$BACKUP_ROOT/housing-db.sql"; then
+            fail_validation "MAIN_SQL_IMPORT_FAILED" 1 1 1
+          fi
+
+          if ! sqlite3 "$PII_TEST_DB" < "$BACKUP_ROOT/housing-pii-db.sql"; then
+            fail_validation "PII_SQL_IMPORT_FAILED" 1 1 1
+          fi
+
+          MAIN_INTEGRITY="$(
+            sqlite3 "$MAIN_TEST_DB" "PRAGMA integrity_check;"
+          )"
+
+          PII_INTEGRITY="$(
+            sqlite3 "$PII_TEST_DB" "PRAGMA integrity_check;"
+          )"
+
+          if [ "$MAIN_INTEGRITY" != "ok" ]; then
+            fail_validation \
+              "MAIN_SQL_INTEGRITY_FAILED" \
+              1 1 1 \
+              "$MAIN_INTEGRITY" \
+              "$PII_INTEGRITY"
+          fi
+
+          if [ "$PII_INTEGRITY" != "ok" ]; then
+            fail_validation \
+              "PII_SQL_INTEGRITY_FAILED" \
+              1 1 1 \
+              "$MAIN_INTEGRITY" \
+              "$PII_INTEGRITY"
+          fi
+
+          NOW_ISO="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+
+          npx --yes wrangler@"$WRANGLER_VERSION" d1 execute "$MAIN_DB" \
+            --remote \
+            --command "
+              UPDATE restore_offsite_checks
+              SET
+                status = 'present',
+                decryption_verified = 1,
+                archive_structure_verified = 1,
+                internal_checksums_verified = 1,
+                main_sql_integrity = 'ok',
+                pii_sql_integrity = 'ok',
+                content_validated_at = '$NOW_ISO',
+                failure_code = NULL,
+                completed_at = '$NOW_ISO',
+                updated_at = '$NOW_ISO'
+              WHERE id = $CHECK_ID;
+            "
+
+          echo "decryption_verified=true" >> "$GITHUB_OUTPUT"
+          echo "archive_structure_verified=true" >> "$GITHUB_OUTPUT"
+          echo "internal_checksums_verified=true" >> "$GITHUB_OUTPUT"
+          echo "main_sql_integrity=ok" >> "$GITHUB_OUTPUT"
+          echo "pii_sql_integrity=ok" >> "$GITHUB_OUTPUT"
+
+          echo "Archive content validation completed successfully."
+
+      - name: Remove temporary restore verification files
         if: always()
         shell: bash
         env:
@@ -470,12 +675,17 @@ jobs:
           fi
 
           DOWNLOAD_DIR="$RUNNER_TEMP/mvx-restore-verify-$GITHUB_RUN_ID"
+          CONTENT_DIR="$RUNNER_TEMP/mvx-restore-content-$GITHUB_RUN_ID"
 
           if [ -d "$DOWNLOAD_DIR" ]; then
             rm -rf "$DOWNLOAD_DIR"
           fi
 
-          echo "Temporary restore-verification files removed."
+          if [ -d "$CONTENT_DIR" ]; then
+            rm -rf "$CONTENT_DIR"
+          fi
+
+          echo "Encrypted and decrypted temporary restore-verification files removed."
 
       - name: Mark unfinished verification as failed
         if: failure() && steps.check.outputs.check_id != ''
@@ -531,7 +741,12 @@ jobs:
             echo "- Presence: ${PRESENCE:-not-confirmed}"
             echo "- Download performed: yes, temporary runner storage only"
             echo "- SHA-256 verified: ${{ steps.sha.outputs.sha256_verified || 'false' }}"
-            echo "- Temporary archive retained: no"
-            echo "- Decryption performed: no"
+            echo "- Decryption verified: ${{ steps.content.outputs.decryption_verified || 'false' }}"
+            echo "- Archive structure verified: ${{ steps.content.outputs.archive_structure_verified || 'false' }}"
+            echo "- Internal checksums verified: ${{ steps.content.outputs.internal_checksums_verified || 'false' }}"
+            echo "- Main SQL integrity: ${{ steps.content.outputs.main_sql_integrity || 'not-verified' }}"
+            echo "- PII SQL integrity: ${{ steps.content.outputs.pii_sql_integrity || 'not-verified' }}"
+            echo "- Temporary encrypted archive retained: no"
+            echo "- Temporary decrypted content retained: no"
             echo "- Restore performed: no"
           } >> "$GITHUB_STEP_SUMMARY"
