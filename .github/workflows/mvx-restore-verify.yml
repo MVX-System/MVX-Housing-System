@@ -1,0 +1,407 @@
+name: MVX Restore Verify Offsite Archive
+
+on:
+  workflow_dispatch:
+    inputs:
+      restore_request_id:
+        description: "MVX restore_requests.id to verify"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mvx-restore-verify-${{ inputs.restore_request_id }}
+  cancel-in-progress: false
+
+jobs:
+  verify-offsite:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      MEGA_SESSION: ${{ secrets.MEGA_SESSION }}
+      MAIN_DB: housing-db
+      MEGA_DESTINATION: /MVX-Backups
+      WRANGLER_VERSION: 4.126.0
+
+    steps:
+      - name: Validate restore request input
+        shell: bash
+        env:
+          RESTORE_REQUEST_ID: ${{ inputs.restore_request_id }}
+        run: |
+          set -euo pipefail
+
+          if [[ ! "$RESTORE_REQUEST_ID" =~ ^[1-9][0-9]*$ ]]; then
+            echo "Invalid restore_request_id." >&2
+            exit 1
+          fi
+
+      - name: Install required tools
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          sudo apt-get update
+          sudo apt-get install -y curl ca-certificates
+
+          curl -fsSL \
+            https://mega.nz/linux/repo/xUbuntu_22.04/amd64/megacmd-xUbuntu_22.04_amd64.deb \
+            -o /tmp/megacmd.deb
+
+          sudo apt-get install -y /tmp/megacmd.deb
+
+          mega-version
+          npx --yes wrangler@"$WRANGLER_VERSION" --version
+
+      - name: Resolve protected restore request
+        id: resolve
+        shell: bash
+        env:
+          RESTORE_REQUEST_ID: ${{ inputs.restore_request_id }}
+        run: |
+          set -euo pipefail
+
+          REQUEST_JSON="$(
+            npx --yes wrangler@"$WRANGLER_VERSION" d1 execute "$MAIN_DB" \
+              --remote \
+              --command "
+                SELECT
+                  rr.id,
+                  rr.restore_type,
+                  rr.status,
+                  rr.requested_by,
+                  rr.backup_run_id,
+                  rr.archive_name,
+                  rr.archive_sha256,
+                  rr.expires_at,
+                  br.status AS backup_status,
+                  br.archive_name AS backup_archive_name,
+                  br.archive_sha256 AS backup_archive_sha256,
+                  br.main_integrity,
+                  br.pii_integrity
+                FROM restore_requests rr
+                JOIN backup_runs br
+                  ON br.id = rr.backup_run_id
+                WHERE rr.id = $RESTORE_REQUEST_ID
+                LIMIT 1;
+              " \
+              --json
+          )"
+
+          RESOLVED="$(
+            printf '%s' "$REQUEST_JSON" | node -e '
+              let input = "";
+              process.stdin.on("data", chunk => input += chunk);
+              process.stdin.on("end", () => {
+                const data = JSON.parse(input);
+                const root = Array.isArray(data) ? data[0] : data;
+                const row =
+                  root?.results?.[0] ??
+                  root?.result?.[0]?.results?.[0] ??
+                  null;
+
+                if (!row) {
+                  console.error("Restore request not found.");
+                  process.exit(2);
+                }
+
+                const requestId = Number(row.id);
+                const requestedBy = Number(row.requested_by);
+                const backupRunId = Number(row.backup_run_id);
+                const archiveName = String(row.archive_name || "");
+                const archiveSha256 = String(row.archive_sha256 || "");
+                const expiresAt = String(row.expires_at || "");
+
+                if (!Number.isInteger(requestId) || requestId <= 0) {
+                  console.error("Invalid restore request id in database.");
+                  process.exit(2);
+                }
+
+                if (!Number.isInteger(requestedBy) || requestedBy <= 0) {
+                  console.error("Invalid restore request owner.");
+                  process.exit(2);
+                }
+
+                if (!Number.isInteger(backupRunId) || backupRunId <= 0) {
+                  console.error("Invalid backup_run_id.");
+                  process.exit(2);
+                }
+
+                if (row.restore_type !== "offsite_backup") {
+                  console.error("Restore request is not offsite_backup.");
+                  process.exit(2);
+                }
+
+                if (row.status !== "pending") {
+                  console.error("Restore request is not pending.");
+                  process.exit(2);
+                }
+
+                const expiresMs = Date.parse(expiresAt);
+
+                if (!Number.isFinite(expiresMs) || expiresMs <= Date.now()) {
+                  console.error("Restore request has expired.");
+                  process.exit(2);
+                }
+
+                if (row.backup_status !== "success") {
+                  console.error("Referenced backup is not successful.");
+                  process.exit(2);
+                }
+
+                if (
+                  row.main_integrity !== "ok" ||
+                  row.pii_integrity !== "ok"
+                ) {
+                  console.error("Referenced backup integrity is not verified.");
+                  process.exit(2);
+                }
+
+                if (
+                  archiveName !== String(row.backup_archive_name || "") ||
+                  archiveSha256 !== String(row.backup_archive_sha256 || "")
+                ) {
+                  console.error("Restore request metadata no longer matches backup metadata.");
+                  process.exit(2);
+                }
+
+                if (!/^backup-[0-9]{8}-[0-9]{6}\.tar\.gz\.enc$/.test(archiveName)) {
+                  console.error("Unexpected archive name format.");
+                  process.exit(2);
+                }
+
+                if (!/^[0-9a-f]{64}$/.test(archiveSha256)) {
+                  console.error("Unexpected archive SHA-256 format.");
+                  process.exit(2);
+                }
+
+                process.stdout.write(JSON.stringify({
+                  request_id: requestId,
+                  requested_by: requestedBy,
+                  backup_run_id: backupRunId,
+                  archive_name: archiveName,
+                  archive_sha256: archiveSha256
+                }));
+              });
+            '
+          )"
+
+          REQUESTED_BY="$(
+            printf '%s' "$RESOLVED" | node -p 'JSON.parse(require("fs").readFileSync(0, "utf8")).requested_by'
+          )"
+
+          BACKUP_RUN_ID="$(
+            printf '%s' "$RESOLVED" | node -p 'JSON.parse(require("fs").readFileSync(0, "utf8")).backup_run_id'
+          )"
+
+          ARCHIVE_NAME="$(
+            printf '%s' "$RESOLVED" | node -p 'JSON.parse(require("fs").readFileSync(0, "utf8")).archive_name'
+          )"
+
+          ARCHIVE_SHA256="$(
+            printf '%s' "$RESOLVED" | node -p 'JSON.parse(require("fs").readFileSync(0, "utf8")).archive_sha256'
+          )"
+
+          echo "requested_by=$REQUESTED_BY" >> "$GITHUB_OUTPUT"
+          echo "backup_run_id=$BACKUP_RUN_ID" >> "$GITHUB_OUTPUT"
+          echo "archive_name=$ARCHIVE_NAME" >> "$GITHUB_OUTPUT"
+          echo "archive_sha256=$ARCHIVE_SHA256" >> "$GITHUB_OUTPUT"
+
+          echo "Protected restore request validated."
+          echo "Backup run: $BACKUP_RUN_ID"
+          echo "Archive: $ARCHIVE_NAME"
+
+      - name: Create offsite verification record
+        id: check
+        shell: bash
+        env:
+          RESTORE_REQUEST_ID: ${{ inputs.restore_request_id }}
+          REQUESTED_BY: ${{ steps.resolve.outputs.requested_by }}
+          ARCHIVE_NAME: ${{ steps.resolve.outputs.archive_name }}
+          ARCHIVE_SHA256: ${{ steps.resolve.outputs.archive_sha256 }}
+        run: |
+          set -euo pipefail
+
+          NOW_ISO="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+
+          INSERT_JSON="$(
+            npx --yes wrangler@"$WRANGLER_VERSION" d1 execute "$MAIN_DB" \
+              --remote \
+              --command "
+                INSERT INTO restore_offsite_checks (
+                  restore_request_id,
+                  status,
+                  github_run_id,
+                  archive_name,
+                  expected_sha256,
+                  checked_provider,
+                  checked_destination,
+                  requested_by,
+                  started_at,
+                  created_at,
+                  updated_at
+                )
+                VALUES (
+                  $RESTORE_REQUEST_ID,
+                  'running',
+                  '$GITHUB_RUN_ID',
+                  '$ARCHIVE_NAME',
+                  '$ARCHIVE_SHA256',
+                  'MEGA',
+                  '$MEGA_DESTINATION',
+                  $REQUESTED_BY,
+                  '$NOW_ISO',
+                  '$NOW_ISO',
+                  '$NOW_ISO'
+                )
+                RETURNING id;
+              " \
+              --json
+          )"
+
+          CHECK_ID="$(
+            printf '%s' "$INSERT_JSON" | node -e '
+              let input = "";
+              process.stdin.on("data", chunk => input += chunk);
+              process.stdin.on("end", () => {
+                const data = JSON.parse(input);
+                const root = Array.isArray(data) ? data[0] : data;
+                const row =
+                  root?.results?.[0] ??
+                  root?.result?.[0]?.results?.[0] ??
+                  null;
+
+                const id = Number(row?.id);
+
+                if (!Number.isInteger(id) || id <= 0) {
+                  console.error("restore_offsite_checks id not returned");
+                  process.exit(2);
+                }
+
+                process.stdout.write(String(id));
+              });
+            '
+          )"
+
+          echo "check_id=$CHECK_ID" >> "$GITHUB_OUTPUT"
+          echo "Offsite verification record created: $CHECK_ID"
+
+      - name: Verify archive presence in MEGA
+        id: mega
+        shell: bash
+        env:
+          CHECK_ID: ${{ steps.check.outputs.check_id }}
+          ARCHIVE_NAME: ${{ steps.resolve.outputs.archive_name }}
+        run: |
+          set -euo pipefail
+
+          mega-login "$MEGA_SESSION"
+
+          echo "Checking exact archive path in MEGA..."
+          echo "Provider: MEGA"
+          echo "Destination: $MEGA_DESTINATION"
+          echo "Archive: $ARCHIVE_NAME"
+
+          if mega-ls -l "$MEGA_DESTINATION/$ARCHIVE_NAME" > /tmp/mega-restore-check.txt 2>&1; then
+            cat /tmp/mega-restore-check.txt
+
+            NOW_ISO="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+
+            npx --yes wrangler@"$WRANGLER_VERSION" d1 execute "$MAIN_DB" \
+              --remote \
+              --command "
+                UPDATE restore_offsite_checks
+                SET
+                  status = 'present',
+                  failure_code = NULL,
+                  completed_at = '$NOW_ISO',
+                  updated_at = '$NOW_ISO'
+                WHERE id = $CHECK_ID
+                  AND status = 'running';
+              "
+
+            echo "Archive is present in MEGA."
+            echo "presence=present" >> "$GITHUB_OUTPUT"
+          else
+            cat /tmp/mega-restore-check.txt || true
+
+            NOW_ISO="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+
+            npx --yes wrangler@"$WRANGLER_VERSION" d1 execute "$MAIN_DB" \
+              --remote \
+              --command "
+                UPDATE restore_offsite_checks
+                SET
+                  status = 'missing',
+                  failure_code = 'MEGA_ARCHIVE_NOT_FOUND',
+                  completed_at = '$NOW_ISO',
+                  updated_at = '$NOW_ISO'
+                WHERE id = $CHECK_ID
+                  AND status = 'running';
+              "
+
+            echo "Archive is not present at the expected MEGA path." >&2
+            exit 1
+          fi
+
+      - name: Mark unfinished verification as failed
+        if: failure() && steps.check.outputs.check_id != ''
+        shell: bash
+        env:
+          CHECK_ID: ${{ steps.check.outputs.check_id }}
+        run: |
+          set -euo pipefail
+
+          if [[ ! "$CHECK_ID" =~ ^[1-9][0-9]*$ ]]; then
+            echo "Invalid check id; failure status cannot be recorded." >&2
+            exit 1
+          fi
+
+          NOW_ISO="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+
+          npx --yes wrangler@"$WRANGLER_VERSION" d1 execute "$MAIN_DB" \
+            --remote \
+            --command "
+              UPDATE restore_offsite_checks
+              SET
+                status = 'failed',
+                failure_code = COALESCE(
+                  failure_code,
+                  'RESTORE_VERIFY_WORKFLOW_FAILED'
+                ),
+                completed_at = COALESCE(
+                  completed_at,
+                  '$NOW_ISO'
+                ),
+                updated_at = '$NOW_ISO'
+              WHERE id = $CHECK_ID
+                AND status = 'running';
+            "
+
+      - name: Summary
+        if: always()
+        shell: bash
+        env:
+          RESTORE_REQUEST_ID: ${{ inputs.restore_request_id }}
+          CHECK_ID: ${{ steps.check.outputs.check_id }}
+          ARCHIVE_NAME: ${{ steps.resolve.outputs.archive_name }}
+          PRESENCE: ${{ steps.mega.outputs.presence }}
+        run: |
+          {
+            echo "## MVX Restore Offsite Verification"
+            echo
+            echo "- Restore request: $RESTORE_REQUEST_ID"
+            echo "- Check record: ${CHECK_ID:-not-created}"
+            echo "- Provider: MEGA"
+            echo "- Destination: $MEGA_DESTINATION"
+            echo "- Archive: ${ARCHIVE_NAME:-not-resolved}"
+            echo "- Presence: ${PRESENCE:-not-confirmed}"
+            echo "- Download performed: no"
+            echo "- Decryption performed: no"
+            echo "- Restore performed: no"
+          } >> "$GITHUB_STEP_SUMMARY"
