@@ -132,8 +132,8 @@ jobs:
             exit 4
           fi
 
-          if [ "$ROLLBACK_STATUS" != "required" ]; then
-            echo "Rollback is not required by journal state: $ROLLBACK_STATUS" >&2
+          if [ "$ROLLBACK_STATUS" != "required" ] && [ "$ROLLBACK_STATUS" != "dispatching" ]; then
+            echo "Rollback is not dispatchable by journal state: $ROLLBACK_STATUS" >&2
             exit 4
           fi
 
@@ -176,7 +176,7 @@ jobs:
                 updated_at = '$NOW_ISO'
               WHERE restore_execution_id = $EXECUTION_ID
                 AND status = 'rollback_required'
-                AND rollback_status = 'required'
+                AND rollback_status IN ('required', 'dispatching')
                 AND rollback_github_run_id IS NULL;
             "
 
