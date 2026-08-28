@@ -339,6 +339,22 @@ const TEXT = {
       "Start controlled rollback",
     rollbackActionUiLocked:
       "Rollback execution remains protected outside this read-only UI stage.",
+    rollbackPassword:
+      "Current password",
+    rollbackConfirmation:
+      "Confirmation phrase",
+    rollbackConfirmationHint:
+      "Type the exact confirmation phrase shown below.",
+    rollbackDispatching:
+      "Starting controlled rollback...",
+    rollbackDispatchAccepted:
+      "Rollback workflow dispatch accepted. Maintenance and rollback execution are now controlled by the protected workflow.",
+    rollbackDispatchFailed:
+      "Rollback could not be started.",
+    rollbackPasswordRequired:
+      "Enter your current password.",
+    rollbackConfirmationRequired:
+      "Enter the exact confirmation phrase.",
   },
 
   lv: {
@@ -651,6 +667,22 @@ const TEXT = {
       "Sākt kontrolētu atcelšanu",
     rollbackActionUiLocked:
       "Šajā tikai lasāmajā UI posmā atcelšanas izpilde joprojām ir aizsargāta ārpus interfeisa.",
+    rollbackPassword:
+      "Pašreizējā parole",
+    rollbackConfirmation:
+      "Apstiprinājuma frāze",
+    rollbackConfirmationHint:
+      "Ievadiet tieši zemāk norādīto apstiprinājuma frāzi.",
+    rollbackDispatching:
+      "Tiek sākta kontrolētā atcelšana...",
+    rollbackDispatchAccepted:
+      "Atcelšanas workflow palaišanas pieprasījums ir pieņemts. Maintenance un atcelšanu tagad kontrolē aizsargātais workflow.",
+    rollbackDispatchFailed:
+      "Neizdevās sākt atcelšanu.",
+    rollbackPasswordRequired:
+      "Ievadiet pašreizējo paroli.",
+    rollbackConfirmationRequired:
+      "Ievadiet precīzu apstiprinājuma frāzi.",
   },
 
   ru: {
@@ -963,6 +995,22 @@ const TEXT = {
       "Запустить контролируемый откат",
     rollbackActionUiLocked:
       "На этом этапе интерфейс остаётся только для просмотра; выполнение отката защищено вне UI.",
+    rollbackPassword:
+      "Текущий пароль",
+    rollbackConfirmation:
+      "Фраза подтверждения",
+    rollbackConfirmationHint:
+      "Введите точно указанную ниже фразу подтверждения.",
+    rollbackDispatching:
+      "Запуск контролируемого отката...",
+    rollbackDispatchAccepted:
+      "Запрос на запуск workflow отката принят. Maintenance и выполнение отката теперь контролируются защищённым workflow.",
+    rollbackDispatchFailed:
+      "Не удалось запустить откат.",
+    rollbackPasswordRequired:
+      "Введите текущий пароль.",
+    rollbackConfirmationRequired:
+      "Введите точную фразу подтверждения.",
   },
 };
 
@@ -1576,6 +1624,37 @@ export default function SettingsPage() {
       rollbackStatus
         ?.rollback_action_enabled
     );
+
+  const [
+    rollbackPassword,
+    setRollbackPassword,
+  ] = useState("");
+
+  const [
+    rollbackConfirmation,
+    setRollbackConfirmation,
+  ] = useState("");
+
+  const [
+    rollbackDispatching,
+    setRollbackDispatching,
+  ] = useState(false);
+
+  const [
+    rollbackDispatchError,
+    setRollbackDispatchError,
+  ] = useState("");
+
+  const [
+    rollbackDispatchSuccess,
+    setRollbackDispatchSuccess,
+  ] = useState("");
+
+  const rollbackExpectedConfirmation =
+    rollbackStatus
+      ?.restore_execution_id
+      ? `ROLLBACK PRODUCTION EXECUTION ${rollbackStatus.restore_execution_id}`
+      : "";
 
   useEffect(() => {
     if (
@@ -2458,6 +2537,92 @@ export default function SettingsPage() {
         );
       } finally {
         setRestoreLoading(false);
+      }
+    };
+
+  const handleRollbackDispatch =
+    async () => {
+      setRollbackDispatchError("");
+      setRollbackDispatchSuccess("");
+
+      if (!rollbackPassword) {
+        setRollbackDispatchError(
+          text.rollbackPasswordRequired
+        );
+        return;
+      }
+
+      if (
+        !rollbackExpectedConfirmation ||
+        rollbackConfirmation !==
+          rollbackExpectedConfirmation
+      ) {
+        setRollbackDispatchError(
+          text.rollbackConfirmationRequired
+        );
+        return;
+      }
+
+      if (
+        !rollbackActionVisible ||
+        !rollbackStatus
+          ?.restore_execution_id
+      ) {
+        setRollbackDispatchError(
+          text.rollbackDispatchFailed
+        );
+        return;
+      }
+
+      setRollbackDispatching(true);
+
+      try {
+        const result =
+          await api(
+            "/api/admin/restore/rollback/dispatch",
+            {
+              method: "POST",
+              body: JSON.stringify({
+                restore_execution_id:
+                  rollbackStatus
+                    .restore_execution_id,
+                current_password:
+                  rollbackPassword,
+                confirmation_phrase:
+                  rollbackConfirmation,
+              }),
+            }
+          );
+
+        if (
+          !result ||
+          result.error ||
+          result.ok === false
+        ) {
+          throw new Error(
+            result?.error ||
+            "rollback_dispatch_failed"
+          );
+        }
+
+        setRollbackPassword("");
+        setRollbackConfirmation("");
+        setRollbackDispatchSuccess(
+          text.rollbackDispatchAccepted
+        );
+
+        await handleRefreshRestore();
+      } catch (dispatchError) {
+        console.error(
+          "ROLLBACK DISPATCH ERROR:",
+          dispatchError
+        );
+
+        setRollbackDispatchError(
+          text.rollbackDispatchFailed
+        );
+      } finally {
+        setRollbackDispatching(false);
       }
     };
 
@@ -3527,33 +3692,136 @@ export default function SettingsPage() {
                   {rollbackActionVisible && (
                     <div
                       style={{
-                        marginTop: 10,
+                        marginTop: 12,
                         display: "grid",
-                        gap: 6,
+                        gap: 10,
                       }}
                     >
+                      <div
+                        style={warningStyle}
+                      >
+                        <div
+                          style={{
+                            color:
+                              "var(--text-h)",
+                            fontSize: 11,
+                            fontWeight: 800,
+                          }}
+                        >
+                          {text.rollbackAction}
+                        </div>
+
+                        <div
+                          style={{
+                            marginTop: 4,
+                            fontSize: 10,
+                            lineHeight: 1.5,
+                          }}
+                        >
+                          {text.rollbackConfirmationHint}
+                        </div>
+
+                        <div
+                          style={{
+                            marginTop: 6,
+                            fontFamily:
+                              "ui-monospace, SFMono-Regular, Menlo, monospace",
+                            fontSize: 11,
+                            fontWeight: 800,
+                            wordBreak:
+                              "break-word",
+                          }}
+                        >
+                          {rollbackExpectedConfirmation}
+                        </div>
+                      </div>
+
+                      <PasswordField
+                        label={
+                          text.rollbackPassword
+                        }
+                        value={
+                          rollbackPassword
+                        }
+                        onChange={(
+                          event
+                        ) => {
+                          setRollbackPassword(
+                            event.target.value
+                          );
+                          setRollbackDispatchError("");
+                          setRollbackDispatchSuccess("");
+                        }}
+                        autoComplete="current-password"
+                      />
+
+                      <label
+                        style={fieldLabelStyle}
+                      >
+                        {text.rollbackConfirmation}
+
+                        <input
+                          type="text"
+                          value={
+                            rollbackConfirmation
+                          }
+                          onChange={(
+                            event
+                          ) => {
+                            setRollbackConfirmation(
+                              event.target.value
+                            );
+                            setRollbackDispatchError("");
+                            setRollbackDispatchSuccess("");
+                          }}
+                          autoComplete="off"
+                          spellCheck={false}
+                          style={inputStyle}
+                        />
+                      </label>
+
+                      {rollbackDispatchError && (
+                        <div
+                          role="alert"
+                          style={errorStyle}
+                        >
+                          {rollbackDispatchError}
+                        </div>
+                      )}
+
+                      {rollbackDispatchSuccess && (
+                        <div
+                          role="status"
+                          style={successStyle}
+                        >
+                          {rollbackDispatchSuccess}
+                        </div>
+                      )}
+
                       <button
                         type="button"
-                        disabled
+                        disabled={
+                          rollbackDispatching ||
+                          !rollbackPassword ||
+                          rollbackConfirmation !==
+                            rollbackExpectedConfirmation
+                        }
+                        onClick={
+                          handleRollbackDispatch
+                        }
                         style={
                           primaryButtonStyle(
-                            true
+                            rollbackDispatching ||
+                            !rollbackPassword ||
+                            rollbackConfirmation !==
+                              rollbackExpectedConfirmation
                           )
                         }
                       >
-                        {text.rollbackAction}
+                        {rollbackDispatching
+                          ? text.rollbackDispatching
+                          : text.rollbackAction}
                       </button>
-
-                      <div
-                        style={{
-                          color:
-                            "var(--text)",
-                          fontSize: 10,
-                          lineHeight: 1.45,
-                        }}
-                      >
-                        {text.rollbackActionUiLocked}
-                      </div>
                     </div>
                   )}
                 </div>
