@@ -377,6 +377,20 @@ const TEXT = {
       "GitHub dispatch state checked. No rollback retry or reset was started.",
     rollbackRecoveryReconcileFailed:
       "Could not reconcile GitHub dispatch state.",
+    rollbackRecoveryRelease:
+      "Release uncertain dispatch",
+    rollbackRecoveryReleasePassword:
+      "Current password",
+    rollbackRecoveryReleaseConfirmation:
+      "Confirmation phrase",
+    rollbackRecoveryReleaseHint:
+      "This does not run rollback. It only releases the stale dispatch claim after all safety checks pass.",
+    rollbackRecoveryReleasing:
+      "Releasing uncertain dispatch...",
+    rollbackRecoveryReleaseSuccess:
+      "The stale dispatch claim was released. Rollback was not started.",
+    rollbackRecoveryReleaseFailed:
+      "Could not release the uncertain dispatch.",
     rollbackPasswordRequired:
       "Enter your current password.",
     rollbackConfirmationRequired:
@@ -731,6 +745,20 @@ const TEXT = {
       "GitHub dispatch stāvoklis pārbaudīts. Atcelšanas atkārtojums vai atiestatīšana netika sākta.",
     rollbackRecoveryReconcileFailed:
       "Neizdevās pārbaudīt GitHub dispatch stāvokli.",
+    rollbackRecoveryRelease:
+      "Atbrīvot nenoteikto dispatch",
+    rollbackRecoveryReleasePassword:
+      "Pašreizējā parole",
+    rollbackRecoveryReleaseConfirmation:
+      "Apstiprinājuma frāze",
+    rollbackRecoveryReleaseHint:
+      "Šī darbība nepalaiž rollback. Tā tikai atbrīvo novecojušo dispatch rezervāciju pēc visu drošības pārbaužu izpildes.",
+    rollbackRecoveryReleasing:
+      "Tiek atbrīvots nenoteiktais dispatch...",
+    rollbackRecoveryReleaseSuccess:
+      "Novecojušā dispatch rezervācija ir atbrīvota. Rollback netika palaists.",
+    rollbackRecoveryReleaseFailed:
+      "Neizdevās atbrīvot nenoteikto dispatch.",
     rollbackPasswordRequired:
       "Ievadiet pašreizējo paroli.",
     rollbackConfirmationRequired:
@@ -1085,6 +1113,20 @@ const TEXT = {
       "Состояние GitHub dispatch проверено. Повторный rollback или reset не запускался.",
     rollbackRecoveryReconcileFailed:
       "Не удалось проверить состояние GitHub dispatch.",
+    rollbackRecoveryRelease:
+      "Освободить неопределённый dispatch",
+    rollbackRecoveryReleasePassword:
+      "Текущий пароль",
+    rollbackRecoveryReleaseConfirmation:
+      "Фраза подтверждения",
+    rollbackRecoveryReleaseHint:
+      "Это действие не запускает rollback. Оно только освобождает зависший dispatch claim после прохождения всех защитных проверок.",
+    rollbackRecoveryReleasing:
+      "Освобождение неопределённого dispatch...",
+    rollbackRecoveryReleaseSuccess:
+      "Зависший dispatch claim освобождён. Rollback не запускался.",
+    rollbackRecoveryReleaseFailed:
+      "Не удалось освободить неопределённый dispatch.",
     rollbackPasswordRequired:
       "Введите текущий пароль.",
     rollbackConfirmationRequired:
@@ -1743,6 +1785,31 @@ export default function SettingsPage() {
     setRollbackReconcileSuccess,
   ] = useState("");
 
+  const [
+    rollbackReleasePassword,
+    setRollbackReleasePassword,
+  ] = useState("");
+
+  const [
+    rollbackReleaseConfirmation,
+    setRollbackReleaseConfirmation,
+  ] = useState("");
+
+  const [
+    rollbackReleasing,
+    setRollbackReleasing,
+  ] = useState(false);
+
+  const [
+    rollbackReleaseError,
+    setRollbackReleaseError,
+  ] = useState("");
+
+  const [
+    rollbackReleaseSuccess,
+    setRollbackReleaseSuccess,
+  ] = useState("");
+
   const rollbackExpectedConfirmation =
     rollbackStatus
       ?.restore_execution_id
@@ -1762,6 +1829,20 @@ export default function SettingsPage() {
         ?.classification ===
         "dispatch_uncertain"
     );
+
+  const rollbackReleaseVisible =
+    Boolean(
+      rollbackStatus
+        ?.restore_execution_id &&
+      rollbackRecovery
+        ?.release_uncertain_enabled
+    );
+
+  const rollbackReleaseExpectedConfirmation =
+    rollbackStatus
+      ?.restore_execution_id
+      ? `RELEASE ROLLBACK DISPATCH ${rollbackStatus.restore_execution_id}`
+      : "";
 
   useEffect(() => {
     if (
@@ -2780,6 +2861,92 @@ export default function SettingsPage() {
         );
       } finally {
         setRollbackReconciling(false);
+      }
+    };
+
+  const handleRollbackRelease =
+    async () => {
+      setRollbackReleaseError("");
+      setRollbackReleaseSuccess("");
+
+      if (!rollbackReleasePassword) {
+        setRollbackReleaseError(
+          text.rollbackPasswordRequired
+        );
+        return;
+      }
+
+      if (
+        !rollbackReleaseExpectedConfirmation ||
+        rollbackReleaseConfirmation !==
+          rollbackReleaseExpectedConfirmation
+      ) {
+        setRollbackReleaseError(
+          text.rollbackConfirmationRequired
+        );
+        return;
+      }
+
+      if (
+        !rollbackReleaseVisible ||
+        !rollbackStatus
+          ?.restore_execution_id
+      ) {
+        setRollbackReleaseError(
+          text.rollbackRecoveryReleaseFailed
+        );
+        return;
+      }
+
+      setRollbackReleasing(true);
+
+      try {
+        const result =
+          await api(
+            "/api/admin/restore/rollback/release-uncertain",
+            {
+              method: "POST",
+              body: JSON.stringify({
+                restore_execution_id:
+                  rollbackStatus
+                    .restore_execution_id,
+                current_password:
+                  rollbackReleasePassword,
+                confirmation_phrase:
+                  rollbackReleaseConfirmation,
+              }),
+            }
+          );
+
+        if (
+          !result ||
+          result.error ||
+          result.ok === false
+        ) {
+          throw new Error(
+            result?.error ||
+            "rollback_release_failed"
+          );
+        }
+
+        setRollbackReleasePassword("");
+        setRollbackReleaseConfirmation("");
+        setRollbackReleaseSuccess(
+          text.rollbackRecoveryReleaseSuccess
+        );
+
+        await handleRefreshRestore();
+      } catch (releaseError) {
+        console.error(
+          "ROLLBACK RELEASE ERROR:",
+          releaseError
+        );
+
+        setRollbackReleaseError(
+          text.rollbackRecoveryReleaseFailed
+        );
+      } finally {
+        setRollbackReleasing(false);
       }
     };
 
@@ -3975,6 +4142,142 @@ export default function SettingsPage() {
                             ? text.rollbackRecoveryReconciling
                             : text.rollbackRecoveryReconcile}
                         </button>
+                      )}
+
+                      {rollbackReleaseVisible && (
+                        <div
+                          style={{
+                            marginTop: 4,
+                            display: "grid",
+                            gap: 10,
+                          }}
+                        >
+                          <div
+                            style={warningStyle}
+                          >
+                            <div
+                              style={{
+                                color:
+                                  "var(--text-h)",
+                                fontSize: 11,
+                                fontWeight: 800,
+                              }}
+                            >
+                              {text.rollbackRecoveryRelease}
+                            </div>
+
+                            <div
+                              style={{
+                                marginTop: 4,
+                                fontSize: 10,
+                                lineHeight: 1.5,
+                              }}
+                            >
+                              {text.rollbackRecoveryReleaseHint}
+                            </div>
+
+                            <div
+                              style={{
+                                marginTop: 6,
+                                fontFamily:
+                                  "ui-monospace, SFMono-Regular, Menlo, monospace",
+                                fontSize: 11,
+                                fontWeight: 800,
+                                wordBreak:
+                                  "break-word",
+                              }}
+                            >
+                              {rollbackReleaseExpectedConfirmation}
+                            </div>
+                          </div>
+
+                          <PasswordField
+                            label={
+                              text.rollbackRecoveryReleasePassword
+                            }
+                            value={
+                              rollbackReleasePassword
+                            }
+                            onChange={(
+                              event
+                            ) => {
+                              setRollbackReleasePassword(
+                                event.target.value
+                              );
+                              setRollbackReleaseError("");
+                              setRollbackReleaseSuccess("");
+                            }}
+                            autoComplete="current-password"
+                          />
+
+                          <label
+                            style={fieldLabelStyle}
+                          >
+                            {text.rollbackRecoveryReleaseConfirmation}
+
+                            <input
+                              type="text"
+                              value={
+                                rollbackReleaseConfirmation
+                              }
+                              onChange={(
+                                event
+                              ) => {
+                                setRollbackReleaseConfirmation(
+                                  event.target.value
+                                );
+                                setRollbackReleaseError("");
+                                setRollbackReleaseSuccess("");
+                              }}
+                              autoComplete="off"
+                              spellCheck={false}
+                              style={inputStyle}
+                            />
+                          </label>
+
+                          {rollbackReleaseError && (
+                            <div
+                              role="alert"
+                              style={errorStyle}
+                            >
+                              {rollbackReleaseError}
+                            </div>
+                          )}
+
+                          {rollbackReleaseSuccess && (
+                            <div
+                              role="status"
+                              style={successStyle}
+                            >
+                              {rollbackReleaseSuccess}
+                            </div>
+                          )}
+
+                          <button
+                            type="button"
+                            disabled={
+                              rollbackReleasing ||
+                              !rollbackReleasePassword ||
+                              rollbackReleaseConfirmation !==
+                                rollbackReleaseExpectedConfirmation
+                            }
+                            onClick={
+                              handleRollbackRelease
+                            }
+                            style={
+                              primaryButtonStyle(
+                                rollbackReleasing ||
+                                !rollbackReleasePassword ||
+                                rollbackReleaseConfirmation !==
+                                  rollbackReleaseExpectedConfirmation
+                              )
+                            }
+                          >
+                            {rollbackReleasing
+                              ? text.rollbackRecoveryReleasing
+                              : text.rollbackRecoveryRelease}
+                          </button>
+                        </div>
                       )}
                     </div>
                   )}
