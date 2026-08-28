@@ -324,6 +324,18 @@ jobs:
 
           EXECUTION_ID="${{ inputs.restore_execution_id }}"
           TARGET_BOOKMARK="${{ steps.journal.outputs.main_previous_bookmark }}"
+          NOW_ISO="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+
+          npx --yes wrangler@"$WRANGLER_VERSION" d1 execute "$OPS_DB" \
+            --remote \
+            --command "
+              UPDATE restore_execution_journal
+              SET
+                main_rollback_status = 'running',
+                updated_at = '$NOW_ISO'
+              WHERE restore_execution_id = $EXECUTION_ID
+                AND rollback_status = 'running';
+            "
 
           URL="https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/d1/database/${MAIN_D1_DATABASE_ID}/time_travel/restore?bookmark=${TARGET_BOOKMARK}"
 
@@ -357,6 +369,7 @@ jobs:
               SET
                 main_rollback_bookmark = '$BOOKMARK',
                 main_rollback_previous_bookmark = '$PREVIOUS',
+                main_rollback_status = 'success',
                 updated_at = '$NOW_ISO'
               WHERE restore_execution_id = $EXECUTION_ID;
             "
@@ -372,6 +385,18 @@ jobs:
 
           EXECUTION_ID="${{ inputs.restore_execution_id }}"
           TARGET_BOOKMARK="${{ steps.journal.outputs.pii_previous_bookmark }}"
+          NOW_ISO="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+
+          npx --yes wrangler@"$WRANGLER_VERSION" d1 execute "$OPS_DB" \
+            --remote \
+            --command "
+              UPDATE restore_execution_journal
+              SET
+                pii_rollback_status = 'running',
+                updated_at = '$NOW_ISO'
+              WHERE restore_execution_id = $EXECUTION_ID
+                AND rollback_status = 'running';
+            "
 
           URL="https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/d1/database/${PII_D1_DATABASE_ID}/time_travel/restore?bookmark=${TARGET_BOOKMARK}"
 
@@ -405,6 +430,7 @@ jobs:
               SET
                 pii_rollback_bookmark = '$BOOKMARK',
                 pii_rollback_previous_bookmark = '$PREVIOUS',
+                pii_rollback_status = 'success',
                 updated_at = '$NOW_ISO'
               WHERE restore_execution_id = $EXECUTION_ID;
             "
@@ -417,6 +443,20 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+
+          EXECUTION_ID="${{ inputs.restore_execution_id }}"
+          NOW_ISO="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+
+          npx --yes wrangler@"$WRANGLER_VERSION" d1 execute "$OPS_DB" \
+            --remote \
+            --command "
+              UPDATE restore_execution_journal
+              SET
+                rollback_schema_status = 'running',
+                updated_at = '$NOW_ISO'
+              WHERE restore_execution_id = $EXECUTION_ID
+                AND rollback_status = 'running';
+            "
 
           MIGRATION_FILE="migrations/restore-control-plane-schema.sql"
 
@@ -463,6 +503,19 @@ jobs:
             exit 12
           fi
 
+          NOW_ISO="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+
+          npx --yes wrangler@"$WRANGLER_VERSION" d1 execute "$OPS_DB" \
+            --remote \
+            --command "
+              UPDATE restore_execution_journal
+              SET
+                rollback_schema_status = 'success',
+                updated_at = '$NOW_ISO'
+              WHERE restore_execution_id = $EXECUTION_ID
+                AND rollback_status = 'running';
+            "
+
           echo "restore_schema_ready=true" >> "$GITHUB_OUTPUT"
 
       - name: Verify post-rollback database readability
@@ -472,6 +525,18 @@ jobs:
           set -euo pipefail
 
           EXECUTION_ID="${{ inputs.restore_execution_id }}"
+          NOW_ISO="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+
+          npx --yes wrangler@"$WRANGLER_VERSION" d1 execute "$OPS_DB" \
+            --remote \
+            --command "
+              UPDATE restore_execution_journal
+              SET
+                rollback_verify_status = 'running',
+                updated_at = '$NOW_ISO'
+              WHERE restore_execution_id = $EXECUTION_ID
+                AND rollback_status = 'running';
+            "
 
           run_scalar() {
             local db_name="$1"
@@ -525,6 +590,7 @@ jobs:
               SET
                 status = 'rolled_back',
                 rollback_status = 'success',
+                rollback_verify_status = 'success',
                 failure_code = NULL,
                 rollback_completed_at = '$NOW_ISO',
                 updated_at = '$NOW_ISO'
@@ -552,6 +618,30 @@ jobs:
               SET
                 status = 'rollback_required',
                 rollback_status = 'failed',
+                main_rollback_status =
+                  CASE
+                    WHEN main_rollback_status = 'running'
+                    THEN 'failed'
+                    ELSE main_rollback_status
+                  END,
+                pii_rollback_status =
+                  CASE
+                    WHEN pii_rollback_status = 'running'
+                    THEN 'failed'
+                    ELSE pii_rollback_status
+                  END,
+                rollback_schema_status =
+                  CASE
+                    WHEN rollback_schema_status = 'running'
+                    THEN 'failed'
+                    ELSE rollback_schema_status
+                  END,
+                rollback_verify_status =
+                  CASE
+                    WHEN rollback_verify_status = 'running'
+                    THEN 'failed'
+                    ELSE rollback_verify_status
+                  END,
                 failure_code = COALESCE(
                   failure_code,
                   'ROLLBACK_FAILED_OR_INCOMPLETE'
@@ -577,6 +667,10 @@ jobs:
             echo "- Maintenance lock enabled: ${{ steps.maintenance.outputs.enabled || 'false' }}"
             echo "- Main rollback attempted: ${{ steps.rollback_main.outcome != 'skipped' && 'yes' || 'no' }}"
             echo "- PII rollback attempted: ${{ steps.rollback_pii.outcome != 'skipped' && 'yes' || 'no' }}"
+            echo "- Main rollback step outcome: ${{ steps.rollback_main.outcome || 'not-run' }}"
+            echo "- PII rollback step outcome: ${{ steps.rollback_pii.outcome || 'not-run' }}"
+            echo "- Schema step outcome: ${{ steps.schema.outcome || 'not-run' }}"
+            echo "- Verify step outcome: ${{ steps.verify.outcome || 'not-run' }}"
             echo "- Restore control-plane schema recreated: ${{ steps.schema.outputs.restore_schema_ready || 'false' }}"
             echo "- Main readable after rollback: ${{ steps.verify.outputs.main_read_verified || 'not-verified' }}"
             echo "- PII readable after rollback: ${{ steps.verify.outputs.pii_read_verified || 'not-verified' }}"
