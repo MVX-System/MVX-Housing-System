@@ -301,6 +301,44 @@ const TEXT = {
       "Destination",
     restoreRefresh:
       "Refresh restore status",
+    rollbackSection:
+      "Rollback control",
+    rollbackTitle:
+      "Controlled rollback",
+    rollbackHint:
+      "Shows whether the latest restore requires rollback and whether protected rollback checkpoints are available.",
+    rollbackExecution:
+      "Restore execution",
+    rollbackRestoreStatus:
+      "Restore status",
+    rollbackStatus:
+      "Rollback status",
+    rollbackCheckpoints:
+      "Rollback checkpoints",
+    rollbackBothAvailable:
+      "Main and PII checkpoints available",
+    rollbackCheckpointIncomplete:
+      "Rollback checkpoints incomplete",
+    rollbackRequired:
+      "Rollback required",
+    rollbackNotRequired:
+      "Rollback not required",
+    rollbackUnavailable:
+      "Rollback status unavailable",
+    rollbackActionReady:
+      "Rollback action is permitted by the control plane.",
+    rollbackActionProtected:
+      "Rollback action is not permitted in the current state.",
+    rollbackRun:
+      "Rollback workflow run",
+    rollbackStarted:
+      "Rollback started",
+    rollbackCompleted:
+      "Rollback completed",
+    rollbackAction:
+      "Start controlled rollback",
+    rollbackActionUiLocked:
+      "Rollback execution remains protected outside this read-only UI stage.",
   },
 
   lv: {
@@ -575,6 +613,44 @@ const TEXT = {
       "Galamērķis",
     restoreRefresh:
       "Atjaunināt atjaunošanas statusu",
+    rollbackSection:
+      "Atcelšanas pārvaldība",
+    rollbackTitle:
+      "Kontrolēta atcelšana",
+    rollbackHint:
+      "Parāda, vai pēdējai atjaunošanai ir nepieciešama atcelšana un vai ir pieejami aizsargātie atcelšanas kontrolpunkti.",
+    rollbackExecution:
+      "Atjaunošanas izpilde",
+    rollbackRestoreStatus:
+      "Atjaunošanas statuss",
+    rollbackStatus:
+      "Atcelšanas statuss",
+    rollbackCheckpoints:
+      "Atcelšanas kontrolpunkti",
+    rollbackBothAvailable:
+      "Galvenais un PII kontrolpunkts ir pieejams",
+    rollbackCheckpointIncomplete:
+      "Atcelšanas kontrolpunkti nav pilnīgi",
+    rollbackRequired:
+      "Atcelšana ir nepieciešama",
+    rollbackNotRequired:
+      "Atcelšana nav nepieciešama",
+    rollbackUnavailable:
+      "Atcelšanas statuss nav pieejams",
+    rollbackActionReady:
+      "Vadības plakne atļauj atcelšanas darbību.",
+    rollbackActionProtected:
+      "Pašreizējā stāvoklī atcelšanas darbība nav atļauta.",
+    rollbackRun:
+      "Atcelšanas workflow izpilde",
+    rollbackStarted:
+      "Atcelšana sākta",
+    rollbackCompleted:
+      "Atcelšana pabeigta",
+    rollbackAction:
+      "Sākt kontrolētu atcelšanu",
+    rollbackActionUiLocked:
+      "Šajā tikai lasāmajā UI posmā atcelšanas izpilde joprojām ir aizsargāta ārpus interfeisa.",
   },
 
   ru: {
@@ -849,6 +925,44 @@ const TEXT = {
       "Хранилище",
     restoreRefresh:
       "Обновить статус восстановления",
+    rollbackSection:
+      "Управление откатом",
+    rollbackTitle:
+      "Контролируемый откат",
+    rollbackHint:
+      "Показывает, требуется ли откат последнего восстановления и доступны ли защищённые контрольные точки отката.",
+    rollbackExecution:
+      "Выполнение восстановления",
+    rollbackRestoreStatus:
+      "Статус восстановления",
+    rollbackStatus:
+      "Статус отката",
+    rollbackCheckpoints:
+      "Контрольные точки отката",
+    rollbackBothAvailable:
+      "Контрольные точки Main и PII доступны",
+    rollbackCheckpointIncomplete:
+      "Контрольные точки отката неполны",
+    rollbackRequired:
+      "Требуется откат",
+    rollbackNotRequired:
+      "Откат не требуется",
+    rollbackUnavailable:
+      "Статус отката недоступен",
+    rollbackActionReady:
+      "Control plane разрешает выполнение отката.",
+    rollbackActionProtected:
+      "В текущем состоянии выполнение отката не разрешено.",
+    rollbackRun:
+      "Запуск workflow отката",
+    rollbackStarted:
+      "Откат начат",
+    rollbackCompleted:
+      "Откат завершён",
+    rollbackAction:
+      "Запустить контролируемый откат",
+    rollbackActionUiLocked:
+      "На этом этапе интерфейс остаётся только для просмотра; выполнение отката защищено вне UI.",
   },
 };
 
@@ -1044,6 +1158,43 @@ function getBackupStatusLabel(
 
   return (
     labels[normalized] ||
+    text.unknown
+  );
+}
+
+function getRollbackStateLabel(
+  value,
+  text
+) {
+  const normalized =
+    String(value || "")
+      .trim()
+      .toLowerCase();
+
+  const labels = {
+    preflight:
+      text.statusRequested,
+    ready:
+      text.restoreReady,
+    running:
+      text.statusRunning,
+    success:
+      text.statusSuccess,
+    failed:
+      text.statusFailed,
+    rollback_required:
+      text.rollbackRequired,
+    rolled_back:
+      text.statusSuccess,
+    required:
+      text.rollbackRequired,
+    not_required:
+      text.rollbackNotRequired,
+  };
+
+  return (
+    labels[normalized] ||
+    value ||
     text.unknown
   );
 }
@@ -1415,6 +1566,16 @@ export default function SettingsPage() {
     restoreStatus,
     setRestoreStatus,
   ] = useState(null);
+
+  const rollbackStatus =
+    restoreStatus?.rollback ||
+    null;
+
+  const rollbackActionVisible =
+    Boolean(
+      rollbackStatus
+        ?.rollback_action_enabled
+    );
 
   useEffect(() => {
     if (
@@ -3195,6 +3356,206 @@ export default function SettingsPage() {
                       "Europe/Riga"
                     )}`}
                   />
+                </div>
+
+                <div
+                  style={{
+                    padding: 14,
+                    border:
+                      rollbackStatus
+                        ?.rollback_required
+                        ? "1px solid rgba(180,83,83,.28)"
+                        : "1px solid var(--border)",
+                    borderRadius: 10,
+                    background:
+                      rollbackStatus
+                        ?.rollback_required
+                        ? "rgba(180,83,83,.06)"
+                        : "var(--surface-soft)",
+                  }}
+                >
+                  <div
+                    style={{
+                      color:
+                        "var(--text-h)",
+                      fontSize: 12,
+                      fontWeight: 800,
+                    }}
+                  >
+                    {text.rollbackTitle}
+                  </div>
+
+                  <div
+                    style={{
+                      marginTop: 4,
+                      color:
+                        "var(--text)",
+                      fontSize: 11,
+                      lineHeight: 1.5,
+                    }}
+                  >
+                    {text.rollbackHint}
+                  </div>
+
+                  <div
+                    style={{
+                      marginTop: 12,
+                      display: "grid",
+                      gridTemplateColumns:
+                        "repeat(auto-fit,minmax(180px,1fr))",
+                      gap: 8,
+                    }}
+                  >
+                    <InfoBox
+                      label={
+                        text.rollbackExecution
+                      }
+                      value={
+                        rollbackStatus
+                          ?.restore_execution_id
+                          ? `#${rollbackStatus.restore_execution_id}`
+                          : "—"
+                      }
+                    />
+
+                    <InfoBox
+                      label={
+                        text.rollbackRestoreStatus
+                      }
+                      value={
+                        rollbackStatus
+                          ?.available
+                          ? getRollbackStateLabel(
+                              rollbackStatus.restore_status,
+                              text
+                            )
+                          : text.rollbackUnavailable
+                      }
+                    />
+
+                    <InfoBox
+                      label={
+                        text.rollbackStatus
+                      }
+                      value={
+                        rollbackStatus
+                          ?.available
+                          ? getRollbackStateLabel(
+                              rollbackStatus.rollback_status,
+                              text
+                            )
+                          : text.rollbackUnavailable
+                      }
+                    />
+
+                    <InfoBox
+                      label={
+                        text.rollbackCheckpoints
+                      }
+                      value={
+                        rollbackStatus
+                          ?.previous_bookmarks
+                          ?.both_available
+                          ? text.rollbackBothAvailable
+                          : text.rollbackCheckpointIncomplete
+                      }
+                    />
+
+                    <InfoBox
+                      label={
+                        text.rollbackRun
+                      }
+                      value={
+                        rollbackStatus
+                          ?.rollback_github_run_id ||
+                        "—"
+                      }
+                    />
+
+                    <InfoBox
+                      label={
+                        text.rollbackStarted
+                      }
+                      value={
+                        formatDateTime(
+                          rollbackStatus
+                            ?.rollback_started_at,
+                          language,
+                          "Europe/Riga"
+                        )
+                      }
+                    />
+
+                    <InfoBox
+                      label={
+                        text.rollbackCompleted
+                      }
+                      value={
+                        formatDateTime(
+                          rollbackStatus
+                            ?.rollback_completed_at,
+                          language,
+                          "Europe/Riga"
+                        )
+                      }
+                    />
+                  </div>
+
+                  <div
+                    style={{
+                      marginTop: 10,
+                      color:
+                        rollbackStatus
+                          ?.rollback_required
+                          ? "#9f3f3f"
+                          : "var(--text)",
+                      fontSize: 11,
+                      fontWeight: 700,
+                      lineHeight: 1.5,
+                    }}
+                  >
+                    {rollbackStatus
+                      ?.rollback_required
+                      ? text.rollbackRequired
+                      : text.rollbackNotRequired}
+                    {" · "}
+                    {rollbackActionVisible
+                      ? text.rollbackActionReady
+                      : text.rollbackActionProtected}
+                  </div>
+
+                  {rollbackActionVisible && (
+                    <div
+                      style={{
+                        marginTop: 10,
+                        display: "grid",
+                        gap: 6,
+                      }}
+                    >
+                      <button
+                        type="button"
+                        disabled
+                        style={
+                          primaryButtonStyle(
+                            true
+                          )
+                        }
+                      >
+                        {text.rollbackAction}
+                      </button>
+
+                      <div
+                        style={{
+                          color:
+                            "var(--text)",
+                          fontSize: 10,
+                          lineHeight: 1.45,
+                        }}
+                      >
+                        {text.rollbackActionUiLocked}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {restoreError && (
