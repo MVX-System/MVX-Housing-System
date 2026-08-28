@@ -1447,6 +1447,23 @@ class SystemOperationsControl {
         };
       }
 
+      // Stage 2I-SR14F-D5B-2H:
+      // The protected rollback dispatch endpoint must remain reachable
+      // while controlled-restore maintenance is active. This is the only
+      // mutating HTTP route exempted from the maintenance block, and it
+      // still performs its own strict OPS_DB state checks before dispatch.
+      if (
+        ctx?.url?.pathname ===
+          "/api/admin/restore/rollback/dispatch"
+      ) {
+        return {
+          allowed: true,
+          maintenance_override: true,
+          restore_execution_id:
+            state.restore_execution_id,
+        };
+      }
+
       return {
         allowed: false,
         status: 503,
@@ -1483,6 +1500,198 @@ class SystemOperationsControl {
           null,
       };
     }
+  }
+}
+
+// =========================
+// RESTORE ROLLBACK STATUS
+// Stage 2I-SR14F-D5B-2G
+//
+// Read-only projection of the independent OPS_DB restore journal.
+// Raw Time Travel bookmarks are deliberately NOT returned to the frontend.
+// =========================
+async function getRestoreRollbackStatus(
+  env
+) {
+  if (!env?.OPS_DB) {
+    return {
+      configured: false,
+      available: false,
+      error:
+        "ops_database_not_configured",
+      restore_execution_id: null,
+      restore_status: null,
+      rollback_status: null,
+      rollback_required: false,
+      rollback_action_enabled: false,
+      previous_bookmarks: {
+        main_available: false,
+        pii_available: false,
+        both_available: false,
+      },
+      rollback_github_run_id: null,
+      rollback_started_at: null,
+      rollback_completed_at: null,
+    };
+  }
+
+  try {
+    const row =
+      await env.OPS_DB.prepare(`
+        SELECT
+          restore_execution_id,
+          status,
+          rollback_status,
+          main_previous_bookmark,
+          pii_previous_bookmark,
+          rollback_github_run_id,
+          rollback_started_at,
+          rollback_completed_at
+        FROM restore_execution_journal
+        WHERE
+          restore_github_run_id IS NOT NULL
+          OR main_restore_status IS NOT NULL
+          OR pii_restore_status IS NOT NULL
+          OR rollback_status IS NOT NULL
+        ORDER BY id DESC
+        LIMIT 1
+      `).first();
+
+    if (!row) {
+      return {
+        configured: true,
+        available: false,
+        error: null,
+        restore_execution_id: null,
+        restore_status: null,
+        rollback_status: null,
+        rollback_required: false,
+        rollback_action_enabled: false,
+        previous_bookmarks: {
+          main_available: false,
+          pii_available: false,
+          both_available: false,
+        },
+        rollback_github_run_id: null,
+        rollback_started_at: null,
+        rollback_completed_at: null,
+      };
+    }
+
+    const restoreExecutionId =
+      normalizePositiveInteger(
+        row.restore_execution_id
+      );
+
+    const restoreStatus =
+      row.status
+        ? String(row.status)
+        : null;
+
+    const rollbackStatus =
+      row.rollback_status
+        ? String(
+            row.rollback_status
+          )
+        : null;
+
+    const mainPreviousAvailable =
+      Boolean(
+        row.main_previous_bookmark
+      );
+
+    const piiPreviousAvailable =
+      Boolean(
+        row.pii_previous_bookmark
+      );
+
+    const bothPreviousAvailable =
+      mainPreviousAvailable &&
+      piiPreviousAvailable;
+
+    const rollbackRequired =
+      restoreStatus ===
+        "rollback_required" &&
+      [
+        "required",
+        "dispatching",
+        "running",
+        "failed",
+      ].includes(
+        rollbackStatus
+      );
+
+    const rollbackAlreadyDispatched =
+      Boolean(
+        row.rollback_github_run_id
+      );
+
+    return {
+      configured: true,
+      available: true,
+      error: null,
+      restore_execution_id:
+        restoreExecutionId,
+      restore_status:
+        restoreStatus,
+      rollback_status:
+        rollbackStatus,
+      rollback_required:
+        rollbackRequired,
+      rollback_action_enabled:
+        Boolean(
+          restoreExecutionId &&
+          restoreStatus ===
+            "rollback_required" &&
+          rollbackStatus ===
+            "required" &&
+          bothPreviousAvailable &&
+          !rollbackAlreadyDispatched
+        ),
+      previous_bookmarks: {
+        main_available:
+          mainPreviousAvailable,
+        pii_available:
+          piiPreviousAvailable,
+        both_available:
+          bothPreviousAvailable,
+      },
+      rollback_github_run_id:
+        row.rollback_github_run_id ||
+        null,
+      rollback_started_at:
+        row.rollback_started_at ||
+        null,
+      rollback_completed_at:
+        row.rollback_completed_at ||
+        null,
+    };
+  } catch (error) {
+    App.logError(
+      "restore_rollback_status_failed",
+      error,
+      {}
+    );
+
+    return {
+      configured: true,
+      available: false,
+      error:
+        "rollback_status_unavailable",
+      restore_execution_id: null,
+      restore_status: null,
+      rollback_status: null,
+      rollback_required: false,
+      rollback_action_enabled: false,
+      previous_bookmarks: {
+        main_available: false,
+        pii_available: false,
+        both_available: false,
+      },
+      rollback_github_run_id: null,
+      rollback_started_at: null,
+      rollback_completed_at: null,
+    };
   }
 }
 
@@ -3000,6 +3209,16 @@ const ADMIN_RESTORE_EXECUTION_DISPATCH_LIMIT = {
   blockSeconds: 60 * 60,
 };
 
+// Stage 2I-SR14F-D5B-2H:
+// Rollback dispatch is rarer than restore dispatch and is separately
+// rate-limited. The Worker dispatches the protected GitHub workflow only;
+// the destructive D1 rollback remains inside that workflow.
+const ADMIN_RESTORE_ROLLBACK_DISPATCH_LIMIT = {
+  maxRequests: 3,
+  windowSeconds: 60 * 60,
+  blockSeconds: 60 * 60,
+};
+
 const ADMIN_RESTORE_PASSWORD_FAILURE_LIMIT = {
   maxAttempts: 5,
   windowSeconds: 15 * 60,
@@ -3691,6 +3910,9 @@ const RESTORE_EXECUTION_DISPATCH_CONFIRMATION_PREFIX =
 const DEFAULT_GITHUB_RESTORE_WORKFLOW =
   "mvx-restore-execute.yml";
 
+const DEFAULT_GITHUB_ROLLBACK_WORKFLOW =
+  "mvx-restore-rollback.yml";
+
 async function ensureBackupStatusTables(env) {
   await env.DB.prepare(`
     CREATE TABLE IF NOT EXISTS backup_settings (
@@ -4119,6 +4341,53 @@ function getGitHubRestoreExecutionConfiguration(
       ok: false,
       error:
         "restore_github_not_configured",
+    };
+  }
+
+  return {
+    ok: true,
+    owner,
+    repo,
+    workflow,
+    token,
+  };
+}
+
+
+function getGitHubRollbackConfiguration(
+  env
+) {
+  const owner =
+    String(
+      env?.GITHUB_OWNER || ""
+    ).trim();
+
+  const repo =
+    String(
+      env?.GITHUB_REPO || ""
+    ).trim();
+
+  const workflow =
+    String(
+      env?.GITHUB_ROLLBACK_WORKFLOW ||
+      DEFAULT_GITHUB_ROLLBACK_WORKFLOW
+    ).trim();
+
+  const token =
+    String(
+      env?.GITHUB_BACKUP_TOKEN || ""
+    ).trim();
+
+  if (
+    !owner ||
+    !repo ||
+    !workflow ||
+    !token
+  ) {
+    return {
+      ok: false,
+      error:
+        "rollback_github_not_configured",
     };
   }
 
@@ -11729,13 +11998,14 @@ Router.register(
 
 // =========================
 // ADMIN RESTORE MANAGEMENT
-// Stage 2I-SR14F-A / SR14F-B / SR14F-C / SR14F-D4 / SR14F-D5A / SR14F-D5B-1:
+// Stage 2I-SR14F-A / SR14F-B / SR14F-C / SR14F-D4 / SR14F-D5A / SR14F-D5B-1 / SR14F-D5B-2G / SR14F-D5B-2H:
 // - read-only restore status and restore-point catalogue;
 // - protected creation/cancellation of a short-lived restore request;
 // - non-destructive preview / validation with D1 safety checkpoints;
 // - final readiness gate;
 // - short-lived one-time execution arming;
-// - non-destructive execution-token verification dry-run.
+// - non-destructive execution-token verification dry-run;
+// - read-only controlled rollback status from independent OPS_DB.
 //
 // IMPORTANT:
 // SR14F-D5B-1 still does NOT execute any restore.
@@ -11886,6 +12156,11 @@ Router.register(
         admin.user_id
       );
 
+    const rollback =
+      await getRestoreRollbackStatus(
+        ctx.env
+      );
+
     return {
       ok: true,
 
@@ -11909,6 +12184,14 @@ Router.register(
         execution_dry_run_enabled:
           true,
         execution_dispatch_enabled:
+          true,
+        rollback_status_enabled:
+          true,
+        rollback_control_ui_enabled:
+          true,
+        rollback_dispatch_enabled:
+          true,
+        rollback_execution_enabled:
           true,
         destructive_restore_enabled:
           false,
@@ -11939,6 +12222,8 @@ Router.register(
 
       active_execution_arm:
         activeExecutionArm,
+
+      rollback,
 
       time_travel: {
         configured:
@@ -14993,6 +15278,567 @@ Router.register(
         false,
       restore_execution_enabled:
         false,
+    };
+  }
+);
+
+
+// =========================
+// ADMIN DISPATCH CONTROLLED ROLLBACK
+// Stage 2I-SR14F-D5B-2H
+//
+// Security barriers:
+// - administrator authorization;
+// - dedicated rate limit;
+// - exact restore_execution_id;
+// - exact confirmation phrase;
+// - current-password re-verification;
+// - independent OPS_DB journal must require rollback;
+// - both protected previous bookmarks must exist;
+// - rollback must not already have been dispatched;
+// - atomic required -> dispatching claim prevents duplicate dispatch.
+//
+// The Worker itself performs NO D1 restore. It only dispatches the dedicated
+// GitHub rollback workflow, which performs the protected Time Travel actions.
+// =========================
+Router.register(
+  "POST",
+  "/api/admin/restore/rollback/dispatch",
+  async (ctx) => {
+    const admin =
+      await Auth.requireAdmin(ctx);
+
+    if (!admin) {
+      return {
+        error: "forbidden"
+      };
+    }
+
+    const dispatchLimit =
+      await SecurityRateLimit.consume({
+        env: ctx.env,
+        scope:
+          "admin-restore-rollback-dispatch",
+        key:
+          `user:${admin.user_id}`,
+        ...ADMIN_RESTORE_ROLLBACK_DISPATCH_LIMIT,
+      });
+
+    if (!dispatchLimit.allowed) {
+      return SecurityRateLimit.response(
+        dispatchLimit
+      );
+    }
+
+    const body =
+      await ctx.request
+        .json()
+        .catch(() => ({}));
+
+    const restoreExecutionId =
+      normalizePositiveInteger(
+        body.restore_execution_id
+      );
+
+    const currentPassword =
+      typeof body.current_password ===
+        "string"
+        ? body.current_password
+        : "";
+
+    const confirmationPhrase =
+      typeof body.confirmation_phrase ===
+        "string"
+        ? body.confirmation_phrase.trim()
+        : "";
+
+    if (!restoreExecutionId) {
+      return {
+        error:
+          "invalid_restore_execution_id"
+      };
+    }
+
+    if (
+      !currentPassword ||
+      currentPassword.length > 1024
+    ) {
+      return {
+        error:
+          "current_password_required"
+      };
+    }
+
+    const expectedConfirmationPhrase =
+      `ROLLBACK PRODUCTION EXECUTION ${restoreExecutionId}`;
+
+    if (
+      confirmationPhrase !==
+      expectedConfirmationPhrase
+    ) {
+      await SecurityAudit.recordSafe(
+        ctx,
+        {
+          actorUserId:
+            admin.user_id,
+          action:
+            "admin.restore_rollback_dispatch",
+          targetType:
+            "restore_execution",
+          targetId:
+            String(
+              restoreExecutionId
+            ),
+          result:
+            "failure",
+          details: {
+            failure_type:
+              "confirmation_phrase_mismatch",
+            destructive_rollback_started:
+              false,
+          },
+        }
+      );
+
+      return {
+        error:
+          "rollback_confirmation_phrase_incorrect",
+        required_confirmation_phrase:
+          expectedConfirmationPhrase,
+      };
+    }
+
+    if (!ctx.env?.OPS_DB) {
+      return {
+        error:
+          "ops_database_not_configured"
+      };
+    }
+
+    const github =
+      getGitHubRollbackConfiguration(
+        ctx.env
+      );
+
+    if (!github.ok) {
+      return {
+        error:
+          github.error
+      };
+    }
+
+    // First state read from the independent OPS database.
+    const journal =
+      await ctx.env.OPS_DB.prepare(`
+        SELECT
+          restore_execution_id,
+          status,
+          rollback_status,
+          main_previous_bookmark,
+          pii_previous_bookmark,
+          rollback_github_run_id
+        FROM restore_execution_journal
+        WHERE restore_execution_id = ?
+        LIMIT 1
+      `)
+        .bind(
+          restoreExecutionId
+        )
+        .first();
+
+    if (!journal) {
+      return {
+        error:
+          "restore_execution_journal_not_found"
+      };
+    }
+
+    if (
+      String(journal.status || "") !==
+        "rollback_required" ||
+      String(
+        journal.rollback_status || ""
+      ) !== "required"
+    ) {
+      return {
+        error:
+          "rollback_not_required",
+        restore_status:
+          journal.status || null,
+        rollback_status:
+          journal.rollback_status || null,
+      };
+    }
+
+    if (
+      !journal.main_previous_bookmark ||
+      !journal.pii_previous_bookmark
+    ) {
+      return {
+        error:
+          "rollback_previous_bookmarks_unavailable"
+      };
+    }
+
+    if (
+      journal.rollback_github_run_id
+    ) {
+      return {
+        error:
+          "rollback_already_dispatched",
+        rollback_github_run_id:
+          journal.rollback_github_run_id,
+      };
+    }
+
+    // Re-verify the administrator's current password before claiming the
+    // rollback dispatch state.
+    const passwordLimitKey =
+      `user:${admin.user_id}`;
+
+    const passwordLimitCheck =
+      await SecurityRateLimit.check({
+        env: ctx.env,
+        scope:
+          "admin-restore-password-failure",
+        key:
+          passwordLimitKey,
+        windowSeconds:
+          ADMIN_RESTORE_PASSWORD_FAILURE_LIMIT
+            .windowSeconds,
+      });
+
+    if (!passwordLimitCheck.allowed) {
+      return SecurityRateLimit.response(
+        passwordLimitCheck
+      );
+    }
+
+    const user =
+      await ctx.env.DB.prepare(`
+        SELECT
+          id,
+          password_hash,
+          is_active
+        FROM users
+        WHERE id = ?
+        LIMIT 1
+      `)
+        .bind(
+          admin.user_id
+        )
+        .first();
+
+    if (
+      !user ||
+      Number(user.is_active) !== 1
+    ) {
+      return {
+        error:
+          "user_not_found_or_inactive"
+      };
+    }
+
+    const passwordCheck =
+      await verifyPassword(
+        currentPassword,
+        user.password_hash || ""
+      );
+
+    if (!passwordCheck.ok) {
+      const failureResult =
+        await SecurityRateLimit.recordFailure({
+          env: ctx.env,
+          scope:
+            "admin-restore-password-failure",
+          key:
+            passwordLimitKey,
+          ...ADMIN_RESTORE_PASSWORD_FAILURE_LIMIT,
+        });
+
+      await SecurityAudit.recordSafe(
+        ctx,
+        {
+          actorUserId:
+            admin.user_id,
+          action:
+            "admin.restore_rollback_dispatch",
+          targetType:
+            "restore_execution",
+          targetId:
+            String(
+              restoreExecutionId
+            ),
+          result:
+            "failure",
+          details: {
+            failure_type:
+              "password_incorrect",
+            destructive_rollback_started:
+              false,
+          },
+        }
+      );
+
+      if (!failureResult.allowed) {
+        return SecurityRateLimit.response(
+          failureResult
+        );
+      }
+
+      return {
+        error:
+          "current_password_incorrect"
+      };
+    }
+
+    await SecurityRateLimit.clear({
+      env: ctx.env,
+      scope:
+        "admin-restore-password-failure",
+      key:
+        passwordLimitKey,
+    });
+
+    // Atomic dispatch claim in OPS_DB. Only one caller can move the row from
+    // required -> dispatching. The GitHub workflow itself subsequently moves
+    // dispatching -> running while recording its own run id.
+    const claimedAt =
+      new Date().toISOString();
+
+    const claimResult =
+      await ctx.env.OPS_DB.prepare(`
+        UPDATE restore_execution_journal
+        SET
+          rollback_status = 'dispatching',
+          updated_at = ?
+        WHERE restore_execution_id = ?
+          AND status = 'rollback_required'
+          AND rollback_status = 'required'
+          AND main_previous_bookmark IS NOT NULL
+          AND pii_previous_bookmark IS NOT NULL
+          AND rollback_github_run_id IS NULL
+      `)
+        .bind(
+          claimedAt,
+          restoreExecutionId
+        )
+        .run();
+
+    if (
+      Number(
+        claimResult?.meta?.changes ||
+        0
+      ) !== 1
+    ) {
+      return {
+        error:
+          "rollback_dispatch_authorization_failed"
+      };
+    }
+
+    const dispatchUrl =
+      `https://api.github.com/repos/${encodeURIComponent(
+        github.owner
+      )}/${encodeURIComponent(
+        github.repo
+      )}/actions/workflows/${encodeURIComponent(
+        github.workflow
+      )}/dispatches`;
+
+    let dispatchResponse;
+
+    try {
+      dispatchResponse =
+        await fetch(
+          dispatchUrl,
+          {
+            method: "POST",
+            headers: {
+              "Accept":
+                "application/vnd.github+json",
+              "Authorization":
+                `Bearer ${github.token}`,
+              "Content-Type":
+                "application/json",
+              "X-GitHub-Api-Version":
+                "2022-11-28",
+              "User-Agent":
+                "MVX-Housing-System",
+            },
+            body:
+              JSON.stringify({
+                ref: "main",
+                inputs: {
+                  restore_execution_id:
+                    String(
+                      restoreExecutionId
+                    ),
+                  confirmation_phrase:
+                    expectedConfirmationPhrase,
+                },
+              }),
+          }
+        );
+    } catch (error) {
+      // Network failure after dispatch submission is ambiguous: GitHub may
+      // have accepted the workflow even though the Worker did not receive a
+      // response. Keep "dispatching" to prevent an unsafe duplicate request.
+      App.logError(
+        "rollback_github_dispatch_uncertain",
+        error,
+        {
+          restore_execution_id:
+            restoreExecutionId,
+        }
+      );
+
+      await SecurityAudit.recordSafe(
+        ctx,
+        {
+          actorUserId:
+            admin.user_id,
+          action:
+            "admin.restore_rollback_dispatch",
+          targetType:
+            "restore_execution",
+          targetId:
+            String(
+              restoreExecutionId
+            ),
+          result:
+            "failure",
+          details: {
+            failure_type:
+              "github_dispatch_uncertain",
+            rollback_status:
+              "dispatching",
+            duplicate_dispatch_blocked:
+              true,
+          },
+        }
+      );
+
+      return {
+        error:
+          "rollback_dispatch_uncertain",
+        restore_execution_id:
+          restoreExecutionId,
+        rollback_status:
+          "dispatching",
+        manual_verification_required:
+          true,
+      };
+    }
+
+    if (!dispatchResponse.ok) {
+      const failedAt =
+        new Date().toISOString();
+
+      // A definitive non-2xx response means GitHub did not accept this
+      // dispatch. Release the atomic claim so the administrator can correct
+      // configuration/authentication and retry.
+      await ctx.env.OPS_DB.prepare(`
+        UPDATE restore_execution_journal
+        SET
+          rollback_status = 'required',
+          updated_at = ?
+        WHERE restore_execution_id = ?
+          AND rollback_status = 'dispatching'
+          AND rollback_github_run_id IS NULL
+      `)
+        .bind(
+          failedAt,
+          restoreExecutionId
+        )
+        .run();
+
+      await SecurityAudit.recordSafe(
+        ctx,
+        {
+          actorUserId:
+            admin.user_id,
+          action:
+            "admin.restore_rollback_dispatch",
+          targetType:
+            "restore_execution",
+          targetId:
+            String(
+              restoreExecutionId
+            ),
+          result:
+            "failure",
+          details: {
+            failure_type:
+              "github_dispatch_rejected",
+            github_status:
+              Number(
+                dispatchResponse.status
+              ),
+            destructive_rollback_started:
+              false,
+          },
+        }
+      );
+
+      return {
+        error:
+          "rollback_dispatch_failed",
+        restore_execution_id:
+          restoreExecutionId,
+        github_status:
+          Number(
+            dispatchResponse.status
+          ),
+        rollback_status:
+          "required",
+      };
+    }
+
+    await SecurityAudit.recordSafe(
+      ctx,
+      {
+        actorUserId:
+          admin.user_id,
+        action:
+          "admin.restore_rollback_dispatch",
+        targetType:
+          "restore_execution",
+        targetId:
+          String(
+            restoreExecutionId
+          ),
+        result:
+          "success",
+        details: {
+          github_workflow:
+            github.workflow,
+          dispatch_accepted:
+            true,
+          rollback_status:
+            "dispatching",
+          destructive_rollback_started_by_worker:
+            false,
+        },
+      }
+    );
+
+    return {
+      ok: true,
+      mode:
+        "rollback_dispatch_accepted",
+      restore_execution_id:
+        restoreExecutionId,
+      github_workflow:
+        github.workflow,
+      dispatch_accepted:
+        true,
+      rollback_status:
+        "dispatching",
+      destructive_rollback_started_by_worker:
+        false,
+      warning:
+        "The dedicated GitHub rollback workflow has been dispatched. Maintenance remains controlled by the rollback workflow.",
     };
   }
 );
