@@ -1,4 +1,5 @@
 name: MVX Controlled D1 Rollback
+run-name: "MVX rollback execution ${{ inputs.restore_execution_id }}"
 
 on:
   workflow_dispatch:
