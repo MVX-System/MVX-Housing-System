@@ -361,6 +361,10 @@ const TEXT = {
       "Destructive progress detected",
     rollbackRecoveryManualReview:
       "Manual review required",
+    rollbackRecoveryYes:
+      "Yes",
+    rollbackRecoveryNo:
+      "No",
     rollbackRecoveryLastCheck:
       "Last diagnostic check",
     rollbackRecoveryLastReconcile:
@@ -711,6 +715,10 @@ const TEXT = {
       "Konstatēta destruktīva izpildes virzība",
     rollbackRecoveryManualReview:
       "Nepieciešama manuāla pārbaude",
+    rollbackRecoveryYes:
+      "Jā",
+    rollbackRecoveryNo:
+      "Nē",
     rollbackRecoveryLastCheck:
       "Pēdējā diagnostikas pārbaude",
     rollbackRecoveryLastReconcile:
@@ -1061,6 +1069,10 @@ const TEXT = {
       "Обнаружено destructive progress",
     rollbackRecoveryManualReview:
       "Требуется ручная проверка",
+    rollbackRecoveryYes:
+      "Да",
+    rollbackRecoveryNo:
+      "Нет",
     rollbackRecoveryLastCheck:
       "Последняя диагностическая проверка",
     rollbackRecoveryLastReconcile:
@@ -3873,8 +3885,8 @@ export default function SettingsPage() {
                           }
                           value={
                             rollbackRecovery.stale
-                              ? text.yes
-                              : text.no
+                              ? text.rollbackRecoveryYes
+                              : text.rollbackRecoveryNo
                           }
                         />
 
@@ -3885,8 +3897,8 @@ export default function SettingsPage() {
                           value={
                             rollbackRecovery
                               .destructive_progress_detected
-                              ? text.yes
-                              : text.no
+                              ? text.rollbackRecoveryYes
+                              : text.rollbackRecoveryNo
                           }
                         />
 
@@ -3897,8 +3909,8 @@ export default function SettingsPage() {
                           value={
                             rollbackRecovery
                               .manual_review_required
-                              ? text.yes
-                              : text.no
+                              ? text.rollbackRecoveryYes
+                              : text.rollbackRecoveryNo
                           }
                         />
 
