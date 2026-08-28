@@ -1447,14 +1447,20 @@ class SystemOperationsControl {
         };
       }
 
-      // Stage 2I-SR14F-D5B-2H:
-      // The protected rollback dispatch endpoint must remain reachable
-      // while controlled-restore maintenance is active. This is the only
-      // mutating HTTP route exempted from the maintenance block, and it
-      // still performs its own strict OPS_DB state checks before dispatch.
+      // Stage 2I-SR14F-D5B-2H / D5B-2I:
+      // Protected rollback dispatch and non-destructive reconciliation must
+      // remain reachable while controlled-restore maintenance is active.
+      // Both routes perform their own strict OPS_DB authorization checks.
+      const maintenanceExemptRollbackPaths =
+        new Set([
+          "/api/admin/restore/rollback/dispatch",
+          "/api/admin/restore/rollback/reconcile",
+        ]);
+
       if (
-        ctx?.url?.pathname ===
-          "/api/admin/restore/rollback/dispatch"
+        maintenanceExemptRollbackPaths.has(
+          ctx?.url?.pathname
+        )
       ) {
         return {
           allowed: true,
@@ -1505,7 +1511,7 @@ class SystemOperationsControl {
 
 // =========================
 // RESTORE ROLLBACK STATUS
-// Stage 2I-SR14F-D5B-2G
+// Stage 2I-SR14F-D5B-2G / D5B-2I
 //
 // Read-only projection of the independent OPS_DB restore journal.
 // Raw Time Travel bookmarks are deliberately NOT returned to the frontend.
@@ -1546,6 +1552,8 @@ async function getRestoreRollbackStatus(
           false,
         age_minutes: null,
         checked_at: null,
+        last_reconcile_status: null,
+        last_reconcile_checked_at: null,
       },
     };
   }
@@ -1825,6 +1833,12 @@ async function getRestoreRollbackStatus(
           ageMinutes,
         checked_at:
           recoveryCheckedAt,
+        last_reconcile_status:
+          row.rollback_recovery_status ||
+          null,
+        last_reconcile_checked_at:
+          row.rollback_recovery_checked_at ||
+          null,
       },
     };
   } catch (error) {
@@ -1866,6 +1880,8 @@ async function getRestoreRollbackStatus(
           false,
         age_minutes: null,
         checked_at: null,
+        last_reconcile_status: null,
+        last_reconcile_checked_at: null,
       },
     };
   }
@@ -3391,6 +3407,15 @@ const ADMIN_RESTORE_EXECUTION_DISPATCH_LIMIT = {
 // the destructive D1 rollback remains inside that workflow.
 const ADMIN_RESTORE_ROLLBACK_DISPATCH_LIMIT = {
   maxRequests: 3,
+  windowSeconds: 60 * 60,
+  blockSeconds: 60 * 60,
+};
+
+// Stage 2I-SR14F-D5B-2I:
+// Reconciliation only reads GitHub Actions state and writes diagnostic
+// metadata to OPS_DB. It never resets or retries rollback execution.
+const ADMIN_RESTORE_ROLLBACK_RECONCILE_LIMIT = {
+  maxRequests: 10,
   windowSeconds: 60 * 60,
   blockSeconds: 60 * 60,
 };
@@ -12375,6 +12400,8 @@ Router.register(
           true,
         rollback_recovery_diagnostics_enabled:
           true,
+        rollback_recovery_reconcile_enabled:
+          true,
         rollback_recovery_mutation_enabled:
           false,
         rollback_execution_enabled:
@@ -15463,6 +15490,447 @@ Router.register(
       destructive_restore_enabled:
         false,
       restore_execution_enabled:
+        false,
+    };
+  }
+);
+
+
+// =========================
+// ADMIN RECONCILE ROLLBACK DISPATCH
+// Stage 2I-SR14F-D5B-2I
+//
+// Non-destructive recovery control for an uncertain dispatch:
+// - admin authorization + dedicated rate limit;
+// - exact restore_execution_id;
+// - only rollback_required / dispatching rows are eligible;
+// - GitHub Actions workflow runs are queried read-only;
+// - exact run-name correlation is required;
+// - only diagnostic fields in OPS_DB are updated;
+// - rollback_status, rollback_github_run_id, bookmarks and D1 data are
+//   deliberately NOT changed by this endpoint.
+// =========================
+Router.register(
+  "POST",
+  "/api/admin/restore/rollback/reconcile",
+  async (ctx) => {
+    const admin =
+      await Auth.requireAdmin(ctx);
+
+    if (!admin) {
+      return {
+        error: "forbidden"
+      };
+    }
+
+    const reconcileLimit =
+      await SecurityRateLimit.consume({
+        env: ctx.env,
+        scope:
+          "admin-restore-rollback-reconcile",
+        key:
+          `user:${admin.user_id}`,
+        ...ADMIN_RESTORE_ROLLBACK_RECONCILE_LIMIT,
+      });
+
+    if (!reconcileLimit.allowed) {
+      return SecurityRateLimit.response(
+        reconcileLimit
+      );
+    }
+
+    const body =
+      await ctx.request
+        .json()
+        .catch(() => ({}));
+
+    const restoreExecutionId =
+      normalizePositiveInteger(
+        body.restore_execution_id
+      );
+
+    if (!restoreExecutionId) {
+      return {
+        error:
+          "invalid_restore_execution_id"
+      };
+    }
+
+    if (!ctx.env?.OPS_DB) {
+      return {
+        error:
+          "ops_database_not_configured"
+      };
+    }
+
+    const github =
+      getGitHubRollbackConfiguration(
+        ctx.env
+      );
+
+    if (!github.ok) {
+      return {
+        error:
+          github.error
+      };
+    }
+
+    const journal =
+      await ctx.env.OPS_DB.prepare(`
+        SELECT
+          restore_execution_id,
+          status,
+          rollback_status,
+          rollback_github_run_id,
+          rollback_dispatch_requested_at,
+          rollback_started_at,
+          main_rollback_bookmark,
+          pii_rollback_bookmark
+        FROM restore_execution_journal
+        WHERE restore_execution_id = ?
+        LIMIT 1
+      `)
+        .bind(
+          restoreExecutionId
+        )
+        .first();
+
+    if (!journal) {
+      return {
+        error:
+          "restore_execution_journal_not_found"
+      };
+    }
+
+    if (
+      String(journal.status || "") !==
+        "rollback_required" ||
+      String(
+        journal.rollback_status || ""
+      ) !== "dispatching"
+    ) {
+      return {
+        error:
+          "rollback_recovery_not_applicable",
+        restore_status:
+          journal.status || null,
+        rollback_status:
+          journal.rollback_status || null,
+      };
+    }
+
+    if (
+      journal.rollback_github_run_id
+    ) {
+      return {
+        error:
+          "rollback_already_claimed",
+        rollback_github_run_id:
+          journal.rollback_github_run_id,
+      };
+    }
+
+    if (
+      journal.main_rollback_bookmark ||
+      journal.pii_rollback_bookmark
+    ) {
+      return {
+        error:
+          "rollback_destructive_progress_detected",
+        manual_review_required:
+          true,
+      };
+    }
+
+    const expectedRunName =
+      `MVX rollback execution ${restoreExecutionId}`;
+
+    const runsUrl =
+      `https://api.github.com/repos/${encodeURIComponent(
+        github.owner
+      )}/${encodeURIComponent(
+        github.repo
+      )}/actions/workflows/${encodeURIComponent(
+        github.workflow
+      )}/runs?event=workflow_dispatch&branch=main&per_page=50`;
+
+    let runsResponse;
+
+    try {
+      runsResponse =
+        await fetch(
+          runsUrl,
+          {
+            method: "GET",
+            headers: {
+              "Accept":
+                "application/vnd.github+json",
+              "Authorization":
+                `Bearer ${github.token}`,
+              "X-GitHub-Api-Version":
+                "2022-11-28",
+              "User-Agent":
+                "MVX-Housing-System",
+            },
+          }
+        );
+    } catch (error) {
+      App.logError(
+        "rollback_reconcile_github_lookup_failed",
+        error,
+        {
+          restore_execution_id:
+            restoreExecutionId,
+        }
+      );
+
+      return {
+        error:
+          "rollback_reconcile_github_lookup_failed",
+        restore_execution_id:
+          restoreExecutionId,
+        manual_review_required:
+          true,
+      };
+    }
+
+    if (!runsResponse.ok) {
+      return {
+        error:
+          "rollback_reconcile_github_lookup_rejected",
+        restore_execution_id:
+          restoreExecutionId,
+        github_status:
+          Number(
+            runsResponse.status
+          ),
+        manual_review_required:
+          true,
+      };
+    }
+
+    const runsPayload =
+      await runsResponse
+        .json()
+        .catch(() => ({}));
+
+    const workflowRuns =
+      Array.isArray(
+        runsPayload?.workflow_runs
+      )
+        ? runsPayload.workflow_runs
+        : [];
+
+    const matchingRuns =
+      workflowRuns
+        .filter((run) => {
+          if (
+            String(
+              run?.event || ""
+            ) !== "workflow_dispatch"
+          ) {
+            return false;
+          }
+
+          return (
+            String(
+              run?.display_title ||
+              run?.run_name ||
+              ""
+            ).trim() ===
+            expectedRunName
+          );
+        })
+        .sort((a, b) => {
+          const aMs =
+            Date.parse(
+              a?.created_at || ""
+            );
+          const bMs =
+            Date.parse(
+              b?.created_at || ""
+            );
+
+          return (
+            (Number.isFinite(bMs)
+              ? bMs
+              : 0) -
+            (Number.isFinite(aMs)
+              ? aMs
+              : 0)
+          );
+        });
+
+    const checkedAt =
+      new Date().toISOString();
+
+    let recoveryStatus;
+    let matchedRun = null;
+    let manualReviewRequired = true;
+
+    if (matchingRuns.length === 0) {
+      recoveryStatus =
+        "github_run_not_found";
+    } else if (
+      matchingRuns.length > 1
+    ) {
+      recoveryStatus =
+        "github_run_ambiguous";
+    } else {
+      matchedRun =
+        matchingRuns[0];
+
+      const runStatus =
+        String(
+          matchedRun?.status || ""
+        ).trim();
+
+      const conclusion =
+        matchedRun?.conclusion == null
+          ? null
+          : String(
+              matchedRun.conclusion
+            ).trim();
+
+      if (
+        runStatus === "queued" ||
+        runStatus ===
+          "waiting" ||
+        runStatus ===
+          "pending"
+      ) {
+        recoveryStatus =
+          "github_run_queued";
+      } else if (
+        runStatus ===
+          "in_progress"
+      ) {
+        recoveryStatus =
+          "github_run_in_progress";
+      } else if (
+        runStatus ===
+          "completed"
+      ) {
+        recoveryStatus =
+          conclusion === "success"
+            ? "github_run_completed_success_without_claim"
+            : "github_run_completed_failure_without_claim";
+      } else {
+        recoveryStatus =
+          "github_run_state_unknown";
+      }
+    }
+
+    // Diagnostic metadata only. Core rollback authorization/execution state
+    // is intentionally immutable here.
+    await ctx.env.OPS_DB.prepare(`
+      UPDATE restore_execution_journal
+      SET
+        rollback_recovery_status = ?,
+        rollback_recovery_checked_at = ?,
+        updated_at = ?
+      WHERE restore_execution_id = ?
+        AND status = 'rollback_required'
+        AND rollback_status = 'dispatching'
+        AND rollback_github_run_id IS NULL
+    `)
+      .bind(
+        recoveryStatus,
+        checkedAt,
+        checkedAt,
+        restoreExecutionId
+      )
+      .run();
+
+    await SecurityAudit.recordSafe(
+      ctx,
+      {
+        actorUserId:
+          admin.user_id,
+        action:
+          "admin.restore_rollback_reconcile",
+        targetType:
+          "restore_execution",
+        targetId:
+          String(
+            restoreExecutionId
+          ),
+        result:
+          "success",
+        details: {
+          recovery_status:
+            recoveryStatus,
+          matching_run_count:
+            matchingRuns.length,
+          github_run_id:
+            matchedRun?.id == null
+              ? null
+              : String(
+                  matchedRun.id
+                ),
+          github_run_status:
+            matchedRun?.status ||
+            null,
+          github_run_conclusion:
+            matchedRun?.conclusion ||
+            null,
+          destructive_rollback_started_by_worker:
+            false,
+          rollback_state_mutated:
+            false,
+        },
+      }
+    );
+
+    return {
+      ok: true,
+      mode:
+        "rollback_reconcile_diagnostic_only",
+      restore_execution_id:
+        restoreExecutionId,
+      expected_run_name:
+        expectedRunName,
+      recovery_status:
+        recoveryStatus,
+      matching_run_count:
+        matchingRuns.length,
+      github_run:
+        matchedRun
+          ? {
+              id:
+                matchedRun.id == null
+                  ? null
+                  : String(
+                      matchedRun.id
+                    ),
+              status:
+                matchedRun.status ||
+                null,
+              conclusion:
+                matchedRun.conclusion ||
+                null,
+              created_at:
+                matchedRun.created_at ||
+                null,
+              run_started_at:
+                matchedRun.run_started_at ||
+                null,
+              updated_at:
+                matchedRun.updated_at ||
+                null,
+            }
+          : null,
+      manual_review_required:
+        manualReviewRequired,
+      rollback_status_changed:
+        false,
+      rollback_github_run_id_changed:
+        false,
+      destructive_rollback_started:
+        false,
+      retry_started:
+        false,
+      reset_started:
         false,
     };
   }
