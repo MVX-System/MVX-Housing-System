@@ -1532,6 +1532,21 @@ async function getRestoreRollbackStatus(
       rollback_github_run_id: null,
       rollback_started_at: null,
       rollback_completed_at: null,
+      recovery: {
+        classification:
+          "healthy",
+        stale: false,
+        destructive_progress_detected:
+          false,
+        manual_review_required:
+          false,
+        reset_allowed:
+          false,
+        retry_allowed:
+          false,
+        age_minutes: null,
+        checked_at: null,
+      },
     };
   }
 
@@ -1546,7 +1561,12 @@ async function getRestoreRollbackStatus(
           pii_previous_bookmark,
           rollback_github_run_id,
           rollback_started_at,
-          rollback_completed_at
+          rollback_completed_at,
+          rollback_dispatch_requested_at,
+          rollback_recovery_status,
+          rollback_recovery_checked_at,
+          main_rollback_bookmark,
+          pii_rollback_bookmark
         FROM restore_execution_journal
         WHERE
           restore_github_run_id IS NOT NULL
@@ -1575,6 +1595,21 @@ async function getRestoreRollbackStatus(
         rollback_github_run_id: null,
         rollback_started_at: null,
         rollback_completed_at: null,
+        recovery: {
+          classification:
+            "healthy",
+          stale: false,
+          destructive_progress_detected:
+            false,
+          manual_review_required:
+            false,
+          reset_allowed:
+            false,
+          retry_allowed:
+            false,
+          age_minutes: null,
+          checked_at: null,
+        },
       };
     }
 
@@ -1626,6 +1661,114 @@ async function getRestoreRollbackStatus(
         row.rollback_github_run_id
       );
 
+    const destructiveProgressDetected =
+      Boolean(
+        row.main_rollback_bookmark ||
+        row.pii_rollback_bookmark
+      );
+
+    const recoveryReferenceAt =
+      row.rollback_started_at ||
+      row.rollback_dispatch_requested_at ||
+      null;
+
+    const recoveryReferenceMs =
+      recoveryReferenceAt
+        ? Date.parse(
+            recoveryReferenceAt
+          )
+        : NaN;
+
+    const ageMinutes =
+      Number.isFinite(
+        recoveryReferenceMs
+      )
+        ? Math.max(
+            0,
+            Math.floor(
+              (
+                Date.now() -
+                recoveryReferenceMs
+              ) /
+              60000
+            )
+          )
+        : null;
+
+    let recoveryClassification =
+      "healthy";
+
+    let recoveryStale = false;
+    let manualReviewRequired = false;
+    let resetAllowed = false;
+    let retryAllowed = false;
+
+    if (
+      rollbackStatus ===
+        "dispatching"
+    ) {
+      recoveryStale =
+        ageMinutes !== null &&
+        ageMinutes >=
+          ROLLBACK_DISPATCH_STALE_MINUTES;
+
+      recoveryClassification =
+        recoveryStale
+          ? "dispatch_uncertain"
+          : "dispatching";
+
+      manualReviewRequired =
+        recoveryStale;
+    } else if (
+      rollbackStatus ===
+        "running"
+    ) {
+      recoveryStale =
+        ageMinutes !== null &&
+        ageMinutes >=
+          ROLLBACK_RUNNING_STALE_MINUTES;
+
+      recoveryClassification =
+        recoveryStale
+          ? "running_stale"
+          : "running";
+
+      manualReviewRequired =
+        recoveryStale;
+    } else if (
+      rollbackStatus ===
+        "failed"
+    ) {
+      if (
+        destructiveProgressDetected
+      ) {
+        recoveryClassification =
+          "failed_after_destructive_progress";
+      } else {
+        recoveryClassification =
+          "failed_pre_destructive";
+      }
+
+      manualReviewRequired = true;
+    } else if (
+      rollbackStatus ===
+        "required"
+    ) {
+      recoveryClassification =
+        "ready";
+    } else if (
+      rollbackStatus ===
+        "success" ||
+      restoreStatus ===
+        "rolled_back"
+    ) {
+      recoveryClassification =
+        "completed";
+    }
+
+    const recoveryCheckedAt =
+      new Date().toISOString();
+
     return {
       configured: true,
       available: true,
@@ -1665,6 +1808,24 @@ async function getRestoreRollbackStatus(
       rollback_completed_at:
         row.rollback_completed_at ||
         null,
+      recovery: {
+        classification:
+          recoveryClassification,
+        stale:
+          recoveryStale,
+        destructive_progress_detected:
+          destructiveProgressDetected,
+        manual_review_required:
+          manualReviewRequired,
+        reset_allowed:
+          resetAllowed,
+        retry_allowed:
+          retryAllowed,
+        age_minutes:
+          ageMinutes,
+        checked_at:
+          recoveryCheckedAt,
+      },
     };
   } catch (error) {
     App.logError(
@@ -1691,6 +1852,21 @@ async function getRestoreRollbackStatus(
       rollback_github_run_id: null,
       rollback_started_at: null,
       rollback_completed_at: null,
+      recovery: {
+        classification:
+          "healthy",
+        stale: false,
+        destructive_progress_detected:
+          false,
+        manual_review_required:
+          false,
+        reset_allowed:
+          false,
+        retry_allowed:
+          false,
+        age_minutes: null,
+        checked_at: null,
+      },
     };
   }
 }
@@ -3218,6 +3394,12 @@ const ADMIN_RESTORE_ROLLBACK_DISPATCH_LIMIT = {
   windowSeconds: 60 * 60,
   blockSeconds: 60 * 60,
 };
+
+// Stage 2I-SR14F-D5B-2I:
+// Recovery diagnostics are read-only. These thresholds only classify
+// potentially stale rollback states; they never reset or retry anything.
+const ROLLBACK_DISPATCH_STALE_MINUTES = 10;
+const ROLLBACK_RUNNING_STALE_MINUTES = 30;
 
 const ADMIN_RESTORE_PASSWORD_FAILURE_LIMIT = {
   maxAttempts: 5,
@@ -11998,7 +12180,7 @@ Router.register(
 
 // =========================
 // ADMIN RESTORE MANAGEMENT
-// Stage 2I-SR14F-A / SR14F-B / SR14F-C / SR14F-D4 / SR14F-D5A / SR14F-D5B-1 / SR14F-D5B-2G / SR14F-D5B-2H:
+// Stage 2I-SR14F-A / SR14F-B / SR14F-C / SR14F-D4 / SR14F-D5A / SR14F-D5B-1 / SR14F-D5B-2G / SR14F-D5B-2H / SR14F-D5B-2I:
 // - read-only restore status and restore-point catalogue;
 // - protected creation/cancellation of a short-lived restore request;
 // - non-destructive preview / validation with D1 safety checkpoints;
@@ -12191,6 +12373,10 @@ Router.register(
           true,
         rollback_dispatch_enabled:
           true,
+        rollback_recovery_diagnostics_enabled:
+          true,
+        rollback_recovery_mutation_enabled:
+          false,
         rollback_execution_enabled:
           true,
         destructive_restore_enabled:
@@ -15611,6 +15797,9 @@ Router.register(
         UPDATE restore_execution_journal
         SET
           rollback_status = 'dispatching',
+          rollback_dispatch_requested_at = ?,
+          rollback_recovery_status = NULL,
+          rollback_recovery_checked_at = NULL,
           updated_at = ?
         WHERE restore_execution_id = ?
           AND status = 'rollback_required'
@@ -15620,6 +15809,7 @@ Router.register(
           AND rollback_github_run_id IS NULL
       `)
         .bind(
+          claimedAt,
           claimedAt,
           restoreExecutionId
         )
