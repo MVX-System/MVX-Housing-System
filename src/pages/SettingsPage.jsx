@@ -351,6 +351,28 @@ const TEXT = {
       "Rollback workflow dispatch accepted. Maintenance and rollback execution are now controlled by the protected workflow.",
     rollbackDispatchFailed:
       "Rollback could not be started.",
+    rollbackRecovery:
+      "Rollback recovery diagnostics",
+    rollbackRecoveryClassification:
+      "Recovery state",
+    rollbackRecoveryStale:
+      "Stale state",
+    rollbackRecoveryDestructiveProgress:
+      "Destructive progress detected",
+    rollbackRecoveryManualReview:
+      "Manual review required",
+    rollbackRecoveryLastCheck:
+      "Last diagnostic check",
+    rollbackRecoveryLastReconcile:
+      "Last reconcile result",
+    rollbackRecoveryReconcile:
+      "Reconcile GitHub dispatch",
+    rollbackRecoveryReconciling:
+      "Reconciling GitHub dispatch...",
+    rollbackRecoveryReconcileSuccess:
+      "GitHub dispatch state checked. No rollback retry or reset was started.",
+    rollbackRecoveryReconcileFailed:
+      "Could not reconcile GitHub dispatch state.",
     rollbackPasswordRequired:
       "Enter your current password.",
     rollbackConfirmationRequired:
@@ -679,6 +701,28 @@ const TEXT = {
       "Atcelšanas workflow palaišanas pieprasījums ir pieņemts. Maintenance un atcelšanu tagad kontrolē aizsargātais workflow.",
     rollbackDispatchFailed:
       "Neizdevās sākt atcelšanu.",
+    rollbackRecovery:
+      "Atcelšanas atkopšanas diagnostika",
+    rollbackRecoveryClassification:
+      "Atkopšanas stāvoklis",
+    rollbackRecoveryStale:
+      "Novecojis stāvoklis",
+    rollbackRecoveryDestructiveProgress:
+      "Konstatēta destruktīva izpildes virzība",
+    rollbackRecoveryManualReview:
+      "Nepieciešama manuāla pārbaude",
+    rollbackRecoveryLastCheck:
+      "Pēdējā diagnostikas pārbaude",
+    rollbackRecoveryLastReconcile:
+      "Pēdējais reconcile rezultāts",
+    rollbackRecoveryReconcile:
+      "Saskaņot GitHub dispatch",
+    rollbackRecoveryReconciling:
+      "Tiek pārbaudīts GitHub dispatch...",
+    rollbackRecoveryReconcileSuccess:
+      "GitHub dispatch stāvoklis pārbaudīts. Atcelšanas atkārtojums vai atiestatīšana netika sākta.",
+    rollbackRecoveryReconcileFailed:
+      "Neizdevās pārbaudīt GitHub dispatch stāvokli.",
     rollbackPasswordRequired:
       "Ievadiet pašreizējo paroli.",
     rollbackConfirmationRequired:
@@ -1007,6 +1051,28 @@ const TEXT = {
       "Запрос на запуск workflow отката принят. Maintenance и выполнение отката теперь контролируются защищённым workflow.",
     rollbackDispatchFailed:
       "Не удалось запустить откат.",
+    rollbackRecovery:
+      "Диагностика восстановления rollback",
+    rollbackRecoveryClassification:
+      "Состояние recovery",
+    rollbackRecoveryStale:
+      "Зависшее состояние",
+    rollbackRecoveryDestructiveProgress:
+      "Обнаружено destructive progress",
+    rollbackRecoveryManualReview:
+      "Требуется ручная проверка",
+    rollbackRecoveryLastCheck:
+      "Последняя диагностическая проверка",
+    rollbackRecoveryLastReconcile:
+      "Последний результат reconcile",
+    rollbackRecoveryReconcile:
+      "Проверить GitHub dispatch",
+    rollbackRecoveryReconciling:
+      "Проверка GitHub dispatch...",
+    rollbackRecoveryReconcileSuccess:
+      "Состояние GitHub dispatch проверено. Повторный rollback или reset не запускался.",
+    rollbackRecoveryReconcileFailed:
+      "Не удалось проверить состояние GitHub dispatch.",
     rollbackPasswordRequired:
       "Введите текущий пароль.",
     rollbackConfirmationRequired:
@@ -1650,11 +1716,40 @@ export default function SettingsPage() {
     setRollbackDispatchSuccess,
   ] = useState("");
 
+  const [
+    rollbackReconciling,
+    setRollbackReconciling,
+  ] = useState(false);
+
+  const [
+    rollbackReconcileError,
+    setRollbackReconcileError,
+  ] = useState("");
+
+  const [
+    rollbackReconcileSuccess,
+    setRollbackReconcileSuccess,
+  ] = useState("");
+
   const rollbackExpectedConfirmation =
     rollbackStatus
       ?.restore_execution_id
       ? `ROLLBACK PRODUCTION EXECUTION ${rollbackStatus.restore_execution_id}`
       : "";
+
+  const rollbackRecovery =
+    rollbackStatus
+      ?.recovery ||
+    null;
+
+  const rollbackReconcileVisible =
+    Boolean(
+      rollbackStatus
+        ?.restore_execution_id &&
+      rollbackRecovery
+        ?.classification ===
+        "dispatch_uncertain"
+    );
 
   useEffect(() => {
     if (
@@ -2623,6 +2718,56 @@ export default function SettingsPage() {
         );
       } finally {
         setRollbackDispatching(false);
+      }
+    };
+
+  const handleRollbackReconcile =
+    async () => {
+      setRollbackReconcileError("");
+      setRollbackReconcileSuccess("");
+      setRollbackReconciling(true);
+
+      try {
+        const result =
+          await api(
+            "/api/admin/restore/rollback/reconcile",
+            {
+              method: "POST",
+              body: JSON.stringify({
+                restore_execution_id:
+                  rollbackStatus
+                    ?.restore_execution_id,
+              }),
+            }
+          );
+
+        if (
+          !result ||
+          result.error ||
+          result.ok === false
+        ) {
+          throw new Error(
+            result?.error ||
+            "rollback_reconcile_failed"
+          );
+        }
+
+        setRollbackReconcileSuccess(
+          text.rollbackRecoveryReconcileSuccess
+        );
+
+        await handleRefreshRestore();
+      } catch (reconcileError) {
+        console.error(
+          "ROLLBACK RECONCILE ERROR:",
+          reconcileError
+        );
+
+        setRollbackReconcileError(
+          text.rollbackRecoveryReconcileFailed
+        );
+      } finally {
+        setRollbackReconciling(false);
       }
     };
 
@@ -3688,6 +3833,139 @@ export default function SettingsPage() {
                       ? text.rollbackActionReady
                       : text.rollbackActionProtected}
                   </div>
+
+                  {rollbackRecovery && (
+                    <div
+                      style={{
+                        marginTop: 12,
+                        display: "grid",
+                        gap: 8,
+                      }}
+                    >
+                      <div
+                        style={{
+                          color:
+                            "var(--text-h)",
+                          fontSize: 11,
+                          fontWeight: 800,
+                        }}
+                      >
+                        {text.rollbackRecovery}
+                      </div>
+
+                      <div
+                        style={detailGridStyle}
+                      >
+                        <InfoItem
+                          label={
+                            text.rollbackRecoveryClassification
+                          }
+                          value={
+                            rollbackRecovery
+                              .classification ||
+                            "-"
+                          }
+                        />
+
+                        <InfoItem
+                          label={
+                            text.rollbackRecoveryStale
+                          }
+                          value={
+                            rollbackRecovery.stale
+                              ? text.yes
+                              : text.no
+                          }
+                        />
+
+                        <InfoItem
+                          label={
+                            text.rollbackRecoveryDestructiveProgress
+                          }
+                          value={
+                            rollbackRecovery
+                              .destructive_progress_detected
+                              ? text.yes
+                              : text.no
+                          }
+                        />
+
+                        <InfoItem
+                          label={
+                            text.rollbackRecoveryManualReview
+                          }
+                          value={
+                            rollbackRecovery
+                              .manual_review_required
+                              ? text.yes
+                              : text.no
+                          }
+                        />
+
+                        <InfoItem
+                          label={
+                            text.rollbackRecoveryLastCheck
+                          }
+                          value={
+                            formatDateTime(
+                              rollbackRecovery
+                                .checked_at
+                            )
+                          }
+                        />
+
+                        <InfoItem
+                          label={
+                            text.rollbackRecoveryLastReconcile
+                          }
+                          value={
+                            rollbackRecovery
+                              .last_reconcile_status ||
+                            "-"
+                          }
+                        />
+                      </div>
+
+                      {rollbackReconcileError && (
+                        <div
+                          role="alert"
+                          style={errorStyle}
+                        >
+                          {rollbackReconcileError}
+                        </div>
+                      )}
+
+                      {rollbackReconcileSuccess && (
+                        <div
+                          role="status"
+                          style={successStyle}
+                        >
+                          {rollbackReconcileSuccess}
+                        </div>
+                      )}
+
+                      {rollbackReconcileVisible && (
+                        <button
+                          type="button"
+                          disabled={
+                            rollbackReconciling
+                          }
+                          onClick={
+                            handleRollbackReconcile
+                          }
+                          style={
+                            secondaryButtonStyle(
+                              rollbackReconciling
+                            )
+                          }
+                        >
+                          {rollbackReconciling
+                            ? text.rollbackRecoveryReconciling
+                            : text.rollbackRecoveryReconcile}
+                        </button>
+                      )}
+                    </div>
+                  )}
 
                   {rollbackActionVisible && (
                     <div
