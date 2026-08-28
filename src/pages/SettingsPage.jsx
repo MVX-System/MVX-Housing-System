@@ -4659,6 +4659,51 @@ function InfoBox({
   );
 }
 
+function InfoItem({
+  label,
+  value,
+}) {
+  return (
+    <div
+      style={{
+        display: "grid",
+        gap: 2,
+        minWidth: 0,
+      }}
+    >
+      <div
+        style={{
+          color: "var(--text)",
+          fontSize: 9,
+          lineHeight: 1.35,
+          opacity: 0.72,
+        }}
+      >
+        {label}
+      </div>
+
+      <div
+        style={{
+          color: "var(--text-h)",
+          fontSize: 10,
+          fontWeight: 700,
+          lineHeight: 1.4,
+          wordBreak: "break-word",
+        }}
+      >
+        {value ?? "-"}
+      </div>
+    </div>
+  );
+}
+
+const detailGridStyle = {
+  display: "grid",
+  gridTemplateColumns:
+    "repeat(auto-fit, minmax(150px, 1fr))",
+  gap: 10,
+};
+
 const sectionStyle = {
   padding: 20,
   border:
