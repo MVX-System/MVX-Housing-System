@@ -1455,6 +1455,7 @@ class SystemOperationsControl {
         new Set([
           "/api/admin/restore/rollback/dispatch",
           "/api/admin/restore/rollback/reconcile",
+          "/api/admin/restore/rollback/release-uncertain",
         ]);
 
       if (
@@ -1554,6 +1555,10 @@ async function getRestoreRollbackStatus(
         checked_at: null,
         last_reconcile_status: null,
         last_reconcile_checked_at: null,
+        release_uncertain_enabled: false,
+        last_recovery_action: null,
+        last_recovery_action_at: null,
+        last_recovery_action_by: null,
       },
     };
   }
@@ -1573,6 +1578,9 @@ async function getRestoreRollbackStatus(
           rollback_dispatch_requested_at,
           rollback_recovery_status,
           rollback_recovery_checked_at,
+          rollback_recovery_action,
+          rollback_recovery_action_at,
+          rollback_recovery_action_by,
           main_rollback_bookmark,
           pii_rollback_bookmark
         FROM restore_execution_journal
@@ -1777,6 +1785,19 @@ async function getRestoreRollbackStatus(
     const recoveryCheckedAt =
       new Date().toISOString();
 
+    const releaseUncertainEnabled =
+      Boolean(
+        restoreStatus ===
+          "rollback_required" &&
+        rollbackStatus ===
+          "dispatching" &&
+        recoveryStale &&
+        !rollbackAlreadyDispatched &&
+        !destructiveProgressDetected &&
+        row.rollback_recovery_status ===
+          "github_run_not_found"
+      );
+
     return {
       configured: true,
       available: true,
@@ -1839,6 +1860,18 @@ async function getRestoreRollbackStatus(
         last_reconcile_checked_at:
           row.rollback_recovery_checked_at ||
           null,
+        release_uncertain_enabled:
+          releaseUncertainEnabled,
+        last_recovery_action:
+          row.rollback_recovery_action ||
+          null,
+        last_recovery_action_at:
+          row.rollback_recovery_action_at ||
+          null,
+        last_recovery_action_by:
+          normalizePositiveInteger(
+            row.rollback_recovery_action_by
+          ) || null,
       },
     };
   } catch (error) {
@@ -1882,6 +1915,10 @@ async function getRestoreRollbackStatus(
         checked_at: null,
         last_reconcile_status: null,
         last_reconcile_checked_at: null,
+        release_uncertain_enabled: false,
+        last_recovery_action: null,
+        last_recovery_action_at: null,
+        last_recovery_action_by: null,
       },
     };
   }
@@ -3416,6 +3453,12 @@ const ADMIN_RESTORE_ROLLBACK_DISPATCH_LIMIT = {
 // metadata to OPS_DB. It never resets or retries rollback execution.
 const ADMIN_RESTORE_ROLLBACK_RECONCILE_LIMIT = {
   maxRequests: 10,
+  windowSeconds: 60 * 60,
+  blockSeconds: 60 * 60,
+};
+
+const ADMIN_RESTORE_ROLLBACK_RELEASE_LIMIT = {
+  maxRequests: 3,
   windowSeconds: 60 * 60,
   blockSeconds: 60 * 60,
 };
@@ -12402,8 +12445,10 @@ Router.register(
           true,
         rollback_recovery_reconcile_enabled:
           true,
+        rollback_recovery_release_uncertain_enabled:
+          true,
         rollback_recovery_mutation_enabled:
-          false,
+          true,
         rollback_execution_enabled:
           true,
         destructive_restore_enabled:
@@ -15932,6 +15977,546 @@ Router.register(
         false,
       reset_started:
         false,
+    };
+  }
+);
+
+
+// =========================
+// ADMIN RELEASE UNCERTAIN ROLLBACK DISPATCH
+// Stage 2I-SR14F-D5B-2I
+//
+// This recovery action is intentionally non-destructive. It can only move
+// an old, unclaimed rollback dispatch from "dispatching" back to "required"
+// after a fresh GitHub Actions lookup proves that no correlated workflow run
+// is present. It never starts a rollback and never touches Main/PII D1 data.
+// =========================
+Router.register(
+  "POST",
+  "/api/admin/restore/rollback/release-uncertain",
+  async (ctx) => {
+    const admin =
+      await Auth.requireAdmin(ctx);
+
+    if (!admin) {
+      return {
+        error: "forbidden"
+      };
+    }
+
+    const releaseLimit =
+      await SecurityRateLimit.consume({
+        env: ctx.env,
+        scope:
+          "admin-restore-rollback-release",
+        key:
+          `user:${admin.user_id}`,
+        ...ADMIN_RESTORE_ROLLBACK_RELEASE_LIMIT,
+      });
+
+    if (!releaseLimit.allowed) {
+      return SecurityRateLimit.response(
+        releaseLimit
+      );
+    }
+
+    const body =
+      await ctx.request
+        .json()
+        .catch(() => ({}));
+
+    const restoreExecutionId =
+      normalizePositiveInteger(
+        body.restore_execution_id
+      );
+
+    const currentPassword =
+      typeof body.current_password ===
+        "string"
+        ? body.current_password
+        : "";
+
+    const confirmationPhrase =
+      typeof body.confirmation_phrase ===
+        "string"
+        ? body.confirmation_phrase.trim()
+        : "";
+
+    if (!restoreExecutionId) {
+      return {
+        error:
+          "invalid_restore_execution_id"
+      };
+    }
+
+    if (
+      !currentPassword ||
+      currentPassword.length > 1024
+    ) {
+      return {
+        error:
+          "current_password_required"
+      };
+    }
+
+    const expectedConfirmationPhrase =
+      `RELEASE ROLLBACK DISPATCH ${restoreExecutionId}`;
+
+    if (
+      confirmationPhrase !==
+      expectedConfirmationPhrase
+    ) {
+      return {
+        error:
+          "rollback_release_confirmation_phrase_incorrect",
+        required_confirmation_phrase:
+          expectedConfirmationPhrase,
+      };
+    }
+
+    if (!ctx.env?.OPS_DB) {
+      return {
+        error:
+          "ops_database_not_configured"
+      };
+    }
+
+    const github =
+      getGitHubRollbackConfiguration(
+        ctx.env
+      );
+
+    if (!github.ok) {
+      return {
+        error:
+          github.error
+      };
+    }
+
+    const journal =
+      await ctx.env.OPS_DB.prepare(`
+        SELECT
+          restore_execution_id,
+          status,
+          rollback_status,
+          rollback_github_run_id,
+          rollback_dispatch_requested_at,
+          rollback_recovery_status,
+          rollback_recovery_checked_at,
+          main_rollback_bookmark,
+          pii_rollback_bookmark
+        FROM restore_execution_journal
+        WHERE restore_execution_id = ?
+        LIMIT 1
+      `)
+        .bind(
+          restoreExecutionId
+        )
+        .first();
+
+    if (!journal) {
+      return {
+        error:
+          "restore_execution_journal_not_found"
+      };
+    }
+
+    if (
+      String(journal.status || "") !==
+        "rollback_required" ||
+      String(
+        journal.rollback_status || ""
+      ) !== "dispatching"
+    ) {
+      return {
+        error:
+          "rollback_release_not_applicable",
+        restore_status:
+          journal.status || null,
+        rollback_status:
+          journal.rollback_status || null,
+      };
+    }
+
+    if (
+      journal.rollback_github_run_id
+    ) {
+      return {
+        error:
+          "rollback_already_claimed",
+        rollback_github_run_id:
+          journal.rollback_github_run_id,
+      };
+    }
+
+    if (
+      journal.main_rollback_bookmark ||
+      journal.pii_rollback_bookmark
+    ) {
+      return {
+        error:
+          "rollback_destructive_progress_detected",
+        manual_review_required:
+          true,
+      };
+    }
+
+    const dispatchRequestedMs =
+      Date.parse(
+        journal.rollback_dispatch_requested_at ||
+        ""
+      );
+
+    const dispatchAgeMinutes =
+      Number.isFinite(
+        dispatchRequestedMs
+      )
+        ? Math.max(
+            0,
+            Math.floor(
+              (
+                Date.now() -
+                dispatchRequestedMs
+              ) /
+              60000
+            )
+          )
+        : null;
+
+    if (
+      dispatchAgeMinutes === null ||
+      dispatchAgeMinutes <
+        ROLLBACK_DISPATCH_STALE_MINUTES
+    ) {
+      return {
+        error:
+          "rollback_dispatch_not_stale",
+        age_minutes:
+          dispatchAgeMinutes,
+        required_age_minutes:
+          ROLLBACK_DISPATCH_STALE_MINUTES,
+      };
+    }
+
+    // Require a prior diagnostic reconcile result before allowing release.
+    if (
+      String(
+        journal.rollback_recovery_status ||
+        ""
+      ) !== "github_run_not_found"
+    ) {
+      return {
+        error:
+          "rollback_release_requires_no_run_reconcile",
+        last_reconcile_status:
+          journal.rollback_recovery_status ||
+          null,
+      };
+    }
+
+    // Re-verify the administrator's current password.
+    const passwordLimitKey =
+      `user:${admin.user_id}`;
+
+    const passwordLimitCheck =
+      await SecurityRateLimit.check({
+        env: ctx.env,
+        scope:
+          "admin-restore-password-failure",
+        key:
+          passwordLimitKey,
+        windowSeconds:
+          ADMIN_RESTORE_PASSWORD_FAILURE_LIMIT
+            .windowSeconds,
+      });
+
+    if (!passwordLimitCheck.allowed) {
+      return SecurityRateLimit.response(
+        passwordLimitCheck
+      );
+    }
+
+    const user =
+      await ctx.env.DB.prepare(`
+        SELECT
+          id,
+          password_hash,
+          is_active
+        FROM users
+        WHERE id = ?
+        LIMIT 1
+      `)
+        .bind(
+          admin.user_id
+        )
+        .first();
+
+    if (
+      !user ||
+      Number(user.is_active) !== 1
+    ) {
+      return {
+        error:
+          "user_not_found_or_inactive"
+      };
+    }
+
+    const passwordCheck =
+      await verifyPassword(
+        currentPassword,
+        user.password_hash || ""
+      );
+
+    if (!passwordCheck.ok) {
+      const failureResult =
+        await SecurityRateLimit.recordFailure({
+          env: ctx.env,
+          scope:
+            "admin-restore-password-failure",
+          key:
+            passwordLimitKey,
+          ...ADMIN_RESTORE_PASSWORD_FAILURE_LIMIT,
+        });
+
+      if (!failureResult.allowed) {
+        return SecurityRateLimit.response(
+          failureResult
+        );
+      }
+
+      return {
+        error:
+          "current_password_incorrect"
+      };
+    }
+
+    await SecurityRateLimit.clear({
+      env: ctx.env,
+      scope:
+        "admin-restore-password-failure",
+      key:
+        passwordLimitKey,
+    });
+
+    // Fresh GitHub lookup immediately before mutation.
+    const expectedRunName =
+      `MVX rollback execution ${restoreExecutionId}`;
+
+    const runsUrl =
+      `https://api.github.com/repos/${encodeURIComponent(
+        github.owner
+      )}/${encodeURIComponent(
+        github.repo
+      )}/actions/workflows/${encodeURIComponent(
+        github.workflow
+      )}/runs?event=workflow_dispatch&branch=main&per_page=50`;
+
+    let runsResponse;
+
+    try {
+      runsResponse =
+        await fetch(
+          runsUrl,
+          {
+            method: "GET",
+            headers: {
+              "Accept":
+                "application/vnd.github+json",
+              "Authorization":
+                `Bearer ${github.token}`,
+              "X-GitHub-Api-Version":
+                "2022-11-28",
+              "User-Agent":
+                "MVX-Housing-System",
+            },
+          }
+        );
+    } catch (error) {
+      App.logError(
+        "rollback_release_github_lookup_failed",
+        error,
+        {
+          restore_execution_id:
+            restoreExecutionId,
+        }
+      );
+
+      return {
+        error:
+          "rollback_release_github_lookup_failed",
+        manual_review_required:
+          true,
+      };
+    }
+
+    if (!runsResponse.ok) {
+      return {
+        error:
+          "rollback_release_github_lookup_rejected",
+        github_status:
+          Number(
+            runsResponse.status
+          ),
+        manual_review_required:
+          true,
+      };
+    }
+
+    const runsPayload =
+      await runsResponse
+        .json()
+        .catch(() => ({}));
+
+    const workflowRuns =
+      Array.isArray(
+        runsPayload?.workflow_runs
+      )
+        ? runsPayload.workflow_runs
+        : [];
+
+    const matchingRuns =
+      workflowRuns.filter((run) => (
+        String(
+          run?.event || ""
+        ) === "workflow_dispatch" &&
+        String(
+          run?.display_title ||
+          run?.run_name ||
+          ""
+        ).trim() ===
+          expectedRunName
+      ));
+
+    if (matchingRuns.length > 0) {
+      const checkedAt =
+        new Date().toISOString();
+
+      await ctx.env.OPS_DB.prepare(`
+        UPDATE restore_execution_journal
+        SET
+          rollback_recovery_status =
+            'github_run_found_release_blocked',
+          rollback_recovery_checked_at = ?,
+          updated_at = ?
+        WHERE restore_execution_id = ?
+          AND status = 'rollback_required'
+          AND rollback_status = 'dispatching'
+          AND rollback_github_run_id IS NULL
+      `)
+        .bind(
+          checkedAt,
+          checkedAt,
+          restoreExecutionId
+        )
+        .run();
+
+      return {
+        error:
+          "rollback_release_blocked_github_run_found",
+        matching_run_count:
+          matchingRuns.length,
+        manual_review_required:
+          true,
+      };
+    }
+
+    const releasedAt =
+      new Date().toISOString();
+
+    // Atomic release. Core safety conditions are repeated in SQL to prevent
+    // stale reads or concurrent workflow claims.
+    const releaseResult =
+      await ctx.env.OPS_DB.prepare(`
+        UPDATE restore_execution_journal
+        SET
+          rollback_status = 'required',
+          rollback_recovery_status =
+            'uncertain_dispatch_released',
+          rollback_recovery_checked_at = ?,
+          rollback_recovery_action =
+            'release_uncertain_dispatch',
+          rollback_recovery_action_at = ?,
+          rollback_recovery_action_by = ?,
+          rollback_dispatch_requested_at = NULL,
+          updated_at = ?
+        WHERE restore_execution_id = ?
+          AND status = 'rollback_required'
+          AND rollback_status = 'dispatching'
+          AND rollback_github_run_id IS NULL
+          AND main_rollback_bookmark IS NULL
+          AND pii_rollback_bookmark IS NULL
+          AND rollback_recovery_status =
+            'github_run_not_found'
+      `)
+        .bind(
+          releasedAt,
+          releasedAt,
+          admin.user_id,
+          releasedAt,
+          restoreExecutionId
+        )
+        .run();
+
+    if (
+      Number(
+        releaseResult?.meta?.changes ||
+        0
+      ) !== 1
+    ) {
+      return {
+        error:
+          "rollback_release_authorization_failed",
+        manual_review_required:
+          true,
+      };
+    }
+
+    await SecurityAudit.recordSafe(
+      ctx,
+      {
+        actorUserId:
+          admin.user_id,
+        action:
+          "admin.restore_rollback_release_uncertain",
+        targetType:
+          "restore_execution",
+        targetId:
+          String(
+            restoreExecutionId
+          ),
+        result:
+          "success",
+        details: {
+          previous_rollback_status:
+            "dispatching",
+          new_rollback_status:
+            "required",
+          fresh_github_run_count:
+            0,
+          destructive_rollback_started:
+            false,
+          retry_started:
+            false,
+        },
+      }
+    );
+
+    return {
+      ok: true,
+      mode:
+        "rollback_uncertain_dispatch_released",
+      restore_execution_id:
+        restoreExecutionId,
+      rollback_status:
+        "required",
+      recovery_status:
+        "uncertain_dispatch_released",
+      destructive_rollback_started:
+        false,
+      retry_started:
+        false,
+      reset_scope:
+        "dispatch_claim_only",
     };
   }
 );
