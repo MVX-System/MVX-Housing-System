@@ -1458,6 +1458,7 @@ class SystemOperationsControl {
           "/api/admin/restore/rollback/release-uncertain",
           "/api/admin/restore/rollback/safe-control-reset",
           "/api/admin/restore/rollback/retry/authorize",
+          "/api/admin/restore/rollback/retry/dispatch",
         ]);
 
       if (
@@ -1593,6 +1594,8 @@ async function getRestoreRollbackStatus(
             expired: false,
             attempt: 0,
             previous_github_run_id: null,
+            consumed_at: null,
+            dispatch_requested_at: null,
             dispatch_enabled: false,
           },
         },
@@ -1623,6 +1626,8 @@ async function getRestoreRollbackStatus(
           rollback_retry_authorization_expires_at,
           rollback_retry_attempt,
           previous_rollback_github_run_id,
+          rollback_retry_consumed_at,
+          rollback_retry_dispatch_requested_at,
           main_rollback_bookmark,
           pii_rollback_bookmark,
           main_rollback_status,
@@ -2231,6 +2236,31 @@ async function getRestoreRollbackStatus(
           Date.now()
       );
 
+    const retryConsumedAt =
+      row.rollback_retry_consumed_at
+        ? String(
+            row.rollback_retry_consumed_at
+          )
+        : null;
+
+    const retryDispatchRequestedAt =
+      row.rollback_retry_dispatch_requested_at
+        ? String(
+            row.rollback_retry_dispatch_requested_at
+          )
+        : null;
+
+    const retryDispatchEnabled =
+      Boolean(
+        retryAuthorizationActive &&
+        !retryConsumedAt &&
+        retryAttempt === 0 &&
+        rollbackStatus ===
+          "required" &&
+        safeControlResetRecorded &&
+        !destructiveProgressDetected
+      );
+
     const retryProhibited =
       Boolean(
         rollbackStatus ===
@@ -2239,7 +2269,12 @@ async function getRestoreRollbackStatus(
           "failed" ||
         destructiveProgressDetected ||
         githubCompletedSuccess ||
-        safeControlResetRecorded
+        (
+          safeControlResetRecorded &&
+          !retryAuthorizationActive
+        ) ||
+        retryAttempt >= 1 ||
+        Boolean(retryConsumedAt)
       );
 
     return {
@@ -2359,8 +2394,12 @@ async function getRestoreRollbackStatus(
                     row.previous_rollback_github_run_id
                   )
                 : null,
+            consumed_at:
+              retryConsumedAt,
+            dispatch_requested_at:
+              retryDispatchRequestedAt,
             dispatch_enabled:
-              false,
+              retryDispatchEnabled,
           },
         },
       },
@@ -2442,6 +2481,8 @@ async function getRestoreRollbackStatus(
             expired: false,
             attempt: 0,
             previous_github_run_id: null,
+            consumed_at: null,
+            dispatch_requested_at: null,
             dispatch_enabled: false,
           },
         },
@@ -3996,6 +4037,12 @@ const ADMIN_RESTORE_ROLLBACK_SAFE_RESET_LIMIT = {
 };
 
 const ADMIN_RESTORE_ROLLBACK_RETRY_AUTHORIZE_LIMIT = {
+  maxRequests: 3,
+  windowSeconds: 60 * 60,
+  blockSeconds: 60 * 60,
+};
+
+const ADMIN_RESTORE_ROLLBACK_RETRY_DISPATCH_LIMIT = {
   maxRequests: 3,
   windowSeconds: 60 * 60,
   blockSeconds: 60 * 60,
@@ -13123,7 +13170,7 @@ Router.register(
         rollback_recovery_retry_authorization_enabled:
           true,
         rollback_recovery_retry_dispatch_enabled:
-          false,
+          true,
         rollback_recovery_mutation_enabled:
           true,
         rollback_execution_enabled:
@@ -17473,6 +17520,837 @@ Router.register(
         false,
       reset_scope:
         "dispatch_claim_only",
+    };
+  }
+);
+
+
+// =========================
+// ADMIN DISPATCH ONE AUTHORIZED ROLLBACK RETRY
+// Stage 2I-SR14F-D5B-2I
+//
+// This endpoint is the only path that may consume the short-lived retry
+// authorization. The authorization is atomically consumed before GitHub
+// workflow_dispatch. The previous rollback run id is moved into
+// previous_rollback_github_run_id, rollback_retry_attempt becomes 1, and
+// rollback_status becomes dispatching.
+//
+// A definitive GitHub HTTP rejection rolls the claim back to the exact
+// pre-dispatch safe-control state. A network/transport ambiguity does NOT
+// roll back the claim: the execution remains dispatching so the existing
+// reconcile/recovery machinery can determine whether GitHub accepted it.
+// =========================
+Router.register(
+  "POST",
+  "/api/admin/restore/rollback/retry/dispatch",
+  async (ctx) => {
+    const admin =
+      await Auth.requireAdmin(ctx);
+
+    if (!admin) {
+      return {
+        error: "forbidden"
+      };
+    }
+
+    const dispatchLimit =
+      await SecurityRateLimit.consume({
+        env: ctx.env,
+        scope:
+          "admin-restore-rollback-retry-dispatch",
+        key:
+          `user:${admin.user_id}`,
+        ...ADMIN_RESTORE_ROLLBACK_RETRY_DISPATCH_LIMIT,
+      });
+
+    if (!dispatchLimit.allowed) {
+      return SecurityRateLimit.response(
+        dispatchLimit
+      );
+    }
+
+    const body =
+      await ctx.request
+        .json()
+        .catch(() => ({}));
+
+    const restoreExecutionId =
+      normalizePositiveInteger(
+        body.restore_execution_id
+      );
+
+    const currentPassword =
+      typeof body.current_password ===
+        "string"
+        ? body.current_password
+        : "";
+
+    const confirmationPhrase =
+      typeof body.confirmation_phrase ===
+        "string"
+        ? body.confirmation_phrase.trim()
+        : "";
+
+    if (!restoreExecutionId) {
+      return {
+        error:
+          "invalid_restore_execution_id"
+      };
+    }
+
+    if (
+      !currentPassword ||
+      currentPassword.length > 1024
+    ) {
+      return {
+        error:
+          "current_password_required"
+      };
+    }
+
+    const expectedConfirmationPhrase =
+      `DISPATCH AUTHORIZED ROLLBACK RETRY ${restoreExecutionId}`;
+
+    if (
+      confirmationPhrase !==
+      expectedConfirmationPhrase
+    ) {
+      return {
+        error:
+          "rollback_retry_dispatch_confirmation_phrase_incorrect",
+        required_confirmation_phrase:
+          expectedConfirmationPhrase,
+      };
+    }
+
+    if (!ctx.env?.OPS_DB) {
+      return {
+        error:
+          "ops_database_not_configured"
+      };
+    }
+
+    const journal =
+      await ctx.env.OPS_DB.prepare(`
+        SELECT
+          restore_execution_id,
+          status,
+          rollback_status,
+          rollback_github_run_id,
+          rollback_recovery_action,
+          rollback_retry_authorized_at,
+          rollback_retry_authorized_by,
+          rollback_retry_authorization_expires_at,
+          rollback_retry_attempt,
+          previous_rollback_github_run_id,
+          rollback_retry_consumed_at,
+          rollback_retry_dispatch_requested_at,
+          main_rollback_bookmark,
+          pii_rollback_bookmark,
+          main_rollback_status,
+          pii_rollback_status,
+          rollback_schema_status,
+          rollback_verify_status
+        FROM restore_execution_journal
+        WHERE restore_execution_id = ?
+        LIMIT 1
+      `)
+        .bind(
+          restoreExecutionId
+        )
+        .first();
+
+    if (!journal) {
+      return {
+        error:
+          "restore_execution_journal_not_found"
+      };
+    }
+
+    if (
+      String(journal.status || "") !==
+        "rollback_required" ||
+      String(
+        journal.rollback_status || ""
+      ) !== "required" ||
+      String(
+        journal.rollback_recovery_action ||
+        ""
+      ) !== "safe_control_reset"
+    ) {
+      return {
+        error:
+          "rollback_retry_dispatch_not_applicable",
+        restore_status:
+          journal.status || null,
+        rollback_status:
+          journal.rollback_status || null,
+        recovery_action:
+          journal.rollback_recovery_action ||
+          null,
+      };
+    }
+
+    const retryAttempt =
+      Number(
+        journal.rollback_retry_attempt ||
+        0
+      );
+
+    if (
+      !Number.isInteger(retryAttempt) ||
+      retryAttempt !== 0
+    ) {
+      return {
+        error:
+          "rollback_retry_attempt_limit_reached",
+        retry_attempt:
+          Number.isFinite(retryAttempt)
+            ? retryAttempt
+            : null,
+        retry_prohibited:
+          true,
+      };
+    }
+
+    if (
+      journal.previous_rollback_github_run_id ||
+      journal.rollback_retry_consumed_at ||
+      journal.rollback_retry_dispatch_requested_at
+    ) {
+      return {
+        error:
+          "rollback_retry_already_consumed",
+        retry_prohibited:
+          true,
+      };
+    }
+
+    const authorizedAt =
+      journal.rollback_retry_authorized_at
+        ? String(
+            journal.rollback_retry_authorized_at
+          )
+        : null;
+
+    const authorizationExpiresAt =
+      journal.rollback_retry_authorization_expires_at
+        ? String(
+            journal.rollback_retry_authorization_expires_at
+          )
+        : null;
+
+    const authorizationExpiresMs =
+      authorizationExpiresAt
+        ? Date.parse(
+            authorizationExpiresAt
+          )
+        : NaN;
+
+    if (
+      !authorizedAt ||
+      !authorizationExpiresAt ||
+      !Number.isFinite(
+        authorizationExpiresMs
+      ) ||
+      authorizationExpiresMs <=
+        Date.now()
+    ) {
+      return {
+        error:
+          "rollback_retry_authorization_missing_or_expired",
+        authorized_at:
+          authorizedAt,
+        expires_at:
+          authorizationExpiresAt,
+        retry_prohibited:
+          true,
+      };
+    }
+
+    const rollbackGithubRunId =
+      normalizePositiveInteger(
+        journal.rollback_github_run_id
+      );
+
+    if (!rollbackGithubRunId) {
+      return {
+        error:
+          "rollback_github_run_id_missing",
+        retry_prohibited:
+          true,
+      };
+    }
+
+    const anyRollbackStageStarted =
+      Boolean(
+        journal.main_rollback_status ||
+        journal.pii_rollback_status ||
+        journal.rollback_schema_status ||
+        journal.rollback_verify_status
+      );
+
+    const destructiveProgressDetected =
+      Boolean(
+        journal.main_rollback_bookmark ||
+        journal.pii_rollback_bookmark
+      );
+
+    if (
+      anyRollbackStageStarted ||
+      destructiveProgressDetected
+    ) {
+      return {
+        error:
+          "rollback_retry_dispatch_progress_detected",
+        destructive_progress_detected:
+          destructiveProgressDetected,
+        rollback_stage_started:
+          anyRollbackStageStarted,
+        retry_prohibited:
+          true,
+      };
+    }
+
+    // Freshly prove again that the previous rollback run is completed
+    // unsuccessfully. Authorization evidence alone is not trusted.
+    const githubLookup =
+      await getGitHubRollbackRunById(
+        ctx.env,
+        rollbackGithubRunId
+      );
+
+    if (!githubLookup.configured) {
+      return {
+        error:
+          githubLookup.error ||
+          "github_rollback_not_configured",
+        retry_prohibited:
+          true,
+      };
+    }
+
+    if (githubLookup.error) {
+      return {
+        error:
+          "rollback_retry_dispatch_github_lookup_failed",
+        github_error:
+          githubLookup.error,
+        retry_prohibited:
+          true,
+      };
+    }
+
+    if (
+      !githubLookup.found ||
+      !githubLookup.run
+    ) {
+      return {
+        error:
+          "rollback_retry_dispatch_previous_run_not_found",
+        retry_prohibited:
+          true,
+      };
+    }
+
+    const previousRunStatus =
+      githubLookup.run.status
+        ? String(
+            githubLookup.run.status
+          )
+        : null;
+
+    const previousRunConclusion =
+      githubLookup.run.conclusion
+        ? String(
+            githubLookup.run.conclusion
+          )
+        : null;
+
+    if (
+      previousRunStatus !==
+        "completed" ||
+      !previousRunConclusion ||
+      previousRunConclusion ===
+        "success"
+    ) {
+      return {
+        error:
+          "rollback_retry_dispatch_previous_failure_not_proven",
+        github_run_status:
+          previousRunStatus,
+        github_run_conclusion:
+          previousRunConclusion,
+        retry_prohibited:
+          true,
+      };
+    }
+
+    // Re-verify current administrator password immediately before claim.
+    const passwordLimitKey =
+      `user:${admin.user_id}`;
+
+    const passwordLimitCheck =
+      await SecurityRateLimit.check({
+        env: ctx.env,
+        scope:
+          "admin-restore-password-failure",
+        key:
+          passwordLimitKey,
+        windowSeconds:
+          ADMIN_RESTORE_PASSWORD_FAILURE_LIMIT
+            .windowSeconds,
+      });
+
+    if (!passwordLimitCheck.allowed) {
+      return SecurityRateLimit.response(
+        passwordLimitCheck
+      );
+    }
+
+    const user =
+      await ctx.env.DB.prepare(`
+        SELECT
+          id,
+          password_hash,
+          is_active
+        FROM users
+        WHERE id = ?
+        LIMIT 1
+      `)
+        .bind(
+          admin.user_id
+        )
+        .first();
+
+    if (
+      !user ||
+      Number(user.is_active) !== 1
+    ) {
+      return {
+        error:
+          "user_not_found_or_inactive"
+      };
+    }
+
+    const passwordCheck =
+      await verifyPassword(
+        currentPassword,
+        user.password_hash || ""
+      );
+
+    if (!passwordCheck.ok) {
+      const failureResult =
+        await SecurityRateLimit.recordFailure({
+          env: ctx.env,
+          scope:
+            "admin-restore-password-failure",
+          key:
+            passwordLimitKey,
+          ...ADMIN_RESTORE_PASSWORD_FAILURE_LIMIT,
+        });
+
+      if (!failureResult.allowed) {
+        return SecurityRateLimit.response(
+          failureResult
+        );
+      }
+
+      return {
+        error:
+          "current_password_incorrect"
+      };
+    }
+
+    await SecurityRateLimit.clear({
+      env: ctx.env,
+      scope:
+        "admin-restore-password-failure",
+      key:
+        passwordLimitKey,
+    });
+
+    const github =
+      getGitHubRollbackConfiguration(
+        ctx.env
+      );
+
+    if (!github.ok) {
+      return {
+        error:
+          github.error ||
+          "github_rollback_not_configured"
+      };
+    }
+
+    const claimedAt =
+      new Date().toISOString();
+
+    // Atomic one-time consumption. The previous run id is retained in its
+    // dedicated history field while the current run slot is cleared for the
+    // retry workflow to claim with GITHUB_RUN_ID.
+    const claimResult =
+      await ctx.env.OPS_DB.prepare(`
+        UPDATE restore_execution_journal
+        SET
+          previous_rollback_github_run_id =
+            rollback_github_run_id,
+          rollback_github_run_id = NULL,
+          rollback_retry_attempt = 1,
+          rollback_retry_consumed_at = ?,
+          rollback_retry_dispatch_requested_at = ?,
+          rollback_status = 'dispatching',
+          rollback_recovery_status =
+            'retry_dispatching',
+          rollback_recovery_checked_at = ?,
+          rollback_recovery_action =
+            'retry_dispatch',
+          rollback_recovery_action_at = ?,
+          rollback_recovery_action_by = ?,
+          updated_at = ?
+        WHERE restore_execution_id = ?
+          AND status = 'rollback_required'
+          AND rollback_status = 'required'
+          AND rollback_recovery_action =
+            'safe_control_reset'
+          AND rollback_github_run_id = ?
+          AND rollback_retry_authorized_at IS NOT NULL
+          AND rollback_retry_authorization_expires_at > ?
+          AND COALESCE(
+            rollback_retry_attempt,
+            0
+          ) = 0
+          AND previous_rollback_github_run_id IS NULL
+          AND rollback_retry_consumed_at IS NULL
+          AND rollback_retry_dispatch_requested_at IS NULL
+          AND main_rollback_bookmark IS NULL
+          AND pii_rollback_bookmark IS NULL
+          AND main_rollback_status IS NULL
+          AND pii_rollback_status IS NULL
+          AND rollback_schema_status IS NULL
+          AND rollback_verify_status IS NULL
+      `)
+        .bind(
+          claimedAt,
+          claimedAt,
+          claimedAt,
+          claimedAt,
+          admin.user_id,
+          claimedAt,
+          restoreExecutionId,
+          String(
+            rollbackGithubRunId
+          ),
+          claimedAt
+        )
+        .run();
+
+    if (
+      Number(
+        claimResult?.meta?.changes ||
+        0
+      ) !== 1
+    ) {
+      return {
+        error:
+          "rollback_retry_dispatch_claim_failed",
+        retry_prohibited:
+          true,
+      };
+    }
+
+    const dispatchUrl =
+      `https://api.github.com/repos/${encodeURIComponent(
+        github.owner
+      )}/${encodeURIComponent(
+        github.repo
+      )}/actions/workflows/${encodeURIComponent(
+        github.workflow
+      )}/dispatches`;
+
+    const dispatchPayload = {
+      ref: "main",
+      inputs: {
+        restore_execution_id:
+          String(
+            restoreExecutionId
+          ),
+        confirmation:
+          `ROLLBACK PRODUCTION EXECUTION ${restoreExecutionId}`,
+      },
+    };
+
+    let dispatchResponse;
+
+    try {
+      dispatchResponse =
+        await fetch(
+          dispatchUrl,
+          {
+            method: "POST",
+            headers: {
+              "Accept":
+                "application/vnd.github+json",
+              "Authorization":
+                `Bearer ${github.token}`,
+              "Content-Type":
+                "application/json",
+              "X-GitHub-Api-Version":
+                "2022-11-28",
+              "User-Agent":
+                "MVX-Housing-System",
+            },
+            body:
+              JSON.stringify(
+                dispatchPayload
+              ),
+          }
+        );
+    } catch (error) {
+      App.logError(
+        "rollback_retry_dispatch_network_uncertain",
+        error,
+        {
+          restore_execution_id:
+            restoreExecutionId,
+        }
+      );
+
+      await ctx.env.OPS_DB.prepare(`
+        UPDATE restore_execution_journal
+        SET
+          rollback_recovery_status =
+            'retry_dispatch_uncertain',
+          rollback_recovery_checked_at = ?,
+          updated_at = ?
+        WHERE restore_execution_id = ?
+          AND status = 'rollback_required'
+          AND rollback_status = 'dispatching'
+          AND rollback_retry_attempt = 1
+          AND previous_rollback_github_run_id = ?
+          AND rollback_github_run_id IS NULL
+      `)
+        .bind(
+          claimedAt,
+          claimedAt,
+          restoreExecutionId,
+          String(
+            rollbackGithubRunId
+          )
+        )
+        .run();
+
+      await SecurityAudit.recordSafe(
+        ctx,
+        {
+          actorUserId:
+            admin.user_id,
+          action:
+            "admin.restore_rollback_retry_dispatch",
+          targetType:
+            "restore_execution",
+          targetId:
+            String(
+              restoreExecutionId
+            ),
+          result:
+            "uncertain",
+          details: {
+            previous_github_run_id:
+              String(
+                rollbackGithubRunId
+              ),
+            retry_attempt: 1,
+            authorization_consumed:
+              true,
+            network_ambiguity:
+              true,
+            destructive_rollback_started_by_worker:
+              false,
+          },
+        }
+      );
+
+      return {
+        ok: false,
+        error:
+          "rollback_retry_dispatch_uncertain",
+        restore_execution_id:
+          restoreExecutionId,
+        rollback_status:
+          "dispatching",
+        retry_attempt: 1,
+        authorization_consumed:
+          true,
+        retry_dispatch_uncertain:
+          true,
+        retry_again_prohibited:
+          true,
+      };
+    }
+
+    if (!dispatchResponse.ok) {
+      const githubErrorText =
+        await dispatchResponse
+          .text()
+          .catch(() => "");
+
+      // GitHub definitively rejected the dispatch. Restore the exact
+      // pre-claim safe-control state, including the original run id and
+      // the still-valid authorization. No retry attempt is consumed.
+      const rollbackAt =
+        new Date().toISOString();
+
+      await ctx.env.OPS_DB.prepare(`
+        UPDATE restore_execution_journal
+        SET
+          rollback_github_run_id =
+            previous_rollback_github_run_id,
+          previous_rollback_github_run_id =
+            NULL,
+          rollback_retry_attempt = 0,
+          rollback_retry_consumed_at = NULL,
+          rollback_retry_dispatch_requested_at =
+            NULL,
+          rollback_status = 'required',
+          rollback_recovery_status =
+            'retry_dispatch_rejected',
+          rollback_recovery_checked_at = ?,
+          rollback_recovery_action =
+            'safe_control_reset',
+          rollback_recovery_action_at = ?,
+          rollback_recovery_action_by = ?,
+          updated_at = ?
+        WHERE restore_execution_id = ?
+          AND status = 'rollback_required'
+          AND rollback_status = 'dispatching'
+          AND rollback_retry_attempt = 1
+          AND previous_rollback_github_run_id = ?
+          AND rollback_github_run_id IS NULL
+      `)
+        .bind(
+          rollbackAt,
+          rollbackAt,
+          admin.user_id,
+          rollbackAt,
+          restoreExecutionId,
+          String(
+            rollbackGithubRunId
+          )
+        )
+        .run();
+
+      await SecurityAudit.recordSafe(
+        ctx,
+        {
+          actorUserId:
+            admin.user_id,
+          action:
+            "admin.restore_rollback_retry_dispatch",
+          targetType:
+            "restore_execution",
+          targetId:
+            String(
+              restoreExecutionId
+            ),
+          result:
+            "rejected",
+          details: {
+            github_http_status:
+              dispatchResponse.status,
+            github_error:
+              githubErrorText
+                ? githubErrorText.slice(
+                    0,
+                    500
+                  )
+                : null,
+            previous_github_run_id:
+              String(
+                rollbackGithubRunId
+              ),
+            claim_rolled_back:
+              true,
+            retry_attempt_consumed:
+              false,
+            destructive_rollback_started_by_worker:
+              false,
+          },
+        }
+      );
+
+      return {
+        ok: false,
+        error:
+          "rollback_retry_dispatch_rejected",
+        github_http_status:
+          dispatchResponse.status,
+        restore_execution_id:
+          restoreExecutionId,
+        rollback_status:
+          "required",
+        retry_attempt: 0,
+        authorization_consumed:
+          false,
+        claim_rolled_back:
+          true,
+      };
+    }
+
+    await SecurityAudit.recordSafe(
+      ctx,
+      {
+        actorUserId:
+          admin.user_id,
+        action:
+          "admin.restore_rollback_retry_dispatch",
+        targetType:
+          "restore_execution",
+        targetId:
+          String(
+            restoreExecutionId
+          ),
+        result:
+          "accepted",
+        details: {
+          previous_github_run_id:
+            String(
+              rollbackGithubRunId
+            ),
+          retry_attempt: 1,
+          authorization_consumed:
+            true,
+          github_http_status:
+            dispatchResponse.status,
+          destructive_rollback_started_by_worker:
+            false,
+        },
+      }
+    );
+
+    return {
+      ok: true,
+      mode:
+        "rollback_retry_dispatch",
+      restore_execution_id:
+        restoreExecutionId,
+      rollback_status:
+        "dispatching",
+      retry_attempt: 1,
+      authorization_consumed:
+        true,
+      previous_github_run_id:
+        String(
+          rollbackGithubRunId
+        ),
+      rollback_github_run_id:
+        null,
+      github_dispatch_accepted:
+        true,
+      destructive_rollback_started_by_worker:
+        false,
+      retry_again_prohibited:
+        true,
     };
   }
 );
