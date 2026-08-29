@@ -425,6 +425,18 @@ const TEXT = {
       "Retry prohibited",
     rollbackRecoveryReconcileRunningFailed:
       "Reconcile running/failed state",
+    rollbackSafeReset:
+      "Safe control reset",
+    rollbackSafeResetWorking:
+      "Resetting control state...",
+    rollbackSafeResetPassword:
+      "Current password",
+    rollbackSafeResetConfirmation:
+      "Type exactly",
+    rollbackSafeResetSuccess:
+      "Rollback control state reset safely. Retry remains prohibited.",
+    rollbackSafeResetFailed:
+      "Could not reset rollback control state.",
     rollbackPasswordRequired:
       "Enter your current password.",
     rollbackConfirmationRequired:
@@ -827,6 +839,18 @@ const TEXT = {
       "Atkārtots rollback aizliegts",
     rollbackRecoveryReconcileRunningFailed:
       "Saskaņot running/failed stāvokli",
+    rollbackSafeReset:
+      "Droša control-state atiestatīšana",
+    rollbackSafeResetWorking:
+      "Control-state atiestatīšana...",
+    rollbackSafeResetPassword:
+      "Pašreizējā parole",
+    rollbackSafeResetConfirmation:
+      "Ievadiet precīzi",
+    rollbackSafeResetSuccess:
+      "Rollback control-state droši atiestatīts. Retry paliek aizliegts.",
+    rollbackSafeResetFailed:
+      "Neizdevās atiestatīt rollback control-state.",
     rollbackPasswordRequired:
       "Ievadiet pašreizējo paroli.",
     rollbackConfirmationRequired:
@@ -1229,6 +1253,18 @@ const TEXT = {
       "Повторный rollback запрещён",
     rollbackRecoveryReconcileRunningFailed:
       "Reconcile состояния running/failed",
+    rollbackSafeReset:
+      "Safe control reset",
+    rollbackSafeResetWorking:
+      "Выполняется control reset...",
+    rollbackSafeResetPassword:
+      "Текущий пароль",
+    rollbackSafeResetConfirmation:
+      "Введите точно",
+    rollbackSafeResetSuccess:
+      "Control-state rollback безопасно сброшен. Retry остаётся запрещён.",
+    rollbackSafeResetFailed:
+      "Не удалось выполнить safe control reset.",
     rollbackPasswordRequired:
       "Введите текущий пароль.",
     rollbackConfirmationRequired:
@@ -1912,6 +1948,31 @@ export default function SettingsPage() {
     setRollbackReleaseSuccess,
   ] = useState("");
 
+  const [
+    rollbackSafeResetPassword,
+    setRollbackSafeResetPassword,
+  ] = useState("");
+
+  const [
+    rollbackSafeResetConfirmation,
+    setRollbackSafeResetConfirmation,
+  ] = useState("");
+
+  const [
+    rollbackSafeResetWorking,
+    setRollbackSafeResetWorking,
+  ] = useState(false);
+
+  const [
+    rollbackSafeResetError,
+    setRollbackSafeResetError,
+  ] = useState("");
+
+  const [
+    rollbackSafeResetSuccess,
+    setRollbackSafeResetSuccess,
+  ] = useState("");
+
   const rollbackExpectedConfirmation =
     rollbackStatus
       ?.restore_execution_id
@@ -1968,6 +2029,20 @@ export default function SettingsPage() {
     rollbackStatus
       ?.restore_execution_id
       ? `RELEASE ROLLBACK DISPATCH ${rollbackStatus.restore_execution_id}`
+      : "";
+
+  const rollbackSafeResetVisible =
+    Boolean(
+      rollbackStatus
+        ?.restore_execution_id &&
+      rollbackRecoveryActions
+        ?.safe_control_reset_possible
+    );
+
+  const rollbackSafeResetExpectedConfirmation =
+    rollbackStatus
+      ?.restore_execution_id
+      ? `RESET FAILED ROLLBACK CONTROL ${rollbackStatus.restore_execution_id}`
       : "";
 
   useEffect(() => {
@@ -2987,6 +3062,92 @@ export default function SettingsPage() {
         );
       } finally {
         setRollbackReconciling(false);
+      }
+    };
+
+  const handleRollbackSafeReset =
+    async () => {
+      setRollbackSafeResetError("");
+      setRollbackSafeResetSuccess("");
+
+      if (!rollbackSafeResetPassword) {
+        setRollbackSafeResetError(
+          text.rollbackSafeResetPassword
+        );
+        return;
+      }
+
+      if (
+        !rollbackSafeResetExpectedConfirmation ||
+        rollbackSafeResetConfirmation !==
+          rollbackSafeResetExpectedConfirmation
+      ) {
+        setRollbackSafeResetError(
+          text.rollbackSafeResetConfirmation
+        );
+        return;
+      }
+
+      if (
+        !rollbackSafeResetVisible ||
+        !rollbackStatus
+          ?.restore_execution_id
+      ) {
+        setRollbackSafeResetError(
+          text.rollbackSafeResetFailed
+        );
+        return;
+      }
+
+      setRollbackSafeResetWorking(true);
+
+      try {
+        const result =
+          await api(
+            "/api/admin/restore/rollback/safe-control-reset",
+            {
+              method: "POST",
+              body: JSON.stringify({
+                restore_execution_id:
+                  rollbackStatus
+                    .restore_execution_id,
+                current_password:
+                  rollbackSafeResetPassword,
+                confirmation_phrase:
+                  rollbackSafeResetConfirmation,
+              }),
+            }
+          );
+
+        if (
+          !result ||
+          result.error ||
+          result.ok === false
+        ) {
+          throw new Error(
+            result?.error ||
+            "rollback_safe_reset_failed"
+          );
+        }
+
+        setRollbackSafeResetPassword("");
+        setRollbackSafeResetConfirmation("");
+        setRollbackSafeResetSuccess(
+          text.rollbackSafeResetSuccess
+        );
+
+        await handleRefreshRestore();
+      } catch (resetError) {
+        console.error(
+          "ROLLBACK SAFE RESET ERROR:",
+          resetError
+        );
+
+        setRollbackSafeResetError(
+          text.rollbackSafeResetFailed
+        );
+      } finally {
+        setRollbackSafeResetWorking(false);
       }
     };
 
@@ -4495,6 +4656,132 @@ export default function SettingsPage() {
                                   : text.rollbackRecoveryReconcile
                               )}
                         </button>
+                      )}
+
+                      {rollbackSafeResetVisible && (
+                        <div
+                          style={{
+                            marginTop: 4,
+                            display: "grid",
+                            gap: 10,
+                          }}
+                        >
+                          <div
+                            style={warningStyle}
+                          >
+                            <div
+                              style={{
+                                color:
+                                  "var(--text-h)",
+                                fontSize: 11,
+                                fontWeight: 800,
+                              }}
+                            >
+                              {text.rollbackSafeReset}
+                            </div>
+
+                            <div
+                              style={{
+                                marginTop: 6,
+                                fontFamily:
+                                  "ui-monospace, SFMono-Regular, Menlo, monospace",
+                                fontSize: 11,
+                                fontWeight: 800,
+                                wordBreak:
+                                  "break-word",
+                              }}
+                            >
+                              {rollbackSafeResetExpectedConfirmation}
+                            </div>
+                          </div>
+
+                          <PasswordField
+                            label={
+                              text.rollbackSafeResetPassword
+                            }
+                            value={
+                              rollbackSafeResetPassword
+                            }
+                            onChange={(
+                              event
+                            ) => {
+                              setRollbackSafeResetPassword(
+                                event.target.value
+                              );
+                              setRollbackSafeResetError("");
+                              setRollbackSafeResetSuccess("");
+                            }}
+                            autoComplete="current-password"
+                          />
+
+                          <label
+                            style={fieldLabelStyle}
+                          >
+                            {text.rollbackSafeResetConfirmation}
+
+                            <input
+                              type="text"
+                              value={
+                                rollbackSafeResetConfirmation
+                              }
+                              onChange={(
+                                event
+                              ) => {
+                                setRollbackSafeResetConfirmation(
+                                  event.target.value
+                                );
+                                setRollbackSafeResetError("");
+                                setRollbackSafeResetSuccess("");
+                              }}
+                              autoComplete="off"
+                              spellCheck={false}
+                              style={inputStyle}
+                            />
+                          </label>
+
+                          {rollbackSafeResetError && (
+                            <div
+                              role="alert"
+                              style={errorStyle}
+                            >
+                              {rollbackSafeResetError}
+                            </div>
+                          )}
+
+                          {rollbackSafeResetSuccess && (
+                            <div
+                              role="status"
+                              style={successStyle}
+                            >
+                              {rollbackSafeResetSuccess}
+                            </div>
+                          )}
+
+                          <button
+                            type="button"
+                            disabled={
+                              rollbackSafeResetWorking ||
+                              !rollbackSafeResetPassword ||
+                              rollbackSafeResetConfirmation !==
+                                rollbackSafeResetExpectedConfirmation
+                            }
+                            onClick={
+                              handleRollbackSafeReset
+                            }
+                            style={
+                              primaryButtonStyle(
+                                rollbackSafeResetWorking ||
+                                !rollbackSafeResetPassword ||
+                                rollbackSafeResetConfirmation !==
+                                  rollbackSafeResetExpectedConfirmation
+                              )
+                            }
+                          >
+                            {rollbackSafeResetWorking
+                              ? text.rollbackSafeResetWorking
+                              : text.rollbackSafeReset}
+                          </button>
+                        </div>
                       )}
 
                       {rollbackReleaseVisible && (
