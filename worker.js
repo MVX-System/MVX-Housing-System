@@ -1456,6 +1456,7 @@ class SystemOperationsControl {
           "/api/admin/restore/rollback/dispatch",
           "/api/admin/restore/rollback/reconcile",
           "/api/admin/restore/rollback/release-uncertain",
+          "/api/admin/restore/rollback/safe-control-reset",
         ]);
 
       if (
@@ -2152,6 +2153,12 @@ async function getRestoreRollbackStatus(
         noRollbackStageStarted
       );
 
+    const safeControlResetRecorded =
+      String(
+        row.rollback_recovery_action ||
+        ""
+      ) === "safe_control_reset";
+
     const retryProhibited =
       Boolean(
         rollbackStatus ===
@@ -2159,7 +2166,8 @@ async function getRestoreRollbackStatus(
         rollbackStatus ===
           "failed" ||
         destructiveProgressDetected ||
-        githubCompletedSuccess
+        githubCompletedSuccess ||
+        safeControlResetRecorded
       );
 
     return {
@@ -2182,7 +2190,8 @@ async function getRestoreRollbackStatus(
           rollbackStatus ===
             "required" &&
           bothPreviousAvailable &&
-          !rollbackAlreadyDispatched
+          !rollbackAlreadyDispatched &&
+          !safeControlResetRecorded
         ),
       previous_bookmarks: {
         main_available:
@@ -3869,6 +3878,12 @@ const ADMIN_RESTORE_ROLLBACK_RECONCILE_LIMIT = {
 };
 
 const ADMIN_RESTORE_ROLLBACK_RELEASE_LIMIT = {
+  maxRequests: 3,
+  windowSeconds: 60 * 60,
+  blockSeconds: 60 * 60,
+};
+
+const ADMIN_RESTORE_ROLLBACK_SAFE_RESET_LIMIT = {
   maxRequests: 3,
   windowSeconds: 60 * 60,
   blockSeconds: 60 * 60,
@@ -12989,6 +13004,8 @@ Router.register(
           true,
         rollback_recovery_running_failed_reconcile_enabled:
           true,
+        rollback_recovery_safe_control_reset_enabled:
+          true,
         rollback_recovery_mutation_enabled:
           true,
         rollback_execution_enabled:
@@ -17344,6 +17361,488 @@ Router.register(
 
 
 // =========================
+// ADMIN SAFE CONTROL RESET AFTER PRE-DESTRUCTIVE ROLLBACK FAILURE
+// Stage 2I-SR14F-D5B-2I
+//
+// This endpoint never starts or retries rollback. It is available only when
+// a rollback workflow is proven to have completed unsuccessfully before any
+// Main/PII rollback stage started. It changes only the control-state marker
+// from failed -> required while deliberately preserving rollback_github_run_id
+// and the failure evidence. Preserving the run id, plus the recovery-action
+// lock, keeps rollback dispatch prohibited until a separate future recovery
+// authorization is explicitly designed.
+// =========================
+Router.register(
+  "POST",
+  "/api/admin/restore/rollback/safe-control-reset",
+  async (ctx) => {
+    const admin =
+      await Auth.requireAdmin(ctx);
+
+    if (!admin) {
+      return {
+        error: "forbidden"
+      };
+    }
+
+    const resetLimit =
+      await SecurityRateLimit.consume({
+        env: ctx.env,
+        scope:
+          "admin-restore-rollback-safe-reset",
+        key:
+          `user:${admin.user_id}`,
+        ...ADMIN_RESTORE_ROLLBACK_SAFE_RESET_LIMIT,
+      });
+
+    if (!resetLimit.allowed) {
+      return SecurityRateLimit.response(
+        resetLimit
+      );
+    }
+
+    const body =
+      await ctx.request
+        .json()
+        .catch(() => ({}));
+
+    const restoreExecutionId =
+      normalizePositiveInteger(
+        body.restore_execution_id
+      );
+
+    const currentPassword =
+      typeof body.current_password ===
+        "string"
+        ? body.current_password
+        : "";
+
+    const confirmationPhrase =
+      typeof body.confirmation_phrase ===
+        "string"
+        ? body.confirmation_phrase.trim()
+        : "";
+
+    if (!restoreExecutionId) {
+      return {
+        error:
+          "invalid_restore_execution_id"
+      };
+    }
+
+    if (
+      !currentPassword ||
+      currentPassword.length > 1024
+    ) {
+      return {
+        error:
+          "current_password_required"
+      };
+    }
+
+    const expectedConfirmationPhrase =
+      `RESET FAILED ROLLBACK CONTROL ${restoreExecutionId}`;
+
+    if (
+      confirmationPhrase !==
+      expectedConfirmationPhrase
+    ) {
+      return {
+        error:
+          "rollback_safe_reset_confirmation_phrase_incorrect",
+        required_confirmation_phrase:
+          expectedConfirmationPhrase,
+      };
+    }
+
+    if (!ctx.env?.OPS_DB) {
+      return {
+        error:
+          "ops_database_not_configured"
+      };
+    }
+
+    const journal =
+      await ctx.env.OPS_DB.prepare(`
+        SELECT
+          restore_execution_id,
+          status,
+          rollback_status,
+          rollback_github_run_id,
+          main_rollback_bookmark,
+          pii_rollback_bookmark,
+          main_rollback_status,
+          pii_rollback_status,
+          rollback_schema_status,
+          rollback_verify_status,
+          rollback_recovery_status,
+          rollback_recovery_action
+        FROM restore_execution_journal
+        WHERE restore_execution_id = ?
+        LIMIT 1
+      `)
+        .bind(
+          restoreExecutionId
+        )
+        .first();
+
+    if (!journal) {
+      return {
+        error:
+          "restore_execution_journal_not_found"
+      };
+    }
+
+    if (
+      String(journal.status || "") !==
+        "rollback_required" ||
+      String(
+        journal.rollback_status || ""
+      ) !== "failed"
+    ) {
+      return {
+        error:
+          "rollback_safe_reset_not_applicable",
+        restore_status:
+          journal.status || null,
+        rollback_status:
+          journal.rollback_status || null,
+      };
+    }
+
+    const rollbackGithubRunId =
+      normalizePositiveInteger(
+        journal.rollback_github_run_id
+      );
+
+    if (!rollbackGithubRunId) {
+      return {
+        error:
+          "rollback_github_run_id_missing",
+        manual_review_required:
+          true,
+      };
+    }
+
+    const anyRollbackStageStarted =
+      Boolean(
+        journal.main_rollback_status ||
+        journal.pii_rollback_status ||
+        journal.rollback_schema_status ||
+        journal.rollback_verify_status
+      );
+
+    const destructiveProgressDetected =
+      Boolean(
+        journal.main_rollback_bookmark ||
+        journal.pii_rollback_bookmark
+      );
+
+    if (
+      anyRollbackStageStarted ||
+      destructiveProgressDetected
+    ) {
+      return {
+        error:
+          "rollback_safe_reset_progress_detected",
+        manual_review_required:
+          true,
+        retry_prohibited:
+          true,
+      };
+    }
+
+    // Fresh GitHub run lookup is mandatory immediately before authorization.
+    const githubLookup =
+      await getGitHubRollbackRunById(
+        ctx.env,
+        rollbackGithubRunId
+      );
+
+    if (!githubLookup.configured) {
+      return {
+        error:
+          githubLookup.error ||
+          "github_rollback_not_configured",
+        manual_review_required:
+          true,
+      };
+    }
+
+    if (githubLookup.error) {
+      return {
+        error:
+          "rollback_safe_reset_github_lookup_failed",
+        github_error:
+          githubLookup.error,
+        manual_review_required:
+          true,
+      };
+    }
+
+    if (
+      !githubLookup.found ||
+      !githubLookup.run
+    ) {
+      return {
+        error:
+          "rollback_safe_reset_github_run_not_found",
+        manual_review_required:
+          true,
+      };
+    }
+
+    const githubRunStatus =
+      githubLookup.run.status
+        ? String(
+            githubLookup.run.status
+          )
+        : null;
+
+    const githubRunConclusion =
+      githubLookup.run.conclusion
+        ? String(
+            githubLookup.run.conclusion
+          )
+        : null;
+
+    if (
+      githubRunStatus !==
+        "completed" ||
+      !githubRunConclusion ||
+      githubRunConclusion ===
+        "success"
+    ) {
+      return {
+        error:
+          "rollback_safe_reset_github_failure_not_proven",
+        github_run_status:
+          githubRunStatus,
+        github_run_conclusion:
+          githubRunConclusion,
+        manual_review_required:
+          true,
+      };
+    }
+
+    // Re-verify the administrator's current password.
+    const passwordLimitKey =
+      `user:${admin.user_id}`;
+
+    const passwordLimitCheck =
+      await SecurityRateLimit.check({
+        env: ctx.env,
+        scope:
+          "admin-restore-password-failure",
+        key:
+          passwordLimitKey,
+        windowSeconds:
+          ADMIN_RESTORE_PASSWORD_FAILURE_LIMIT
+            .windowSeconds,
+      });
+
+    if (!passwordLimitCheck.allowed) {
+      return SecurityRateLimit.response(
+        passwordLimitCheck
+      );
+    }
+
+    const user =
+      await ctx.env.DB.prepare(`
+        SELECT
+          id,
+          password_hash,
+          is_active
+        FROM users
+        WHERE id = ?
+        LIMIT 1
+      `)
+        .bind(
+          admin.user_id
+        )
+        .first();
+
+    if (
+      !user ||
+      Number(user.is_active) !== 1
+    ) {
+      return {
+        error:
+          "user_not_found_or_inactive"
+      };
+    }
+
+    const passwordCheck =
+      await verifyPassword(
+        currentPassword,
+        user.password_hash || ""
+      );
+
+    if (!passwordCheck.ok) {
+      const failureResult =
+        await SecurityRateLimit.recordFailure({
+          env: ctx.env,
+          scope:
+            "admin-restore-password-failure",
+          key:
+            passwordLimitKey,
+          ...ADMIN_RESTORE_PASSWORD_FAILURE_LIMIT,
+        });
+
+      if (!failureResult.allowed) {
+        return SecurityRateLimit.response(
+          failureResult
+        );
+      }
+
+      return {
+        error:
+          "current_password_incorrect"
+      };
+    }
+
+    await SecurityRateLimit.clear({
+      env: ctx.env,
+      scope:
+        "admin-restore-password-failure",
+      key:
+        passwordLimitKey,
+    });
+
+    const resetAt =
+      new Date().toISOString();
+
+    // Atomic authorization repeats every safety guard. The GitHub run id is
+    // deliberately preserved, so existing dispatch guards continue to block
+    // any retry after this control reset.
+    const resetResult =
+      await ctx.env.OPS_DB.prepare(`
+        UPDATE restore_execution_journal
+        SET
+          rollback_status = 'required',
+          rollback_recovery_status =
+            'safe_control_reset',
+          rollback_recovery_checked_at = ?,
+          rollback_recovery_action =
+            'safe_control_reset',
+          rollback_recovery_action_at = ?,
+          rollback_recovery_action_by = ?,
+          updated_at = ?
+        WHERE restore_execution_id = ?
+          AND status = 'rollback_required'
+          AND rollback_status = 'failed'
+          AND rollback_github_run_id = ?
+          AND main_rollback_bookmark IS NULL
+          AND pii_rollback_bookmark IS NULL
+          AND main_rollback_status IS NULL
+          AND pii_rollback_status IS NULL
+          AND rollback_schema_status IS NULL
+          AND rollback_verify_status IS NULL
+      `)
+        .bind(
+          resetAt,
+          resetAt,
+          admin.user_id,
+          resetAt,
+          restoreExecutionId,
+          String(
+            rollbackGithubRunId
+          )
+        )
+        .run();
+
+    if (
+      Number(
+        resetResult?.meta?.changes ||
+        0
+      ) !== 1
+    ) {
+      return {
+        error:
+          "rollback_safe_reset_authorization_failed",
+        manual_review_required:
+          true,
+      };
+    }
+
+    await SecurityAudit.recordSafe(
+      ctx,
+      {
+        actorUserId:
+          admin.user_id,
+        action:
+          "admin.restore_rollback_safe_control_reset",
+        targetType:
+          "restore_execution",
+        targetId:
+          String(
+            restoreExecutionId
+          ),
+        result:
+          "success",
+        details: {
+          previous_rollback_status:
+            "failed",
+          new_rollback_status:
+            "required",
+          github_run_id:
+            String(
+              rollbackGithubRunId
+            ),
+          github_run_status:
+            githubRunStatus,
+          github_run_conclusion:
+            githubRunConclusion,
+          destructive_progress_detected:
+            false,
+          rollback_stage_started:
+            false,
+          rollback_github_run_id_preserved:
+            true,
+          destructive_rollback_started_by_worker:
+            false,
+          retry_started:
+            false,
+          retry_prohibited:
+            true,
+        },
+      }
+    );
+
+    return {
+      ok: true,
+      mode:
+        "rollback_safe_control_reset",
+      restore_execution_id:
+        restoreExecutionId,
+      rollback_status:
+        "required",
+      recovery_status:
+        "safe_control_reset",
+      rollback_github_run_id:
+        String(
+          rollbackGithubRunId
+        ),
+      rollback_github_run_id_preserved:
+        true,
+      destructive_progress_detected:
+        false,
+      rollback_stage_started:
+        false,
+      destructive_rollback_started:
+        false,
+      retry_started:
+        false,
+      retry_prohibited:
+        true,
+      future_retry_requires_separate_authorization:
+        true,
+    };
+  }
+);
+
+
+// =========================
 // ADMIN DISPATCH CONTROLLED ROLLBACK
 // Stage 2I-SR14F-D5B-2H
 //
@@ -17496,7 +17995,8 @@ Router.register(
           rollback_status,
           main_previous_bookmark,
           pii_previous_bookmark,
-          rollback_github_run_id
+          rollback_github_run_id,
+          rollback_recovery_action
         FROM restore_execution_journal
         WHERE restore_execution_id = ?
         LIMIT 1
@@ -17548,6 +18048,20 @@ Router.register(
           "rollback_already_dispatched",
         rollback_github_run_id:
           journal.rollback_github_run_id,
+      };
+    }
+
+    if (
+      String(
+        journal.rollback_recovery_action ||
+        ""
+      ) === "safe_control_reset"
+    ) {
+      return {
+        error:
+          "rollback_retry_requires_separate_authorization",
+        retry_prohibited:
+          true,
       };
     }
 
@@ -17681,6 +18195,10 @@ Router.register(
           AND main_previous_bookmark IS NOT NULL
           AND pii_previous_bookmark IS NOT NULL
           AND rollback_github_run_id IS NULL
+          AND COALESCE(
+            rollback_recovery_action,
+            ''
+          ) <> 'safe_control_reset'
       `)
         .bind(
           claimedAt,
