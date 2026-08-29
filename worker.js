@@ -1566,6 +1566,16 @@ async function getRestoreRollbackStatus(
           verify: null,
           stage: "not_started",
         },
+        github: {
+          checked: false,
+          configured: false,
+          found: false,
+          run_id: null,
+          status: null,
+          conclusion: null,
+          updated_at: null,
+          error: null,
+        },
       },
     };
   }
@@ -1913,6 +1923,173 @@ async function getRestoreRollbackStatus(
           "github_run_not_found"
       );
 
+    let githubCorrelation = {
+      checked: false,
+      configured: false,
+      found: false,
+      run_id:
+        normalizePositiveInteger(
+          row.rollback_github_run_id
+        ) || null,
+      status: null,
+      conclusion: null,
+      updated_at: null,
+      error: null,
+    };
+
+    const shouldCheckGithubRun =
+      Boolean(
+        githubCorrelation.run_id
+      ) &&
+      (
+        rollbackStatus ===
+          "running" ||
+        rollbackStatus ===
+          "failed"
+      );
+
+    if (shouldCheckGithubRun) {
+      const githubLookup =
+        await getGitHubRollbackRunById(
+          env,
+          githubCorrelation.run_id
+        );
+
+      githubCorrelation = {
+        ...githubCorrelation,
+        checked: true,
+        configured:
+          githubLookup.configured,
+        found:
+          githubLookup.found,
+        error:
+          githubLookup.error,
+      };
+
+      if (
+        githubLookup.found &&
+        githubLookup.run
+      ) {
+        const runStatus =
+          githubLookup.run.status
+            ? String(
+                githubLookup.run.status
+              )
+            : null;
+
+        const runConclusion =
+          githubLookup.run.conclusion
+            ? String(
+                githubLookup.run.conclusion
+              )
+            : null;
+
+        githubCorrelation.status =
+          runStatus;
+
+        githubCorrelation.conclusion =
+          runConclusion;
+
+        githubCorrelation.updated_at =
+          githubLookup.run.updated_at
+            ? String(
+                githubLookup.run.updated_at
+              )
+            : null;
+
+        const githubActive =
+          [
+            "queued",
+            "waiting",
+            "pending",
+            "requested",
+            "in_progress",
+          ].includes(
+            runStatus
+          );
+
+        if (
+          rollbackStatus ===
+            "running"
+        ) {
+          if (
+            githubActive &&
+            recoveryStale
+          ) {
+            recoveryClassification =
+              "running_stale_github_active";
+            manualReviewRequired =
+              false;
+          } else if (
+            runStatus ===
+              "completed"
+          ) {
+            recoveryClassification =
+              runConclusion ===
+                "success"
+                ? "running_but_github_completed_success"
+                : "running_but_github_completed_failure";
+            manualReviewRequired =
+              true;
+          }
+        } else if (
+          rollbackStatus ===
+            "failed"
+        ) {
+          if (githubActive) {
+            recoveryClassification =
+              "failed_but_github_still_active";
+          } else if (
+            runStatus ===
+              "completed"
+          ) {
+            recoveryClassification =
+              runConclusion ===
+                "success"
+                ? "failed_but_github_completed_success"
+                : "failed_github_completed_failure";
+          }
+
+          manualReviewRequired =
+            true;
+        }
+      } else if (
+        githubCorrelation.checked &&
+        githubCorrelation.configured &&
+        !githubCorrelation.found &&
+        !githubCorrelation.error
+      ) {
+        recoveryClassification =
+          rollbackStatus ===
+            "running"
+            ? "running_github_run_not_found"
+            : "failed_github_run_not_found";
+        manualReviewRequired =
+          true;
+      } else if (
+        githubCorrelation.error
+      ) {
+        recoveryClassification =
+          rollbackStatus ===
+            "running"
+            ? (
+                recoveryStale
+                  ? "running_stale_github_lookup_error"
+                  : "running_github_lookup_error"
+              )
+            : "failed_github_lookup_error";
+
+        if (
+          rollbackStatus ===
+            "failed" ||
+          recoveryStale
+        ) {
+          manualReviewRequired =
+            true;
+        }
+      }
+    }
+
     return {
       configured: true,
       available: true,
@@ -1999,6 +2176,8 @@ async function getRestoreRollbackStatus(
           stage:
             recoveryStage,
         },
+        github:
+          githubCorrelation,
       },
     };
   } catch (error) {
@@ -2052,6 +2231,16 @@ async function getRestoreRollbackStatus(
           schema: null,
           verify: null,
           stage: "not_started",
+        },
+        github: {
+          checked: false,
+          configured: false,
+          found: false,
+          run_id: null,
+          status: null,
+          conclusion: null,
+          updated_at: null,
+          error: null,
         },
       },
     };
@@ -4781,6 +4970,129 @@ function getGitHubRollbackConfiguration(
     repo,
     workflow,
     token,
+  };
+}
+
+
+async function getGitHubRollbackRunById(
+  env,
+  runId
+) {
+  const github =
+    getGitHubRollbackConfiguration(
+      env
+    );
+
+  const normalizedRunId =
+    normalizePositiveInteger(
+      runId
+    );
+
+  if (!github.ok) {
+    return {
+      configured: false,
+      found: false,
+      run: null,
+      error:
+        github.error,
+    };
+  }
+
+  if (!normalizedRunId) {
+    return {
+      configured: true,
+      found: false,
+      run: null,
+      error:
+        "invalid_rollback_github_run_id",
+    };
+  }
+
+  const url =
+    `https://api.github.com/repos/${encodeURIComponent(
+      github.owner
+    )}/${encodeURIComponent(
+      github.repo
+    )}/actions/runs/${normalizedRunId}`;
+
+  let response;
+
+  try {
+    response =
+      await fetch(
+        url,
+        {
+          method: "GET",
+          headers: {
+            "Accept":
+              "application/vnd.github+json",
+            "Authorization":
+              `Bearer ${github.token}`,
+            "X-GitHub-Api-Version":
+              "2022-11-28",
+            "User-Agent":
+              "MVX-Housing-System",
+          },
+        }
+      );
+  } catch (error) {
+    App.logError(
+      "rollback_github_run_lookup_failed",
+      error,
+      {
+        rollback_github_run_id:
+          normalizedRunId,
+      }
+    );
+
+    return {
+      configured: true,
+      found: false,
+      run: null,
+      error:
+        "rollback_github_run_lookup_failed",
+    };
+  }
+
+  if (response.status === 404) {
+    return {
+      configured: true,
+      found: false,
+      run: null,
+      error: null,
+    };
+  }
+
+  if (!response.ok) {
+    return {
+      configured: true,
+      found: false,
+      run: null,
+      error:
+        `rollback_github_run_lookup_http_${response.status}`,
+    };
+  }
+
+  const payload =
+    await response
+      .json()
+      .catch(() => null);
+
+  if (!payload) {
+    return {
+      configured: true,
+      found: false,
+      run: null,
+      error:
+        "rollback_github_run_lookup_invalid_response",
+    };
+  }
+
+  return {
+    configured: true,
+    found: true,
+    run: payload,
+    error: null,
   };
 }
 
@@ -12582,6 +12894,8 @@ Router.register(
         rollback_recovery_release_uncertain_enabled:
           true,
         rollback_recovery_running_failed_diagnostics_enabled:
+          true,
+        rollback_recovery_github_run_correlation_enabled:
           true,
         rollback_recovery_mutation_enabled:
           true,
