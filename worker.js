@@ -1559,6 +1559,13 @@ async function getRestoreRollbackStatus(
         last_recovery_action: null,
         last_recovery_action_at: null,
         last_recovery_action_by: null,
+        progress: {
+          main: null,
+          pii: null,
+          schema: null,
+          verify: null,
+          stage: "not_started",
+        },
       },
     };
   }
@@ -1582,7 +1589,11 @@ async function getRestoreRollbackStatus(
           rollback_recovery_action_at,
           rollback_recovery_action_by,
           main_rollback_bookmark,
-          pii_rollback_bookmark
+          pii_rollback_bookmark,
+          main_rollback_status,
+          pii_rollback_status,
+          rollback_schema_status,
+          rollback_verify_status
         FROM restore_execution_journal
         WHERE
           restore_github_run_id IS NOT NULL
@@ -1711,6 +1722,59 @@ async function getRestoreRollbackStatus(
           )
         : null;
 
+    const mainRollbackStatus =
+      row.main_rollback_status
+        ? String(
+            row.main_rollback_status
+          )
+        : null;
+
+    const piiRollbackStatus =
+      row.pii_rollback_status
+        ? String(
+            row.pii_rollback_status
+          )
+        : null;
+
+    const rollbackSchemaStatus =
+      row.rollback_schema_status
+        ? String(
+            row.rollback_schema_status
+          )
+        : null;
+
+    const rollbackVerifyStatus =
+      row.rollback_verify_status
+        ? String(
+            row.rollback_verify_status
+          )
+        : null;
+
+    let recoveryStage =
+      "not_started";
+
+    if (
+      rollbackVerifyStatus
+    ) {
+      recoveryStage =
+        "verify";
+    } else if (
+      rollbackSchemaStatus
+    ) {
+      recoveryStage =
+        "schema";
+    } else if (
+      piiRollbackStatus
+    ) {
+      recoveryStage =
+        "pii";
+    } else if (
+      mainRollbackStatus
+    ) {
+      recoveryStage =
+        "main";
+    }
+
     let recoveryClassification =
       "healthy";
 
@@ -1744,10 +1808,37 @@ async function getRestoreRollbackStatus(
         ageMinutes >=
           ROLLBACK_RUNNING_STALE_MINUTES;
 
-      recoveryClassification =
-        recoveryStale
-          ? "running_stale"
-          : "running";
+      if (!recoveryStale) {
+        recoveryClassification =
+          "running";
+      } else if (
+        rollbackVerifyStatus ===
+          "running"
+      ) {
+        recoveryClassification =
+          "running_stale_verify";
+      } else if (
+        rollbackSchemaStatus ===
+          "running"
+      ) {
+        recoveryClassification =
+          "running_stale_schema";
+      } else if (
+        piiRollbackStatus ===
+          "running"
+      ) {
+        recoveryClassification =
+          "running_stale_pii";
+      } else if (
+        mainRollbackStatus ===
+          "running"
+      ) {
+        recoveryClassification =
+          "running_stale_main";
+      } else {
+        recoveryClassification =
+          "running_stale_unknown_stage";
+      }
 
       manualReviewRequired =
         recoveryStale;
@@ -1756,6 +1847,30 @@ async function getRestoreRollbackStatus(
         "failed"
     ) {
       if (
+        rollbackVerifyStatus ===
+          "failed"
+      ) {
+        recoveryClassification =
+          "failed_verify";
+      } else if (
+        rollbackSchemaStatus ===
+          "failed"
+      ) {
+        recoveryClassification =
+          "failed_schema";
+      } else if (
+        piiRollbackStatus ===
+          "failed"
+      ) {
+        recoveryClassification =
+          "failed_pii";
+      } else if (
+        mainRollbackStatus ===
+          "failed"
+      ) {
+        recoveryClassification =
+          "failed_main";
+      } else if (
         destructiveProgressDetected
       ) {
         recoveryClassification =
@@ -1872,6 +1987,18 @@ async function getRestoreRollbackStatus(
           normalizePositiveInteger(
             row.rollback_recovery_action_by
           ) || null,
+        progress: {
+          main:
+            mainRollbackStatus,
+          pii:
+            piiRollbackStatus,
+          schema:
+            rollbackSchemaStatus,
+          verify:
+            rollbackVerifyStatus,
+          stage:
+            recoveryStage,
+        },
       },
     };
   } catch (error) {
@@ -1919,6 +2046,13 @@ async function getRestoreRollbackStatus(
         last_recovery_action: null,
         last_recovery_action_at: null,
         last_recovery_action_by: null,
+        progress: {
+          main: null,
+          pii: null,
+          schema: null,
+          verify: null,
+          stage: "not_started",
+        },
       },
     };
   }
@@ -12446,6 +12580,8 @@ Router.register(
         rollback_recovery_reconcile_enabled:
           true,
         rollback_recovery_release_uncertain_enabled:
+          true,
+        rollback_recovery_running_failed_diagnostics_enabled:
           true,
         rollback_recovery_mutation_enabled:
           true,
