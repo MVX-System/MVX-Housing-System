@@ -1576,6 +1576,14 @@ async function getRestoreRollbackStatus(
           updated_at: null,
           error: null,
         },
+        actions: {
+          safe_control_reset_possible:
+            false,
+          manual_reconcile_possible:
+            false,
+          retry_prohibited:
+            false,
+        },
       },
     };
   }
@@ -2090,6 +2098,70 @@ async function getRestoreRollbackStatus(
       }
     }
 
+    const githubCompleted =
+      Boolean(
+        githubCorrelation.checked &&
+        githubCorrelation.configured &&
+        githubCorrelation.found &&
+        githubCorrelation.status ===
+          "completed"
+      );
+
+    const githubCompletedSuccess =
+      Boolean(
+        githubCompleted &&
+        githubCorrelation.conclusion ===
+          "success"
+      );
+
+    const githubCompletedFailure =
+      Boolean(
+        githubCompleted &&
+        githubCorrelation.conclusion &&
+        githubCorrelation.conclusion !==
+          "success"
+      );
+
+    const noRollbackStageStarted =
+      !mainRollbackStatus &&
+      !piiRollbackStatus &&
+      !rollbackSchemaStatus &&
+      !rollbackVerifyStatus &&
+      !destructiveProgressDetected;
+
+    const manualReconcilePossible =
+      Boolean(
+        (
+          rollbackStatus ===
+            "running" ||
+          rollbackStatus ===
+            "failed"
+        ) &&
+        githubCompleted
+      );
+
+    const safeControlResetPossible =
+      Boolean(
+        (
+          rollbackStatus ===
+            "running" ||
+          rollbackStatus ===
+            "failed"
+        ) &&
+        githubCompletedFailure &&
+        noRollbackStageStarted
+      );
+
+    const retryProhibited =
+      Boolean(
+        rollbackStatus ===
+          "running" ||
+        rollbackStatus ===
+          "failed" ||
+        destructiveProgressDetected ||
+        githubCompletedSuccess
+      );
+
     return {
       configured: true,
       available: true,
@@ -2178,6 +2250,14 @@ async function getRestoreRollbackStatus(
         },
         github:
           githubCorrelation,
+        actions: {
+          safe_control_reset_possible:
+            safeControlResetPossible,
+          manual_reconcile_possible:
+            manualReconcilePossible,
+          retry_prohibited:
+            retryProhibited,
+        },
       },
     };
   } catch (error) {
@@ -2241,6 +2321,14 @@ async function getRestoreRollbackStatus(
           conclusion: null,
           updated_at: null,
           error: null,
+        },
+        actions: {
+          safe_control_reset_possible:
+            false,
+          manual_reconcile_possible:
+            false,
+          retry_prohibited:
+            false,
         },
       },
     };
@@ -12896,6 +12984,8 @@ Router.register(
         rollback_recovery_running_failed_diagnostics_enabled:
           true,
         rollback_recovery_github_run_correlation_enabled:
+          true,
+        rollback_recovery_action_eligibility_enabled:
           true,
         rollback_recovery_mutation_enabled:
           true,
