@@ -391,6 +391,18 @@ const TEXT = {
       "The stale dispatch claim was released. Rollback was not started.",
     rollbackRecoveryReleaseFailed:
       "Could not release the uncertain dispatch.",
+    rollbackProgress:
+      "Rollback progress",
+    rollbackProgressStage:
+      "Current stage",
+    rollbackProgressMain:
+      "Main D1",
+    rollbackProgressPii:
+      "PII D1",
+    rollbackProgressSchema:
+      "Control-plane schema",
+    rollbackProgressVerify:
+      "Post-rollback verify",
     rollbackPasswordRequired:
       "Enter your current password.",
     rollbackConfirmationRequired:
@@ -759,6 +771,18 @@ const TEXT = {
       "Novecojušā dispatch rezervācija ir atbrīvota. Rollback netika palaists.",
     rollbackRecoveryReleaseFailed:
       "Neizdevās atbrīvot nenoteikto dispatch.",
+    rollbackProgress:
+      "Rollback izpildes progress",
+    rollbackProgressStage:
+      "Pašreizējais posms",
+    rollbackProgressMain:
+      "Main D1",
+    rollbackProgressPii:
+      "PII D1",
+    rollbackProgressSchema:
+      "Control-plane shēma",
+    rollbackProgressVerify:
+      "Pārbaude pēc rollback",
     rollbackPasswordRequired:
       "Ievadiet pašreizējo paroli.",
     rollbackConfirmationRequired:
@@ -1127,6 +1151,18 @@ const TEXT = {
       "Зависший dispatch claim освобождён. Rollback не запускался.",
     rollbackRecoveryReleaseFailed:
       "Не удалось освободить неопределённый dispatch.",
+    rollbackProgress:
+      "Ход выполнения rollback",
+    rollbackProgressStage:
+      "Текущий этап",
+    rollbackProgressMain:
+      "Main D1",
+    rollbackProgressPii:
+      "PII D1",
+    rollbackProgressSchema:
+      "Control-plane schema",
+    rollbackProgressVerify:
+      "Проверка после rollback",
     rollbackPasswordRequired:
       "Введите текущий пароль.",
     rollbackConfirmationRequired:
@@ -4104,6 +4140,91 @@ export default function SettingsPage() {
                           }
                         />
                       </div>
+
+                      {rollbackRecovery.progress && (
+                        <div
+                          style={{
+                            marginTop: 4,
+                            display: "grid",
+                            gap: 8,
+                          }}
+                        >
+                          <div
+                            style={{
+                              color:
+                                "var(--text-h)",
+                              fontSize: 10,
+                              fontWeight: 800,
+                            }}
+                          >
+                            {text.rollbackProgress}
+                          </div>
+
+                          <div
+                            style={detailGridStyle}
+                          >
+                            <InfoItem
+                              label={
+                                text.rollbackProgressStage
+                              }
+                              value={
+                                rollbackRecovery
+                                  .progress
+                                  .stage ||
+                                "-"
+                              }
+                            />
+
+                            <InfoItem
+                              label={
+                                text.rollbackProgressMain
+                              }
+                              value={
+                                rollbackRecovery
+                                  .progress
+                                  .main ||
+                                "-"
+                              }
+                            />
+
+                            <InfoItem
+                              label={
+                                text.rollbackProgressPii
+                              }
+                              value={
+                                rollbackRecovery
+                                  .progress
+                                  .pii ||
+                                "-"
+                              }
+                            />
+
+                            <InfoItem
+                              label={
+                                text.rollbackProgressSchema
+                              }
+                              value={
+                                rollbackRecovery
+                                  .progress
+                                  .schema ||
+                                "-"
+                              }
+                            />
+
+                            <InfoItem
+                              label={
+                                text.rollbackProgressVerify
+                              }
+                              value={
+                                rollbackRecovery
+                                  .progress
+                                  .verify ||
+                                "-"
+                              }
+                            />
+                          </div>
+                        </div>
+                      )}
 
                       {rollbackReconcileError && (
                         <div
