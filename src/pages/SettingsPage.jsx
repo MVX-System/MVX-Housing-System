@@ -403,6 +403,28 @@ const TEXT = {
       "Control-plane schema",
     rollbackProgressVerify:
       "Post-rollback verify",
+    rollbackGithubRun:
+      "GitHub rollback run",
+    rollbackGithubChecked:
+      "GitHub checked",
+    rollbackGithubFound:
+      "Run found",
+    rollbackGithubRunId:
+      "Run ID",
+    rollbackGithubStatus:
+      "Run status",
+    rollbackGithubConclusion:
+      "Conclusion",
+    rollbackRecoveryActions:
+      "Recovery actions",
+    rollbackSafeControlReset:
+      "Safe control reset possible",
+    rollbackManualReconcile:
+      "Manual reconcile possible",
+    rollbackRetryProhibited:
+      "Retry prohibited",
+    rollbackRecoveryReconcileRunningFailed:
+      "Reconcile running/failed state",
     rollbackPasswordRequired:
       "Enter your current password.",
     rollbackConfirmationRequired:
@@ -783,6 +805,28 @@ const TEXT = {
       "Control-plane shēma",
     rollbackProgressVerify:
       "Pārbaude pēc rollback",
+    rollbackGithubRun:
+      "GitHub rollback izpilde",
+    rollbackGithubChecked:
+      "GitHub pārbaudīts",
+    rollbackGithubFound:
+      "Izpilde atrasta",
+    rollbackGithubRunId:
+      "Izpildes ID",
+    rollbackGithubStatus:
+      "Izpildes statuss",
+    rollbackGithubConclusion:
+      "Rezultāts",
+    rollbackRecoveryActions:
+      "Atkopšanas darbības",
+    rollbackSafeControlReset:
+      "Droša control-state atiestatīšana iespējama",
+    rollbackManualReconcile:
+      "Manuāla saskaņošana iespējama",
+    rollbackRetryProhibited:
+      "Atkārtots rollback aizliegts",
+    rollbackRecoveryReconcileRunningFailed:
+      "Saskaņot running/failed stāvokli",
     rollbackPasswordRequired:
       "Ievadiet pašreizējo paroli.",
     rollbackConfirmationRequired:
@@ -1163,6 +1207,28 @@ const TEXT = {
       "Control-plane schema",
     rollbackProgressVerify:
       "Проверка после rollback",
+    rollbackGithubRun:
+      "GitHub rollback run",
+    rollbackGithubChecked:
+      "GitHub проверен",
+    rollbackGithubFound:
+      "Run найден",
+    rollbackGithubRunId:
+      "Run ID",
+    rollbackGithubStatus:
+      "Статус run",
+    rollbackGithubConclusion:
+      "Результат",
+    rollbackRecoveryActions:
+      "Recovery actions",
+    rollbackSafeControlReset:
+      "Безопасный control reset возможен",
+    rollbackManualReconcile:
+      "Manual reconcile возможен",
+    rollbackRetryProhibited:
+      "Повторный rollback запрещён",
+    rollbackRecoveryReconcileRunningFailed:
+      "Reconcile состояния running/failed",
     rollbackPasswordRequired:
       "Введите текущий пароль.",
     rollbackConfirmationRequired:
@@ -1857,13 +1923,37 @@ export default function SettingsPage() {
       ?.recovery ||
     null;
 
-  const rollbackReconcileVisible =
+  const rollbackGithub =
+    rollbackRecovery
+      ?.github ||
+    null;
+
+  const rollbackRecoveryActions =
+    rollbackRecovery
+      ?.actions ||
+    null;
+
+  const rollbackRunningFailedReconcileVisible =
+    Boolean(
+      rollbackStatus
+        ?.restore_execution_id &&
+      rollbackRecoveryActions
+        ?.manual_reconcile_possible
+    );
+
+  const rollbackDispatchReconcileVisible =
     Boolean(
       rollbackStatus
         ?.restore_execution_id &&
       rollbackRecovery
         ?.classification ===
         "dispatch_uncertain"
+    );
+
+  const rollbackReconcileVisible =
+    Boolean(
+      rollbackDispatchReconcileVisible ||
+      rollbackRunningFailedReconcileVisible
     );
 
   const rollbackReleaseVisible =
@@ -4226,6 +4316,144 @@ export default function SettingsPage() {
                         </div>
                       )}
 
+                      {rollbackGithub && (
+                        <div
+                          style={{
+                            marginTop: 4,
+                            display: "grid",
+                            gap: 8,
+                          }}
+                        >
+                          <div
+                            style={{
+                              color:
+                                "var(--text-h)",
+                              fontSize: 10,
+                              fontWeight: 800,
+                            }}
+                          >
+                            {text.rollbackGithubRun}
+                          </div>
+
+                          <div
+                            style={detailGridStyle}
+                          >
+                            <InfoItem
+                              label={
+                                text.rollbackGithubChecked
+                              }
+                              value={
+                                rollbackGithub.checked
+                                  ? text.rollbackRecoveryYes
+                                  : text.rollbackRecoveryNo
+                              }
+                            />
+
+                            <InfoItem
+                              label={
+                                text.rollbackGithubFound
+                              }
+                              value={
+                                rollbackGithub.found
+                                  ? text.rollbackRecoveryYes
+                                  : text.rollbackRecoveryNo
+                              }
+                            />
+
+                            <InfoItem
+                              label={
+                                text.rollbackGithubRunId
+                              }
+                              value={
+                                rollbackGithub.run_id ||
+                                "-"
+                              }
+                            />
+
+                            <InfoItem
+                              label={
+                                text.rollbackGithubStatus
+                              }
+                              value={
+                                rollbackGithub.status ||
+                                "-"
+                              }
+                            />
+
+                            <InfoItem
+                              label={
+                                text.rollbackGithubConclusion
+                              }
+                              value={
+                                rollbackGithub.conclusion ||
+                                "-"
+                              }
+                            />
+                          </div>
+                        </div>
+                      )}
+
+                      {rollbackRecoveryActions && (
+                        <div
+                          style={{
+                            marginTop: 4,
+                            display: "grid",
+                            gap: 8,
+                          }}
+                        >
+                          <div
+                            style={{
+                              color:
+                                "var(--text-h)",
+                              fontSize: 10,
+                              fontWeight: 800,
+                            }}
+                          >
+                            {text.rollbackRecoveryActions}
+                          </div>
+
+                          <div
+                            style={detailGridStyle}
+                          >
+                            <InfoItem
+                              label={
+                                text.rollbackSafeControlReset
+                              }
+                              value={
+                                rollbackRecoveryActions
+                                  .safe_control_reset_possible
+                                  ? text.rollbackRecoveryYes
+                                  : text.rollbackRecoveryNo
+                              }
+                            />
+
+                            <InfoItem
+                              label={
+                                text.rollbackManualReconcile
+                              }
+                              value={
+                                rollbackRecoveryActions
+                                  .manual_reconcile_possible
+                                  ? text.rollbackRecoveryYes
+                                  : text.rollbackRecoveryNo
+                              }
+                            />
+
+                            <InfoItem
+                              label={
+                                text.rollbackRetryProhibited
+                              }
+                              value={
+                                rollbackRecoveryActions
+                                  .retry_prohibited
+                                  ? text.rollbackRecoveryYes
+                                  : text.rollbackRecoveryNo
+                              }
+                            />
+                          </div>
+                        </div>
+                      )}
+
                       {rollbackReconcileError && (
                         <div
                           role="alert"
@@ -4261,7 +4489,11 @@ export default function SettingsPage() {
                         >
                           {rollbackReconciling
                             ? text.rollbackRecoveryReconciling
-                            : text.rollbackRecoveryReconcile}
+                            : (
+                                rollbackRunningFailedReconcileVisible
+                                  ? text.rollbackRecoveryReconcileRunningFailed
+                                  : text.rollbackRecoveryReconcile
+                              )}
                         </button>
                       )}
 
