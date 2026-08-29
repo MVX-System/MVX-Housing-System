@@ -12987,6 +12987,8 @@ Router.register(
           true,
         rollback_recovery_action_eligibility_enabled:
           true,
+        rollback_recovery_running_failed_reconcile_enabled:
+          true,
         rollback_recovery_mutation_enabled:
           true,
         rollback_execution_enabled:
@@ -16085,15 +16087,15 @@ Router.register(
 // ADMIN RECONCILE ROLLBACK DISPATCH
 // Stage 2I-SR14F-D5B-2I
 //
-// Non-destructive recovery control for an uncertain dispatch:
+// Non-destructive recovery reconciliation:
 // - admin authorization + dedicated rate limit;
 // - exact restore_execution_id;
-// - only rollback_required / dispatching rows are eligible;
-// - GitHub Actions workflow runs are queried read-only;
-// - exact run-name correlation is required;
-// - only diagnostic fields in OPS_DB are updated;
-// - rollback_status, rollback_github_run_id, bookmarks and D1 data are
-//   deliberately NOT changed by this endpoint.
+// - dispatching rows use exact run-name correlation;
+// - running/failed rows use their persisted rollback_github_run_id;
+// - GitHub Actions is queried read-only;
+// - only diagnostic recovery fields in OPS_DB are updated;
+// - rollback_status, restore status, rollback_github_run_id, bookmarks,
+//   maintenance state and Main/PII D1 data are deliberately NOT changed.
 // =========================
 Router.register(
   "POST",
@@ -16170,7 +16172,11 @@ Router.register(
           rollback_dispatch_requested_at,
           rollback_started_at,
           main_rollback_bookmark,
-          pii_rollback_bookmark
+          pii_rollback_bookmark,
+          main_rollback_status,
+          pii_rollback_status,
+          rollback_schema_status,
+          rollback_verify_status
         FROM restore_execution_journal
         WHERE restore_execution_id = ?
         LIMIT 1
@@ -16187,12 +16193,287 @@ Router.register(
       };
     }
 
-    if (
-      String(journal.status || "") !==
-        "rollback_required" ||
+    const journalRestoreStatus =
+      String(
+        journal.status || ""
+      );
+
+    const journalRollbackStatus =
       String(
         journal.rollback_status || ""
-      ) !== "dispatching"
+      );
+
+    if (
+      journalRestoreStatus ===
+        "rollback_required" &&
+      (
+        journalRollbackStatus ===
+          "running" ||
+        journalRollbackStatus ===
+          "failed"
+      )
+    ) {
+      const rollbackGithubRunId =
+        normalizePositiveInteger(
+          journal.rollback_github_run_id
+        );
+
+      if (!rollbackGithubRunId) {
+        return {
+          error:
+            "rollback_github_run_id_missing",
+          restore_execution_id:
+            restoreExecutionId,
+          restore_status:
+            journal.status || null,
+          rollback_status:
+            journal.rollback_status || null,
+          manual_review_required:
+            true,
+        };
+      }
+
+      const githubLookup =
+        await getGitHubRollbackRunById(
+          ctx.env,
+          rollbackGithubRunId
+        );
+
+      const checkedAt =
+        new Date().toISOString();
+
+      let recoveryStatus =
+        "github_run_state_unknown";
+
+      let githubRunStatus = null;
+      let githubRunConclusion = null;
+      let githubRunUpdatedAt = null;
+
+      if (!githubLookup.configured) {
+        return {
+          error:
+            githubLookup.error ||
+            "github_rollback_not_configured",
+          restore_execution_id:
+            restoreExecutionId,
+          manual_review_required:
+            true,
+        };
+      }
+
+      if (githubLookup.error) {
+        recoveryStatus =
+          "github_run_lookup_error";
+      } else if (
+        !githubLookup.found ||
+        !githubLookup.run
+      ) {
+        recoveryStatus =
+          "github_run_not_found";
+      } else {
+        githubRunStatus =
+          githubLookup.run.status
+            ? String(
+                githubLookup.run.status
+              )
+            : null;
+
+        githubRunConclusion =
+          githubLookup.run.conclusion
+            ? String(
+                githubLookup.run.conclusion
+              )
+            : null;
+
+        githubRunUpdatedAt =
+          githubLookup.run.updated_at
+            ? String(
+                githubLookup.run.updated_at
+              )
+            : null;
+
+        const githubRunActive =
+          [
+            "queued",
+            "waiting",
+            "pending",
+            "requested",
+            "in_progress",
+          ].includes(
+            githubRunStatus
+          );
+
+        if (
+          journalRollbackStatus ===
+            "running"
+        ) {
+          if (githubRunActive) {
+            recoveryStatus =
+              "github_run_active_ops_running";
+          } else if (
+            githubRunStatus ===
+              "completed"
+          ) {
+            recoveryStatus =
+              githubRunConclusion ===
+                "success"
+                ? "github_run_completed_success_ops_running"
+                : "github_run_completed_failure_ops_running";
+          }
+        } else if (
+          journalRollbackStatus ===
+            "failed"
+        ) {
+          if (githubRunActive) {
+            recoveryStatus =
+              "github_run_active_ops_failed";
+          } else if (
+            githubRunStatus ===
+              "completed"
+          ) {
+            recoveryStatus =
+              githubRunConclusion ===
+                "success"
+                ? "github_run_completed_success_ops_failed"
+                : "github_run_completed_failure_ops_failed";
+          }
+        }
+      }
+
+      // Running/failed reconciliation is intentionally diagnostic-only.
+      // It records fresh GitHub evidence in OPS_DB but does not alter
+      // rollback_status, restore status, bookmarks, maintenance state,
+      // or any Main/PII D1 data.
+      await ctx.env.OPS_DB.prepare(`
+        UPDATE restore_execution_journal
+        SET
+          rollback_recovery_status = ?,
+          rollback_recovery_checked_at = ?,
+          updated_at = ?
+        WHERE restore_execution_id = ?
+          AND status = 'rollback_required'
+          AND rollback_status = ?
+          AND rollback_github_run_id = ?
+      `)
+        .bind(
+          recoveryStatus,
+          checkedAt,
+          checkedAt,
+          restoreExecutionId,
+          journalRollbackStatus,
+          String(
+            rollbackGithubRunId
+          )
+        )
+        .run();
+
+      await SecurityAudit.recordSafe(
+        ctx,
+        {
+          actorUserId:
+            admin.user_id,
+          action:
+            "admin.restore_rollback_reconcile_running_failed",
+          targetType:
+            "restore_execution",
+          targetId:
+            String(
+              restoreExecutionId
+            ),
+          result:
+            "success",
+          details: {
+            rollback_status:
+              journalRollbackStatus,
+            recovery_status:
+              recoveryStatus,
+            github_run_id:
+              String(
+                rollbackGithubRunId
+              ),
+            github_run_status:
+              githubRunStatus,
+            github_run_conclusion:
+              githubRunConclusion,
+            core_restore_state_mutated:
+              false,
+            destructive_rollback_started_by_worker:
+              false,
+            retry_started:
+              false,
+            reset_started:
+              false,
+          },
+        }
+      );
+
+      return {
+        ok: true,
+        mode:
+          "rollback_running_failed_reconcile_diagnostic_only",
+        restore_execution_id:
+          restoreExecutionId,
+        restore_status:
+          journal.status || null,
+        rollback_status:
+          journal.rollback_status || null,
+        recovery_status:
+          recoveryStatus,
+        github_run: {
+          id:
+            String(
+              rollbackGithubRunId
+            ),
+          found:
+            Boolean(
+              githubLookup.found
+            ),
+          status:
+            githubRunStatus,
+          conclusion:
+            githubRunConclusion,
+          updated_at:
+            githubRunUpdatedAt,
+          error:
+            githubLookup.error ||
+            null,
+        },
+        progress: {
+          main:
+            journal.main_rollback_status ||
+            null,
+          pii:
+            journal.pii_rollback_status ||
+            null,
+          schema:
+            journal.rollback_schema_status ||
+            null,
+          verify:
+            journal.rollback_verify_status ||
+            null,
+        },
+        manual_review_required:
+          true,
+        rollback_status_changed:
+          false,
+        restore_status_changed:
+          false,
+        rollback_github_run_id_changed:
+          false,
+        destructive_rollback_started:
+          false,
+        retry_started:
+          false,
+        reset_started:
+          false,
+      };
+    }
+
+    if (
+      journalRestoreStatus !==
+        "rollback_required" ||
+      journalRollbackStatus !==
+        "dispatching"
     ) {
       return {
         error:
