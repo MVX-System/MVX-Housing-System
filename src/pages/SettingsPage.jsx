@@ -434,9 +434,55 @@ const TEXT = {
     rollbackSafeResetConfirmation:
       "Type exactly",
     rollbackSafeResetSuccess:
-      "Rollback control state reset safely. Retry remains prohibited.",
+      "Rollback control state reset safely. Retry now requires explicit authorization.",
     rollbackSafeResetFailed:
       "Could not reset rollback control state.",
+    rollbackRetryAuthorization:
+      "Rollback retry authorization",
+    rollbackRetryAuthorizationStatus:
+      "Authorization status",
+    rollbackRetryAuthorizationActive:
+      "Active",
+    rollbackRetryAuthorizationInactive:
+      "Not active",
+    rollbackRetryAuthorizedAt:
+      "Authorized at",
+    rollbackRetryAuthorizationExpiresAt:
+      "Expires at",
+    rollbackRetryAttempt:
+      "Retry attempt",
+    rollbackRetryConsumedAt:
+      "Authorization consumed at",
+    rollbackRetryDispatchRequestedAt:
+      "Retry dispatch requested at",
+    rollbackRetryAuthorize:
+      "Authorize retry",
+    rollbackRetryAuthorizing:
+      "Authorizing retry...",
+    rollbackRetryAuthorizePassword:
+      "Current password",
+    rollbackRetryAuthorizeConfirmation:
+      "Type exactly",
+    rollbackRetryAuthorizeHint:
+      "Creates a one-time authorization valid for 5 minutes. This step does not start rollback.",
+    rollbackRetryAuthorizeSuccess:
+      "Rollback retry authorized. Authorization is valid for 5 minutes.",
+    rollbackRetryAuthorizeFailed:
+      "Could not authorize rollback retry.",
+    rollbackRetryDispatch:
+      "Dispatch authorized retry",
+    rollbackRetryDispatching:
+      "Dispatching authorized retry...",
+    rollbackRetryDispatchPassword:
+      "Current password",
+    rollbackRetryDispatchConfirmation:
+      "Type exactly",
+    rollbackRetryDispatchHint:
+      "Consumes the active authorization and starts the single permitted rollback retry.",
+    rollbackRetryDispatchSuccess:
+      "Authorized rollback retry dispatch was accepted.",
+    rollbackRetryDispatchFailed:
+      "Could not dispatch the authorized rollback retry.",
     rollbackPasswordRequired:
       "Enter your current password.",
     rollbackConfirmationRequired:
@@ -848,9 +894,55 @@ const TEXT = {
     rollbackSafeResetConfirmation:
       "Ievadiet precīzi",
     rollbackSafeResetSuccess:
-      "Rollback control-state droši atiestatīts. Retry paliek aizliegts.",
+      "Rollback control-state droši atiestatīts. Retry tagad nepieciešama atsevišķa autorizācija.",
     rollbackSafeResetFailed:
       "Neizdevās atiestatīt rollback control-state.",
+    rollbackRetryAuthorization:
+      "Rollback retry autorizācija",
+    rollbackRetryAuthorizationStatus:
+      "Autorizācijas statuss",
+    rollbackRetryAuthorizationActive:
+      "Aktīva",
+    rollbackRetryAuthorizationInactive:
+      "Nav aktīva",
+    rollbackRetryAuthorizedAt:
+      "Autorizēts",
+    rollbackRetryAuthorizationExpiresAt:
+      "Derīga līdz",
+    rollbackRetryAttempt:
+      "Retry mēģinājums",
+    rollbackRetryConsumedAt:
+      "Autorizācija izmantota",
+    rollbackRetryDispatchRequestedAt:
+      "Retry dispatch pieprasīts",
+    rollbackRetryAuthorize:
+      "Autorizēt retry",
+    rollbackRetryAuthorizing:
+      "Retry autorizēšana...",
+    rollbackRetryAuthorizePassword:
+      "Pašreizējā parole",
+    rollbackRetryAuthorizeConfirmation:
+      "Ievadiet precīzi",
+    rollbackRetryAuthorizeHint:
+      "Izveido vienreizēju autorizāciju uz 5 minūtēm. Šis solis rollback nepalaiž.",
+    rollbackRetryAuthorizeSuccess:
+      "Rollback retry autorizēts. Autorizācija ir derīga 5 minūtes.",
+    rollbackRetryAuthorizeFailed:
+      "Neizdevās autorizēt rollback retry.",
+    rollbackRetryDispatch:
+      "Palaist autorizēto retry",
+    rollbackRetryDispatching:
+      "Autorizētā retry palaišana...",
+    rollbackRetryDispatchPassword:
+      "Pašreizējā parole",
+    rollbackRetryDispatchConfirmation:
+      "Ievadiet precīzi",
+    rollbackRetryDispatchHint:
+      "Izmanto aktīvo autorizāciju un palaiž vienīgo atļauto rollback retry.",
+    rollbackRetryDispatchSuccess:
+      "Autorizētā rollback retry palaišana pieņemta.",
+    rollbackRetryDispatchFailed:
+      "Neizdevās palaist autorizēto rollback retry.",
     rollbackPasswordRequired:
       "Ievadiet pašreizējo paroli.",
     rollbackConfirmationRequired:
@@ -1262,9 +1354,55 @@ const TEXT = {
     rollbackSafeResetConfirmation:
       "Введите точно",
     rollbackSafeResetSuccess:
-      "Control-state rollback безопасно сброшен. Retry остаётся запрещён.",
+      "Control-state rollback безопасно сброшен. Для retry теперь требуется отдельная авторизация.",
     rollbackSafeResetFailed:
       "Не удалось выполнить safe control reset.",
+    rollbackRetryAuthorization:
+      "Авторизация повторного rollback",
+    rollbackRetryAuthorizationStatus:
+      "Статус авторизации",
+    rollbackRetryAuthorizationActive:
+      "Активна",
+    rollbackRetryAuthorizationInactive:
+      "Не активна",
+    rollbackRetryAuthorizedAt:
+      "Авторизовано",
+    rollbackRetryAuthorizationExpiresAt:
+      "Действует до",
+    rollbackRetryAttempt:
+      "Попытка retry",
+    rollbackRetryConsumedAt:
+      "Авторизация использована",
+    rollbackRetryDispatchRequestedAt:
+      "Retry dispatch запрошен",
+    rollbackRetryAuthorize:
+      "Авторизовать retry",
+    rollbackRetryAuthorizing:
+      "Авторизация retry...",
+    rollbackRetryAuthorizePassword:
+      "Текущий пароль",
+    rollbackRetryAuthorizeConfirmation:
+      "Введите точно",
+    rollbackRetryAuthorizeHint:
+      "Создаёт одноразовую авторизацию на 5 минут. Этот шаг не запускает rollback.",
+    rollbackRetryAuthorizeSuccess:
+      "Rollback retry авторизован. Авторизация действует 5 минут.",
+    rollbackRetryAuthorizeFailed:
+      "Не удалось авторизовать rollback retry.",
+    rollbackRetryDispatch:
+      "Запустить авторизованный retry",
+    rollbackRetryDispatching:
+      "Запуск авторизованного retry...",
+    rollbackRetryDispatchPassword:
+      "Текущий пароль",
+    rollbackRetryDispatchConfirmation:
+      "Введите точно",
+    rollbackRetryDispatchHint:
+      "Использует активную авторизацию и запускает единственную разрешённую повторную попытку rollback.",
+    rollbackRetryDispatchSuccess:
+      "Запуск авторизованного rollback retry принят.",
+    rollbackRetryDispatchFailed:
+      "Не удалось запустить авторизованный rollback retry.",
     rollbackPasswordRequired:
       "Введите текущий пароль.",
     rollbackConfirmationRequired:
@@ -1973,6 +2111,56 @@ export default function SettingsPage() {
     setRollbackSafeResetSuccess,
   ] = useState("");
 
+  const [
+    rollbackRetryAuthorizePassword,
+    setRollbackRetryAuthorizePassword,
+  ] = useState("");
+
+  const [
+    rollbackRetryAuthorizeConfirmation,
+    setRollbackRetryAuthorizeConfirmation,
+  ] = useState("");
+
+  const [
+    rollbackRetryAuthorizing,
+    setRollbackRetryAuthorizing,
+  ] = useState(false);
+
+  const [
+    rollbackRetryAuthorizeError,
+    setRollbackRetryAuthorizeError,
+  ] = useState("");
+
+  const [
+    rollbackRetryAuthorizeSuccess,
+    setRollbackRetryAuthorizeSuccess,
+  ] = useState("");
+
+  const [
+    rollbackRetryDispatchPassword,
+    setRollbackRetryDispatchPassword,
+  ] = useState("");
+
+  const [
+    rollbackRetryDispatchConfirmation,
+    setRollbackRetryDispatchConfirmation,
+  ] = useState("");
+
+  const [
+    rollbackRetryDispatching,
+    setRollbackRetryDispatching,
+  ] = useState(false);
+
+  const [
+    rollbackRetryDispatchError,
+    setRollbackRetryDispatchError,
+  ] = useState("");
+
+  const [
+    rollbackRetryDispatchSuccess,
+    setRollbackRetryDispatchSuccess,
+  ] = useState("");
+
   const rollbackExpectedConfirmation =
     rollbackStatus
       ?.restore_execution_id
@@ -1993,6 +2181,54 @@ export default function SettingsPage() {
     rollbackRecovery
       ?.actions ||
     null;
+
+  const rollbackRetryAuthorization =
+    rollbackRecoveryActions
+      ?.retry_authorization ||
+    null;
+
+  const rollbackRetryAuthorizeVisible =
+    Boolean(
+      rollbackStatus
+        ?.restore_execution_id &&
+      rollbackStatus
+        ?.rollback_status ===
+        "required" &&
+      rollbackRecovery
+        ?.last_recovery_action ===
+        "safe_control_reset" &&
+      Number(
+        rollbackRetryAuthorization
+          ?.attempt ||
+        0
+      ) === 0 &&
+      !rollbackRetryAuthorization
+        ?.previous_github_run_id &&
+      !rollbackRetryAuthorization
+        ?.consumed_at &&
+      !rollbackRetryAuthorization
+        ?.active
+    );
+
+  const rollbackRetryDispatchVisible =
+    Boolean(
+      rollbackStatus
+        ?.restore_execution_id &&
+      rollbackRetryAuthorization
+        ?.dispatch_enabled
+    );
+
+  const rollbackRetryAuthorizeExpectedConfirmation =
+    rollbackStatus
+      ?.restore_execution_id
+      ? `AUTHORIZE ROLLBACK RETRY ${rollbackStatus.restore_execution_id}`
+      : "";
+
+  const rollbackRetryDispatchExpectedConfirmation =
+    rollbackStatus
+      ?.restore_execution_id
+      ? `DISPATCH AUTHORIZED ROLLBACK RETRY ${rollbackStatus.restore_execution_id}`
+      : "";
 
   const rollbackRunningFailedReconcileVisible =
     Boolean(
@@ -3062,6 +3298,178 @@ export default function SettingsPage() {
         );
       } finally {
         setRollbackReconciling(false);
+      }
+    };
+
+  const handleRollbackRetryAuthorize =
+    async () => {
+      setRollbackRetryAuthorizeError("");
+      setRollbackRetryAuthorizeSuccess("");
+
+      if (!rollbackRetryAuthorizePassword) {
+        setRollbackRetryAuthorizeError(
+          text.rollbackPasswordRequired
+        );
+        return;
+      }
+
+      if (
+        !rollbackRetryAuthorizeExpectedConfirmation ||
+        rollbackRetryAuthorizeConfirmation !==
+          rollbackRetryAuthorizeExpectedConfirmation
+      ) {
+        setRollbackRetryAuthorizeError(
+          text.rollbackConfirmationRequired
+        );
+        return;
+      }
+
+      if (
+        !rollbackRetryAuthorizeVisible ||
+        !rollbackStatus
+          ?.restore_execution_id
+      ) {
+        setRollbackRetryAuthorizeError(
+          text.rollbackRetryAuthorizeFailed
+        );
+        return;
+      }
+
+      setRollbackRetryAuthorizing(true);
+
+      try {
+        const result =
+          await api(
+            "/api/admin/restore/rollback/retry/authorize",
+            {
+              method: "POST",
+              body: JSON.stringify({
+                restore_execution_id:
+                  rollbackStatus
+                    .restore_execution_id,
+                current_password:
+                  rollbackRetryAuthorizePassword,
+                confirmation_phrase:
+                  rollbackRetryAuthorizeConfirmation,
+              }),
+            }
+          );
+
+        if (
+          !result ||
+          result.error ||
+          result.ok === false
+        ) {
+          throw new Error(
+            result?.error ||
+            "rollback_retry_authorize_failed"
+          );
+        }
+
+        setRollbackRetryAuthorizePassword("");
+        setRollbackRetryAuthorizeConfirmation("");
+        setRollbackRetryAuthorizeSuccess(
+          text.rollbackRetryAuthorizeSuccess
+        );
+
+        await handleRefreshRestore();
+      } catch (authorizeError) {
+        console.error(
+          "ROLLBACK RETRY AUTHORIZE ERROR:",
+          authorizeError
+        );
+
+        setRollbackRetryAuthorizeError(
+          text.rollbackRetryAuthorizeFailed
+        );
+      } finally {
+        setRollbackRetryAuthorizing(false);
+      }
+    };
+
+  const handleRollbackRetryDispatch =
+    async () => {
+      setRollbackRetryDispatchError("");
+      setRollbackRetryDispatchSuccess("");
+
+      if (!rollbackRetryDispatchPassword) {
+        setRollbackRetryDispatchError(
+          text.rollbackPasswordRequired
+        );
+        return;
+      }
+
+      if (
+        !rollbackRetryDispatchExpectedConfirmation ||
+        rollbackRetryDispatchConfirmation !==
+          rollbackRetryDispatchExpectedConfirmation
+      ) {
+        setRollbackRetryDispatchError(
+          text.rollbackConfirmationRequired
+        );
+        return;
+      }
+
+      if (
+        !rollbackRetryDispatchVisible ||
+        !rollbackStatus
+          ?.restore_execution_id
+      ) {
+        setRollbackRetryDispatchError(
+          text.rollbackRetryDispatchFailed
+        );
+        return;
+      }
+
+      setRollbackRetryDispatching(true);
+
+      try {
+        const result =
+          await api(
+            "/api/admin/restore/rollback/retry/dispatch",
+            {
+              method: "POST",
+              body: JSON.stringify({
+                restore_execution_id:
+                  rollbackStatus
+                    .restore_execution_id,
+                current_password:
+                  rollbackRetryDispatchPassword,
+                confirmation_phrase:
+                  rollbackRetryDispatchConfirmation,
+              }),
+            }
+          );
+
+        if (
+          !result ||
+          result.error ||
+          result.ok === false
+        ) {
+          throw new Error(
+            result?.error ||
+            "rollback_retry_dispatch_failed"
+          );
+        }
+
+        setRollbackRetryDispatchPassword("");
+        setRollbackRetryDispatchConfirmation("");
+        setRollbackRetryDispatchSuccess(
+          text.rollbackRetryDispatchSuccess
+        );
+
+        await handleRefreshRestore();
+      } catch (dispatchError) {
+        console.error(
+          "ROLLBACK RETRY DISPATCH ERROR:",
+          dispatchError
+        );
+
+        setRollbackRetryDispatchError(
+          text.rollbackRetryDispatchFailed
+        );
+      } finally {
+        setRollbackRetryDispatching(false);
       }
     };
 
@@ -4615,6 +5023,120 @@ export default function SettingsPage() {
                         </div>
                       )}
 
+                      {rollbackRetryAuthorization && (
+                        <div
+                          style={{
+                            marginTop: 4,
+                            display: "grid",
+                            gap: 8,
+                          }}
+                        >
+                          <div
+                            style={{
+                              color:
+                                "var(--text-h)",
+                              fontSize: 10,
+                              fontWeight: 800,
+                            }}
+                          >
+                            {text.rollbackRetryAuthorization}
+                          </div>
+
+                          <div
+                            style={detailGridStyle}
+                          >
+                            <InfoItem
+                              label={
+                                text.rollbackRetryAuthorizationStatus
+                              }
+                              value={
+                                rollbackRetryAuthorization
+                                  .active
+                                  ? text.rollbackRetryAuthorizationActive
+                                  : text.rollbackRetryAuthorizationInactive
+                              }
+                            />
+
+                            <InfoItem
+                              label={
+                                text.rollbackRetryAttempt
+                              }
+                              value={
+                                String(
+                                  rollbackRetryAuthorization
+                                    .attempt ??
+                                  0
+                                )
+                              }
+                            />
+
+                            <InfoItem
+                              label={
+                                text.rollbackRetryAuthorizedAt
+                              }
+                              value={
+                                rollbackRetryAuthorization
+                                  .authorized_at
+                                  ? formatDateTime(
+                                      rollbackRetryAuthorization
+                                        .authorized_at,
+                                      lang
+                                    )
+                                  : "-"
+                              }
+                            />
+
+                            <InfoItem
+                              label={
+                                text.rollbackRetryAuthorizationExpiresAt
+                              }
+                              value={
+                                rollbackRetryAuthorization
+                                  .expires_at
+                                  ? formatDateTime(
+                                      rollbackRetryAuthorization
+                                        .expires_at,
+                                      lang
+                                    )
+                                  : "-"
+                              }
+                            />
+
+                            <InfoItem
+                              label={
+                                text.rollbackRetryConsumedAt
+                              }
+                              value={
+                                rollbackRetryAuthorization
+                                  .consumed_at
+                                  ? formatDateTime(
+                                      rollbackRetryAuthorization
+                                        .consumed_at,
+                                      lang
+                                    )
+                                  : "-"
+                              }
+                            />
+
+                            <InfoItem
+                              label={
+                                text.rollbackRetryDispatchRequestedAt
+                              }
+                              value={
+                                rollbackRetryAuthorization
+                                  .dispatch_requested_at
+                                  ? formatDateTime(
+                                      rollbackRetryAuthorization
+                                        .dispatch_requested_at,
+                                      lang
+                                    )
+                                  : "-"
+                              }
+                            />
+                          </div>
+                        </div>
+                      )}
+
                       {rollbackReconcileError && (
                         <div
                           role="alert"
@@ -4780,6 +5302,278 @@ export default function SettingsPage() {
                             {rollbackSafeResetWorking
                               ? text.rollbackSafeResetWorking
                               : text.rollbackSafeReset}
+                          </button>
+                        </div>
+                      )}
+
+                      {rollbackRetryAuthorizeVisible && (
+                        <div
+                          style={{
+                            marginTop: 4,
+                            display: "grid",
+                            gap: 10,
+                          }}
+                        >
+                          <div
+                            style={warningStyle}
+                          >
+                            <div
+                              style={{
+                                color:
+                                  "var(--text-h)",
+                                fontSize: 11,
+                                fontWeight: 800,
+                              }}
+                            >
+                              {text.rollbackRetryAuthorize}
+                            </div>
+
+                            <div
+                              style={{
+                                marginTop: 4,
+                                fontSize: 10,
+                                lineHeight: 1.5,
+                              }}
+                            >
+                              {text.rollbackRetryAuthorizeHint}
+                            </div>
+
+                            <div
+                              style={{
+                                marginTop: 6,
+                                fontFamily:
+                                  "ui-monospace, SFMono-Regular, Menlo, monospace",
+                                fontSize: 11,
+                                fontWeight: 800,
+                                wordBreak:
+                                  "break-word",
+                              }}
+                            >
+                              {rollbackRetryAuthorizeExpectedConfirmation}
+                            </div>
+                          </div>
+
+                          <PasswordField
+                            label={
+                              text.rollbackRetryAuthorizePassword
+                            }
+                            value={
+                              rollbackRetryAuthorizePassword
+                            }
+                            onChange={(
+                              event
+                            ) => {
+                              setRollbackRetryAuthorizePassword(
+                                event.target.value
+                              );
+                              setRollbackRetryAuthorizeError("");
+                              setRollbackRetryAuthorizeSuccess("");
+                            }}
+                            autoComplete="current-password"
+                          />
+
+                          <label
+                            style={fieldLabelStyle}
+                          >
+                            {text.rollbackRetryAuthorizeConfirmation}
+
+                            <input
+                              type="text"
+                              value={
+                                rollbackRetryAuthorizeConfirmation
+                              }
+                              onChange={(
+                                event
+                              ) => {
+                                setRollbackRetryAuthorizeConfirmation(
+                                  event.target.value
+                                );
+                                setRollbackRetryAuthorizeError("");
+                                setRollbackRetryAuthorizeSuccess("");
+                              }}
+                              autoComplete="off"
+                              spellCheck={false}
+                              style={inputStyle}
+                            />
+                          </label>
+
+                          {rollbackRetryAuthorizeError && (
+                            <div
+                              role="alert"
+                              style={errorStyle}
+                            >
+                              {rollbackRetryAuthorizeError}
+                            </div>
+                          )}
+
+                          {rollbackRetryAuthorizeSuccess && (
+                            <div
+                              role="status"
+                              style={successStyle}
+                            >
+                              {rollbackRetryAuthorizeSuccess}
+                            </div>
+                          )}
+
+                          <button
+                            type="button"
+                            disabled={
+                              rollbackRetryAuthorizing ||
+                              !rollbackRetryAuthorizePassword ||
+                              rollbackRetryAuthorizeConfirmation !==
+                                rollbackRetryAuthorizeExpectedConfirmation
+                            }
+                            onClick={
+                              handleRollbackRetryAuthorize
+                            }
+                            style={
+                              primaryButtonStyle(
+                                rollbackRetryAuthorizing ||
+                                !rollbackRetryAuthorizePassword ||
+                                rollbackRetryAuthorizeConfirmation !==
+                                  rollbackRetryAuthorizeExpectedConfirmation
+                              )
+                            }
+                          >
+                            {rollbackRetryAuthorizing
+                              ? text.rollbackRetryAuthorizing
+                              : text.rollbackRetryAuthorize}
+                          </button>
+                        </div>
+                      )}
+
+                      {rollbackRetryDispatchVisible && (
+                        <div
+                          style={{
+                            marginTop: 4,
+                            display: "grid",
+                            gap: 10,
+                          }}
+                        >
+                          <div
+                            style={warningStyle}
+                          >
+                            <div
+                              style={{
+                                color:
+                                  "var(--text-h)",
+                                fontSize: 11,
+                                fontWeight: 800,
+                              }}
+                            >
+                              {text.rollbackRetryDispatch}
+                            </div>
+
+                            <div
+                              style={{
+                                marginTop: 4,
+                                fontSize: 10,
+                                lineHeight: 1.5,
+                              }}
+                            >
+                              {text.rollbackRetryDispatchHint}
+                            </div>
+
+                            <div
+                              style={{
+                                marginTop: 6,
+                                fontFamily:
+                                  "ui-monospace, SFMono-Regular, Menlo, monospace",
+                                fontSize: 11,
+                                fontWeight: 800,
+                                wordBreak:
+                                  "break-word",
+                              }}
+                            >
+                              {rollbackRetryDispatchExpectedConfirmation}
+                            </div>
+                          </div>
+
+                          <PasswordField
+                            label={
+                              text.rollbackRetryDispatchPassword
+                            }
+                            value={
+                              rollbackRetryDispatchPassword
+                            }
+                            onChange={(
+                              event
+                            ) => {
+                              setRollbackRetryDispatchPassword(
+                                event.target.value
+                              );
+                              setRollbackRetryDispatchError("");
+                              setRollbackRetryDispatchSuccess("");
+                            }}
+                            autoComplete="current-password"
+                          />
+
+                          <label
+                            style={fieldLabelStyle}
+                          >
+                            {text.rollbackRetryDispatchConfirmation}
+
+                            <input
+                              type="text"
+                              value={
+                                rollbackRetryDispatchConfirmation
+                              }
+                              onChange={(
+                                event
+                              ) => {
+                                setRollbackRetryDispatchConfirmation(
+                                  event.target.value
+                                );
+                                setRollbackRetryDispatchError("");
+                                setRollbackRetryDispatchSuccess("");
+                              }}
+                              autoComplete="off"
+                              spellCheck={false}
+                              style={inputStyle}
+                            />
+                          </label>
+
+                          {rollbackRetryDispatchError && (
+                            <div
+                              role="alert"
+                              style={errorStyle}
+                            >
+                              {rollbackRetryDispatchError}
+                            </div>
+                          )}
+
+                          {rollbackRetryDispatchSuccess && (
+                            <div
+                              role="status"
+                              style={successStyle}
+                            >
+                              {rollbackRetryDispatchSuccess}
+                            </div>
+                          )}
+
+                          <button
+                            type="button"
+                            disabled={
+                              rollbackRetryDispatching ||
+                              !rollbackRetryDispatchPassword ||
+                              rollbackRetryDispatchConfirmation !==
+                                rollbackRetryDispatchExpectedConfirmation
+                            }
+                            onClick={
+                              handleRollbackRetryDispatch
+                            }
+                            style={
+                              primaryButtonStyle(
+                                rollbackRetryDispatching ||
+                                !rollbackRetryDispatchPassword ||
+                                rollbackRetryDispatchConfirmation !==
+                                  rollbackRetryDispatchExpectedConfirmation
+                              )
+                            }
+                          >
+                            {rollbackRetryDispatching
+                              ? text.rollbackRetryDispatching
+                              : text.rollbackRetryDispatch}
                           </button>
                         </div>
                       )}
