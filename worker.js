@@ -11181,6 +11181,187 @@ function passwordBytesToBase64Url(
     .replace(/\//g, "_");
 }
 
+
+// =========================
+// ACCOUNT RECOVERY CRYPTO
+// PR-1C:
+//
+// Administrator-assisted account recovery.
+// Recovery codes are generated randomly and are never stored in plaintext.
+// D1 stores only a deterministic HMAC-SHA256 representation produced with
+// the dedicated RECOVERY_HMAC_SECRET.
+//
+// Recovery secrets are intentionally independent from:
+// - PII_HMAC_KEY
+// - PII_ENCRYPTION_KEY
+// - JWT_SECRET
+//
+// Human-readable code format:
+// MVX-XXXX-XXXX-XXXX
+//
+// Alphabet excludes ambiguous characters I, O, 0 and 1.
+// 12 characters from a 32-character alphabet provide 60 bits of entropy.
+// =========================
+
+const RECOVERY_CODE_PREFIX =
+  "MVX";
+
+const RECOVERY_CODE_ALPHABET =
+  "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
+
+const RECOVERY_CODE_LENGTH =
+  12;
+
+const RECOVERY_CODE_VERSION =
+  "v1";
+
+function generateRecoveryCode() {
+  const randomBytes =
+    crypto.getRandomValues(
+      new Uint8Array(
+        RECOVERY_CODE_LENGTH
+      )
+    );
+
+  let core = "";
+
+  for (
+    let index = 0;
+    index <
+      randomBytes.length;
+    index += 1
+  ) {
+    // Alphabet contains exactly 32 characters.
+    // 256 is exactly divisible by 32, therefore
+    // this mapping does not introduce modulo bias.
+    core +=
+      RECOVERY_CODE_ALPHABET[
+        randomBytes[index] & 31
+      ];
+  }
+
+  return [
+    RECOVERY_CODE_PREFIX,
+    core.slice(0, 4),
+    core.slice(4, 8),
+    core.slice(8, 12),
+  ].join("-");
+}
+
+function normalizeRecoveryCode(
+  value
+) {
+  let normalized =
+    String(value || "")
+      .trim()
+      .toUpperCase()
+      .replace(
+        /[\s-]+/g,
+        ""
+      );
+
+  if (
+    normalized.startsWith(
+      RECOVERY_CODE_PREFIX
+    )
+  ) {
+    normalized =
+      normalized.slice(
+        RECOVERY_CODE_PREFIX.length
+      );
+  }
+
+  if (
+    normalized.length !==
+      RECOVERY_CODE_LENGTH
+  ) {
+    return null;
+  }
+
+  for (
+    const character of
+      normalized
+  ) {
+    if (
+      !RECOVERY_CODE_ALPHABET.includes(
+        character
+      )
+    ) {
+      return null;
+    }
+  }
+
+  return normalized;
+}
+
+async function importRecoveryHmacKey(
+  env
+) {
+  const secret =
+    String(
+      env?.RECOVERY_HMAC_SECRET ||
+        ""
+    ).trim();
+
+  if (!secret) {
+    throw new Error(
+      "missing_recovery_hmac_secret"
+    );
+  }
+
+  return await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(
+      secret
+    ),
+    {
+      name: "HMAC",
+      hash: "SHA-256",
+    },
+    false,
+    [
+      "sign",
+    ]
+  );
+}
+
+async function recoveryCodeHmac(
+  code,
+  env
+) {
+  const normalizedCode =
+    normalizeRecoveryCode(
+      code
+    );
+
+  if (!normalizedCode) {
+    return null;
+  }
+
+  const key =
+    await importRecoveryHmacKey(
+      env
+    );
+
+  const signature =
+    new Uint8Array(
+      await crypto.subtle.sign(
+        "HMAC",
+        key,
+        new TextEncoder().encode(
+          `mvx-account-recovery:${RECOVERY_CODE_VERSION}:${normalizedCode}`
+        )
+      )
+    );
+
+  return [
+    RECOVERY_CODE_VERSION,
+    passwordBytesToBase64Url(
+      signature
+    ),
+  ].join(".");
+}
+
 function passwordBase64UrlToBytes(
   value
 ) {
