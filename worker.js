@@ -10027,6 +10027,472 @@ Router.register(
   }
 );
 
+// =========================
+// ACCOUNT RECOVERY RESET
+// PR-1D.3:
+//
+// Public administrator-assisted password reset.
+// The caller presents Nick + one-time Recovery Code + a new password.
+//
+// Security properties:
+// - no authentication session is required;
+// - request volume is limited by pseudonymous IP and Nick keys;
+// - invalid Nick and invalid/expired/revoked/used codes share one response;
+// - plaintext recovery codes and passwords are never persisted or audited;
+// - failed recovery-code guesses increment the active code attempt counter;
+// - an accepted recovery row is consumed once;
+// - password is stored using the existing PBKDF2 password scheme;
+// - all existing sessions for the user are revoked after success.
+// =========================
+Router.register(
+  "POST",
+  "/api/account-recovery/reset",
+  async (ctx) => {
+    const clientIp =
+      SecurityRateLimit.clientIp(
+        ctx.request
+      );
+
+    const requestLimit =
+      await SecurityRateLimit.consume({
+        env: ctx.env,
+        scope:
+          "account-recovery-reset-request-ip",
+        key:
+          clientIp,
+        ...ACCOUNT_RECOVERY_RESET_REQUEST_IP_LIMIT,
+      });
+
+    if (!requestLimit.allowed) {
+      return SecurityRateLimit.response(
+        requestLimit
+      );
+    }
+
+    const body =
+      await ctx.request
+        .json()
+        .catch(() => ({}));
+
+    const nickInput =
+      String(
+        body?.nick || ""
+      ).trim();
+
+    const recoveryCodeInput =
+      String(
+        body?.recovery_code || ""
+      ).trim();
+
+    const newPassword =
+      String(
+        body?.new_password || ""
+      );
+
+    if (
+      !nickInput ||
+      !recoveryCodeInput ||
+      !newPassword
+    ) {
+      return {
+        error:
+          "missing_recovery_fields"
+      };
+    }
+
+    if (
+      newPassword.length < 8
+    ) {
+      return {
+        error:
+          "new_password_too_short"
+      };
+    }
+
+    const normalizedNick =
+      SecurityRateLimit
+        .normalizeLoginIdentifier(
+          nickInput
+        );
+
+    const accountLimitKey =
+      normalizedNick ||
+      "invalid-account";
+
+    const accountLimitCheck =
+      await SecurityRateLimit.check({
+        env: ctx.env,
+        scope:
+          "account-recovery-reset-account",
+        key:
+          accountLimitKey,
+        windowSeconds:
+          ACCOUNT_RECOVERY_RESET_ACCOUNT_LIMIT
+            .windowSeconds,
+      });
+
+    if (!accountLimitCheck.allowed) {
+      return SecurityRateLimit.response(
+        accountLimitCheck
+      );
+    }
+
+    const normalizedRecoveryCode =
+      normalizeRecoveryCode(
+        recoveryCodeInput
+      );
+
+    let codeHmac = null;
+
+    if (normalizedRecoveryCode) {
+      codeHmac =
+        await recoveryCodeHmac(
+          normalizedRecoveryCode,
+          ctx.env
+        );
+    }
+
+    const user =
+      await ctx.env.DB.prepare(`
+        SELECT
+          id,
+          is_active
+        FROM users
+        WHERE nick IS NOT NULL
+          AND LOWER(nick) =
+            LOWER(?)
+          AND is_active = 1
+        LIMIT 1
+      `)
+        .bind(
+          nickInput
+        )
+        .first();
+
+    let recovery = null;
+
+    if (user) {
+      recovery =
+        await ctx.env.DB.prepare(`
+          SELECT
+            id,
+            user_id,
+            purpose,
+            code_hmac,
+            created_at,
+            expires_at,
+            failed_attempts,
+            max_attempts,
+            used_at,
+            revoked_at
+          FROM account_recovery
+          WHERE user_id = ?
+            AND purpose =
+              'password_reset'
+            AND used_at IS NULL
+            AND revoked_at IS NULL
+          ORDER BY
+            datetime(created_at)
+              DESC,
+            id DESC
+          LIMIT 1
+        `)
+          .bind(
+            Number(user.id)
+          )
+          .first();
+    }
+
+    const nowMs =
+      Date.now();
+
+    const recoveryStillActive =
+      Boolean(
+        user &&
+        recovery &&
+        !recovery.used_at &&
+        !recovery.revoked_at &&
+        Number(
+          recovery.failed_attempts || 0
+        ) <
+          Number(
+            recovery.max_attempts || 0
+          ) &&
+        recovery.expires_at &&
+        Date.parse(
+          recovery.expires_at
+        ) > nowMs
+      );
+
+    const recoveryUsable =
+      Boolean(
+        recoveryStillActive &&
+        codeHmac &&
+        String(
+          recovery.code_hmac || ""
+        ) === codeHmac
+      );
+
+    if (!recoveryUsable) {
+      if (recoveryStillActive) {
+        const failureAt =
+          new Date().toISOString();
+
+        await ctx.env.DB.prepare(`
+          UPDATE account_recovery
+          SET
+            failed_attempts =
+              failed_attempts + 1
+          WHERE id = ?
+            AND user_id = ?
+            AND purpose =
+              'password_reset'
+            AND used_at IS NULL
+            AND revoked_at IS NULL
+            AND datetime(expires_at) >
+              datetime(?)
+            AND failed_attempts <
+              max_attempts
+        `)
+          .bind(
+            Number(recovery.id),
+            Number(user.id),
+            failureAt
+          )
+          .run();
+      }
+
+      const failureLimit =
+        await SecurityRateLimit.recordFailure({
+          env: ctx.env,
+          scope:
+            "account-recovery-reset-account",
+          key:
+            accountLimitKey,
+          ...ACCOUNT_RECOVERY_RESET_ACCOUNT_LIMIT,
+        });
+
+      await SecurityAudit.recordSafe(
+        ctx,
+        {
+          action:
+            "auth.account_recovery_reset",
+          result:
+            "failure",
+          details: {
+            failure_type:
+              "invalid_recovery_credentials",
+          },
+        }
+      );
+
+      if (!failureLimit.allowed) {
+        return SecurityRateLimit.response(
+          failureLimit
+        );
+      }
+
+      return {
+        error:
+          "invalid_recovery_credentials"
+      };
+    }
+
+    const userId =
+      Number(user.id);
+
+    const recoveryId =
+      Number(recovery.id);
+
+    const newPasswordHash =
+      await hashPassword(
+        newPassword
+      );
+
+    const nowIso =
+      new Date().toISOString();
+
+    // Use a unique per-request marker inside one D1 batch.
+    // The first statement atomically claims the recovery row.
+    // Subsequent statements are conditioned on that exact marker.
+    // This prevents concurrent replay while keeping the password update
+    // and session revocation in the same batch as the recovery claim.
+    const consumptionMarker =
+      `${nowIso}:${crypto.randomUUID()}`;
+
+    const batchResults =
+      await ctx.env.DB.batch([
+        ctx.env.DB.prepare(`
+          UPDATE account_recovery
+          SET
+            used_at = ?
+          WHERE id = ?
+            AND user_id = ?
+            AND purpose =
+              'password_reset'
+            AND code_hmac = ?
+            AND used_at IS NULL
+            AND revoked_at IS NULL
+            AND datetime(expires_at) >
+              datetime(?)
+            AND failed_attempts <
+              max_attempts
+        `)
+          .bind(
+            consumptionMarker,
+            recoveryId,
+            userId,
+            codeHmac,
+            nowIso
+          ),
+
+        ctx.env.DB.prepare(`
+          UPDATE users
+          SET
+            password_hash = ?,
+            must_change_password = 0,
+            updated_at = ?
+          WHERE id = ?
+            AND is_active = 1
+            AND EXISTS (
+              SELECT 1
+              FROM account_recovery ar
+              WHERE ar.id = ?
+                AND ar.user_id =
+                  users.id
+                AND ar.purpose =
+                  'password_reset'
+                AND ar.code_hmac = ?
+                AND ar.used_at = ?
+                AND ar.revoked_at
+                  IS NULL
+            )
+        `)
+          .bind(
+            newPasswordHash,
+            nowIso,
+            userId,
+            recoveryId,
+            codeHmac,
+            consumptionMarker
+          ),
+
+        ctx.env.DB.prepare(`
+          UPDATE auth_sessions
+          SET revoked_at = ?
+          WHERE user_id = ?
+            AND revoked_at IS NULL
+            AND EXISTS (
+              SELECT 1
+              FROM account_recovery ar
+              WHERE ar.id = ?
+                AND ar.user_id = ?
+                AND ar.purpose =
+                  'password_reset'
+                AND ar.code_hmac = ?
+                AND ar.used_at = ?
+                AND ar.revoked_at
+                  IS NULL
+            )
+        `)
+          .bind(
+            nowIso,
+            userId,
+            recoveryId,
+            userId,
+            codeHmac,
+            consumptionMarker
+          ),
+
+        ctx.env.DB.prepare(`
+          UPDATE account_recovery
+          SET used_at = ?
+          WHERE id = ?
+            AND used_at = ?
+        `)
+          .bind(
+            nowIso,
+            recoveryId,
+            consumptionMarker
+          ),
+      ]);
+
+    const recoveryConsumed =
+      Number(
+        batchResults?.[0]?.meta
+          ?.changes || 0
+      ) === 1;
+
+    const passwordChanged =
+      Number(
+        batchResults?.[1]?.meta
+          ?.changes || 0
+      ) === 1;
+
+    const recoveryFinalized =
+      Number(
+        batchResults?.[3]?.meta
+          ?.changes || 0
+      ) === 1;
+
+    if (
+      !recoveryConsumed ||
+      !passwordChanged ||
+      !recoveryFinalized
+    ) {
+      await SecurityAudit.recordSafe(
+        ctx,
+        {
+          action:
+            "auth.account_recovery_reset",
+          result:
+            "failure",
+          details: {
+            failure_type:
+              "recovery_state_conflict",
+          },
+        }
+      );
+
+      return {
+        error:
+          "invalid_recovery_credentials"
+      };
+    }
+
+    await SecurityRateLimit.clear({
+      env: ctx.env,
+      scope:
+        "account-recovery-reset-account",
+      key:
+        accountLimitKey,
+    });
+
+    await SecurityAudit.recordSafe(
+      ctx,
+      {
+        action:
+          "auth.account_recovery_reset",
+        targetType:
+          "user",
+        targetId:
+          String(userId),
+        details: {
+          recovery_id:
+            recoveryId,
+          sessions_revoked:
+            true,
+        },
+      }
+    );
+
+    return {
+      ok: true,
+      sessions_revoked: true
+    };
+  }
+);
+
 // LOGIN
 // Stage 2I-SR7:
 // - per-IP request throttling
