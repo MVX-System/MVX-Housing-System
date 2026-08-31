@@ -10169,10 +10169,40 @@ Router.register(
         )
         .first();
 
-    let recovery = null;
+    let matchingRecovery = null;
+    let activeRecovery = null;
 
     if (user) {
-      recovery =
+      if (codeHmac) {
+        matchingRecovery =
+          await ctx.env.DB.prepare(`
+            SELECT
+              id,
+              user_id,
+              purpose,
+              code_hmac,
+              created_at,
+              expires_at,
+              failed_attempts,
+              max_attempts,
+              used_at,
+              revoked_at
+            FROM account_recovery
+            WHERE user_id = ?
+              AND purpose =
+                'password_reset'
+              AND code_hmac = ?
+            ORDER BY id DESC
+            LIMIT 1
+          `)
+            .bind(
+              Number(user.id),
+              codeHmac
+            )
+            .first();
+      }
+
+      activeRecovery =
         await ctx.env.DB.prepare(`
           SELECT
             id,
@@ -10206,35 +10236,60 @@ Router.register(
     const nowMs =
       Date.now();
 
-    const recoveryStillActive =
+    const matchingRecoveryUsable =
       Boolean(
         user &&
-        recovery &&
-        !recovery.used_at &&
-        !recovery.revoked_at &&
+        matchingRecovery &&
+        !matchingRecovery.used_at &&
+        !matchingRecovery.revoked_at &&
         Number(
-          recovery.failed_attempts || 0
+          matchingRecovery.failed_attempts || 0
         ) <
           Number(
-            recovery.max_attempts || 0
+            matchingRecovery.max_attempts || 0
           ) &&
-        recovery.expires_at &&
+        matchingRecovery.expires_at &&
         Date.parse(
-          recovery.expires_at
+          matchingRecovery.expires_at
         ) > nowMs
       );
 
-    const recoveryUsable =
-      Boolean(
-        recoveryStillActive &&
-        codeHmac &&
-        String(
-          recovery.code_hmac || ""
-        ) === codeHmac
-      );
+    const recovery =
+      matchingRecoveryUsable
+        ? matchingRecovery
+        : null;
 
-    if (!recoveryUsable) {
-      if (recoveryStillActive) {
+    if (!recovery) {
+      // Historical codes (used, revoked, expired, or attempt-exhausted)
+      // are rejected without penalizing the current active recovery row.
+      // Only a code HMAC that matches no recovery row for this user is
+      // treated as a genuine guess against the current active credential.
+      const submittedCodeMatchesHistory =
+        Boolean(
+          matchingRecovery
+        );
+
+      const activeRecoveryStillUsable =
+        Boolean(
+          activeRecovery &&
+          !activeRecovery.used_at &&
+          !activeRecovery.revoked_at &&
+          Number(
+            activeRecovery.failed_attempts || 0
+          ) <
+            Number(
+              activeRecovery.max_attempts || 0
+            ) &&
+          activeRecovery.expires_at &&
+          Date.parse(
+            activeRecovery.expires_at
+          ) > nowMs
+        );
+
+      if (
+        !submittedCodeMatchesHistory &&
+        activeRecoveryStillUsable
+      ) {
         const failureAt =
           new Date().toISOString();
 
@@ -10255,7 +10310,7 @@ Router.register(
               max_attempts
         `)
           .bind(
-            Number(recovery.id),
+            Number(activeRecovery.id),
             Number(user.id),
             failureAt
           )
