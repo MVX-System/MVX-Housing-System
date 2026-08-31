@@ -3942,6 +3942,15 @@ const ADMIN_PII_DETAIL_LIMIT = {
   blockSeconds: 5 * 60,
 };
 
+// PR-1C.3:
+// Administrator-triggered recovery issuance is intentionally rare.
+// This limiter protects against accidental or abusive repeated issuance.
+const ADMIN_ACCOUNT_RECOVERY_ISSUE_LIMIT = {
+  maxRequests: 20,
+  windowSeconds: 60 * 60,
+  blockSeconds: 60 * 60,
+};
+
 // Stage 2I-SR14F-B:
 // Protected restore-request creation is deliberately throttled.
 // The first limiter caps all request attempts; the second applies
@@ -10938,6 +10947,281 @@ Router.register(
 // indexed automatically by PiiStore.upsertUserPii().
 // =========================
 
+// =========================
+// ADMIN ACCOUNT RECOVERY ISSUE
+// PR-1C.3:
+//
+// Administrator-assisted issuance only.
+// - Admin must already be authenticated.
+// - Target user must exist and be active.
+// - Previous unused/unrevoked recovery rows for the target are revoked.
+// - Plaintext recovery code is returned exactly once in this response.
+// - D1 stores only HMAC-SHA256 of the code.
+// - No password is changed in this stage.
+// =========================
+Router.register(
+  "POST",
+  "/api/admin/account-recovery/issue",
+  async (ctx) => {
+    const admin =
+      await Auth.requireAdmin(ctx);
+
+    if (!admin) {
+      return {
+        error: "forbidden"
+      };
+    }
+
+    const issueLimit =
+      await SecurityRateLimit.consume({
+        env: ctx.env,
+        scope:
+          "admin-account-recovery-issue",
+        key:
+          `user:${admin.user_id}`,
+        ...ADMIN_ACCOUNT_RECOVERY_ISSUE_LIMIT,
+      });
+
+    if (!issueLimit.allowed) {
+      return SecurityRateLimit.response(
+        issueLimit
+      );
+    }
+
+    const body =
+      await ctx.request
+        .json()
+        .catch(() => ({}));
+
+    const userId =
+      normalizePositiveInteger(
+        body?.user_id
+      );
+
+    if (!userId) {
+      return {
+        error:
+          "invalid_user_id"
+      };
+    }
+
+    const user =
+      await ctx.env.DB.prepare(`
+        SELECT
+          id,
+          nick,
+          is_active
+        FROM users
+        WHERE id = ?
+        LIMIT 1
+      `)
+        .bind(userId)
+        .first();
+
+    if (!user) {
+      return {
+        error:
+          "user_not_found"
+      };
+    }
+
+    if (
+      Number(user.is_active) !== 1
+    ) {
+      return {
+        error:
+          "user_inactive"
+      };
+    }
+
+    if (
+      !String(
+        user.nick || ""
+      ).trim()
+    ) {
+      return {
+        error:
+          "user_nick_missing"
+      };
+    }
+
+    const recoveryCode =
+      generateRecoveryCode();
+
+    const codeHmac =
+      await recoveryCodeHmac(
+        recoveryCode,
+        ctx.env
+      );
+
+    if (!codeHmac) {
+      throw new Error(
+        "recovery_code_hmac_failed"
+      );
+    }
+
+    const now =
+      new Date();
+
+    const nowIso =
+      now.toISOString();
+
+    const expiresAt =
+      new Date(
+        now.getTime() +
+        RECOVERY_CODE_TTL_MINUTES *
+          60 *
+          1000
+      ).toISOString();
+
+    const requestId =
+      App.requestId(
+        ctx.request
+      );
+
+    await ctx.env.DB.batch([
+      ctx.env.DB.prepare(`
+        UPDATE account_recovery
+        SET
+          revoked_at = ?,
+          revoked_by_user_id = ?
+        WHERE user_id = ?
+          AND purpose =
+            'password_reset'
+          AND used_at IS NULL
+          AND revoked_at IS NULL
+      `)
+        .bind(
+          nowIso,
+          admin.user_id,
+          userId
+        ),
+
+      ctx.env.DB.prepare(`
+        INSERT INTO account_recovery (
+          user_id,
+          purpose,
+          code_hmac,
+          created_by_user_id,
+          created_at,
+          expires_at,
+          failed_attempts,
+          max_attempts,
+          used_at,
+          revoked_at,
+          revoked_by_user_id,
+          request_id
+        )
+        VALUES (
+          ?,
+          'password_reset',
+          ?,
+          ?,
+          ?,
+          ?,
+          0,
+          ?,
+          NULL,
+          NULL,
+          NULL,
+          ?
+        )
+      `)
+        .bind(
+          userId,
+          codeHmac,
+          admin.user_id,
+          nowIso,
+          expiresAt,
+          RECOVERY_CODE_MAX_ATTEMPTS,
+          requestId
+        ),
+    ]);
+
+    const created =
+      await ctx.env.DB.prepare(`
+        SELECT
+          id,
+          user_id,
+          purpose,
+          created_by_user_id,
+          created_at,
+          expires_at,
+          failed_attempts,
+          max_attempts
+        FROM account_recovery
+        WHERE code_hmac = ?
+        LIMIT 1
+      `)
+        .bind(
+          codeHmac
+        )
+        .first();
+
+    if (!created) {
+      throw new Error(
+        "account_recovery_insert_failed"
+      );
+    }
+
+    await SecurityAudit.recordSafe(
+      ctx,
+      {
+        actorUserId:
+          admin.user_id,
+        action:
+          "admin.account_recovery_issue",
+        targetType:
+          "user",
+        targetId:
+          String(userId),
+        details: {
+          recovery_id:
+            Number(created.id),
+          purpose:
+            "password_reset",
+          ttl_minutes:
+            RECOVERY_CODE_TTL_MINUTES,
+          max_attempts:
+            RECOVERY_CODE_MAX_ATTEMPTS,
+          previous_active_recovery_revoked:
+            true,
+        },
+      }
+    );
+
+    return {
+      ok: true,
+
+      recovery: {
+        id:
+          Number(created.id),
+        user_id:
+          Number(created.user_id),
+        nick:
+          String(
+            user.nick
+          ),
+        purpose:
+          created.purpose,
+        created_at:
+          created.created_at,
+        expires_at:
+          created.expires_at,
+        max_attempts:
+          Number(
+            created.max_attempts
+          ),
+      },
+
+      recovery_code:
+        recoveryCode,
+
+      display_once: true
+    };
+  }
+);
+
 // ADMIN ROLES
 Router.register("GET", "/api/admin/roles", async (ctx) => {
   const admin = await Auth.requireAdmin(ctx);
@@ -11214,6 +11498,12 @@ const RECOVERY_CODE_LENGTH =
 
 const RECOVERY_CODE_VERSION =
   "v1";
+
+const RECOVERY_CODE_TTL_MINUTES =
+  60;
+
+const RECOVERY_CODE_MAX_ATTEMPTS =
+  5;
 
 function generateRecoveryCode() {
   const randomBytes =
