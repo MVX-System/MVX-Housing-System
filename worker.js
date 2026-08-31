@@ -11762,6 +11762,182 @@ Router.register(
   }
 );
 
+// =========================
+// ADMIN ACCOUNT RECOVERY REVOKE
+// PR-1D.8:
+//
+// Explicit administrator cancellation of the current password-reset code.
+// - Admin must already be authenticated.
+// - Target user must exist.
+// - Only unused/unrevoked password-reset recovery state is affected.
+// - The operation is idempotent when no active recovery row exists.
+// - Passwords and authentication sessions are not changed.
+// - Plaintext recovery codes and HMAC values are never returned or audited.
+// =========================
+Router.register(
+  "POST",
+  "/api/admin/account-recovery/revoke",
+  async (ctx) => {
+    const admin =
+      await Auth.requireAdmin(ctx);
+
+    if (!admin) {
+      return {
+        error: "forbidden"
+      };
+    }
+
+    const body =
+      await ctx.request
+        .json()
+        .catch(() => ({}));
+
+    const userId =
+      normalizePositiveInteger(
+        body?.user_id
+      );
+
+    if (!userId) {
+      return {
+        error:
+          "invalid_user_id"
+      };
+    }
+
+    const user =
+      await ctx.env.DB.prepare(`
+        SELECT id
+        FROM users
+        WHERE id = ?
+        LIMIT 1
+      `)
+        .bind(userId)
+        .first();
+
+    if (!user) {
+      return {
+        error:
+          "user_not_found"
+      };
+    }
+
+    const activeRecovery =
+      await ctx.env.DB.prepare(`
+        SELECT id
+        FROM account_recovery
+        WHERE user_id = ?
+          AND purpose =
+            'password_reset'
+          AND used_at IS NULL
+          AND revoked_at IS NULL
+        ORDER BY
+          datetime(created_at)
+            DESC,
+          id DESC
+        LIMIT 1
+      `)
+        .bind(userId)
+        .first();
+
+    if (!activeRecovery) {
+      await SecurityAudit.recordSafe(
+        ctx,
+        {
+          actorUserId:
+            admin.user_id,
+          action:
+            "admin.account_recovery_revoke",
+          targetType:
+            "user",
+          targetId:
+            String(userId),
+          details: {
+            revoked: false,
+          },
+        }
+      );
+
+      return {
+        ok: true,
+        revoked: false
+      };
+    }
+
+    const recoveryId =
+      Number(
+        activeRecovery.id
+      );
+
+    const revokedAt =
+      new Date().toISOString();
+
+    const revokeResult =
+      await ctx.env.DB.prepare(`
+        UPDATE account_recovery
+        SET
+          revoked_at = ?,
+          revoked_by_user_id = ?
+        WHERE id = ?
+          AND user_id = ?
+          AND purpose =
+            'password_reset'
+          AND used_at IS NULL
+          AND revoked_at IS NULL
+      `)
+        .bind(
+          revokedAt,
+          admin.user_id,
+          recoveryId,
+          userId
+        )
+        .run();
+
+    const revoked =
+      Number(
+        revokeResult?.meta
+          ?.changes || 0
+      ) === 1;
+
+    await SecurityAudit.recordSafe(
+      ctx,
+      {
+        actorUserId:
+          admin.user_id,
+        action:
+          "admin.account_recovery_revoke",
+        targetType:
+          "user",
+        targetId:
+          String(userId),
+        details:
+          revoked
+            ? {
+                recovery_id:
+                  recoveryId,
+                revoked: true,
+              }
+            : {
+                revoked: false,
+              },
+      }
+    );
+
+    if (!revoked) {
+      return {
+        ok: true,
+        revoked: false
+      };
+    }
+
+    return {
+      ok: true,
+      revoked: true,
+      recovery_id:
+        recoveryId
+    };
+  }
+);
+
 // ADMIN ROLES
 Router.register("GET", "/api/admin/roles", async (ctx) => {
   const admin = await Auth.requireAdmin(ctx);
