@@ -3951,6 +3951,25 @@ const ADMIN_ACCOUNT_RECOVERY_ISSUE_LIMIT = {
   blockSeconds: 60 * 60,
 };
 
+// PR-1D.2:
+// Public account-recovery reset protection.
+// No raw IP address or Nick is stored in D1 because SecurityRateLimit
+// persists only HMAC-SHA256 pseudonyms of limiter keys.
+//
+// The request-IP limiter reduces broad automated probing.
+// The account limiter slows repeated guesses against one Nick.
+const ACCOUNT_RECOVERY_RESET_REQUEST_IP_LIMIT = {
+  maxRequests: 30,
+  windowSeconds: 15 * 60,
+  blockSeconds: 30 * 60,
+};
+
+const ACCOUNT_RECOVERY_RESET_ACCOUNT_LIMIT = {
+  maxAttempts: 5,
+  windowSeconds: 15 * 60,
+  blockSeconds: 30 * 60,
+};
+
 // Stage 2I-SR14F-B:
 // Protected restore-request creation is deliberately throttled.
 // The first limiter caps all request attempts; the second applies
