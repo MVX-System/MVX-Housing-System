@@ -86,6 +86,27 @@ export default function LoginPage() {
         >
           {t("login.login")}
         </button>
+
+        <button
+          type="button"
+          onClick={() =>
+            navigate(
+              "/account-recovery"
+            )
+          }
+          style={{
+            width: "100%",
+            marginTop: 10,
+            padding: "8px 12px",
+            border: "none",
+            background: "none",
+            color: "#2563eb",
+            fontWeight: 700,
+            cursor: "pointer",
+          }}
+        >
+          {t("login.recoverAccess")}
+        </button>
       </div>
     </div>
   );

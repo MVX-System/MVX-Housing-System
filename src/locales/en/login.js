@@ -5,6 +5,7 @@ const login = {
   password: "Password",
 
   login: "Login",
+  recoverAccess: "Recover access",
 
   placeholders: {
     email: "Email",

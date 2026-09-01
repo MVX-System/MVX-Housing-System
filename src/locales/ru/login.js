@@ -5,6 +5,7 @@ const login = {
   password: "Пароль",
 
   login: "Войти",
+  recoverAccess: "Восстановить доступ",
 
   placeholders: {
     email: "Электронная почта",

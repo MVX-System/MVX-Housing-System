@@ -5,6 +5,7 @@ const login = {
   password: "Parole",
 
   login: "Pieslēgties",
+  recoverAccess: "Atjaunot piekļuvi",
 
   placeholders: {
     email: "E-pasts",
