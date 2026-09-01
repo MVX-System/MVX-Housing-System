@@ -10064,6 +10064,22 @@ Router.register(
       });
 
     if (!requestLimit.allowed) {
+      await SecurityAudit.recordSafe(
+        ctx,
+        {
+          action:
+            "auth.account_recovery_reset",
+          result:
+            "failure",
+          details: {
+            failure_type:
+              "rate_limited",
+            rate_limit_scope:
+              "request_ip",
+          },
+        }
+      );
+
       return SecurityRateLimit.response(
         requestLimit
       );
@@ -10132,6 +10148,22 @@ Router.register(
       });
 
     if (!accountLimitCheck.allowed) {
+      await SecurityAudit.recordSafe(
+        ctx,
+        {
+          action:
+            "auth.account_recovery_reset",
+          result:
+            "failure",
+          details: {
+            failure_type:
+              "rate_limited",
+            rate_limit_scope:
+              "account",
+          },
+        }
+      );
+
       return SecurityRateLimit.response(
         accountLimitCheck
       );
@@ -10327,6 +10359,9 @@ Router.register(
           ...ACCOUNT_RECOVERY_RESET_ACCOUNT_LIMIT,
         });
 
+      const recoveryFailureRateLimited =
+        !failureLimit.allowed;
+
       await SecurityAudit.recordSafe(
         ctx,
         {
@@ -10336,7 +10371,15 @@ Router.register(
             "failure",
           details: {
             failure_type:
-              "invalid_recovery_credentials",
+              recoveryFailureRateLimited
+                ? "rate_limited"
+                : "invalid_recovery_credentials",
+            ...(recoveryFailureRateLimited
+              ? {
+                  rate_limit_scope:
+                    "account",
+                }
+              : {}),
           },
         }
       );
