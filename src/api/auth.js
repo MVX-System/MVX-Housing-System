@@ -1,13 +1,12 @@
 import {
   api,
-} from "./client";
+} from "../services/api";
 
 export function loginRequest(
   email,
   password
 ) {
   return api(
-    null,
     "/api/login",
     {
       method: "POST",
@@ -23,8 +22,15 @@ export function getMe(
   token
 ) {
   return api(
-    token,
-    "/api/me"
+    "/api/me",
+    token
+      ? {
+          headers: {
+            Authorization:
+              `Bearer ${token}`,
+          },
+        }
+      : {}
   );
 }
 
@@ -33,7 +39,6 @@ export function changePassword(
   newPassword
 ) {
   return api(
-    null,
     "/api/change-password",
     {
       method: "POST",
@@ -53,7 +58,6 @@ export function accountRecoveryReset(
   newPassword
 ) {
   return api(
-    null,
     "/api/account-recovery/reset",
     {
       method: "POST",

@@ -7,6 +7,9 @@ import App from "../App";
 import LoginPage
   from "../pages/LoginPage";
 
+import AccountRecoveryPage
+  from "../pages/AccountRecoveryPage";
+
 import DashboardPage
   from "../pages/DashboardPage";
 
@@ -49,6 +52,12 @@ export const router =
     {
       path: "/login",
       element: <LoginPage />,
+    },
+
+    {
+      path: "/account-recovery",
+      element:
+        <AccountRecoveryPage />,
     },
 
     {
