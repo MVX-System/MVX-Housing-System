@@ -46,3 +46,24 @@ export function changePassword(
     }
   );
 }
+
+export function accountRecoveryReset(
+  nick,
+  recoveryCode,
+  newPassword
+) {
+  return api(
+    null,
+    "/api/account-recovery/reset",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        nick,
+        recovery_code:
+          recoveryCode,
+        new_password:
+          newPassword,
+      }),
+    }
+  );
+}
