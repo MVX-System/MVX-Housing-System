@@ -11555,6 +11555,45 @@ Router.register(
       };
     }
 
+    const auditIssueFailure =
+      async (
+        failureType,
+        targetUserId = null,
+        extraDetails = null
+      ) => {
+        const normalizedTargetUserId =
+          normalizePositiveInteger(
+            targetUserId
+          );
+
+        await SecurityAudit.recordSafe(
+          ctx,
+          {
+            actorUserId:
+              admin.user_id,
+            action:
+              "admin.account_recovery_issue",
+            targetType:
+              normalizedTargetUserId
+                ? "user"
+                : null,
+            targetId:
+              normalizedTargetUserId
+                ? String(
+                    normalizedTargetUserId
+                  )
+                : null,
+            result:
+              "failure",
+            details: {
+              failure_type:
+                failureType,
+              ...(extraDetails || {}),
+            },
+          }
+        );
+      };
+
     const issueLimit =
       await SecurityRateLimit.consume({
         env: ctx.env,
@@ -11566,6 +11605,15 @@ Router.register(
       });
 
     if (!issueLimit.allowed) {
+      await auditIssueFailure(
+        "rate_limited",
+        null,
+        {
+          rate_limit_scope:
+            "admin",
+        }
+      );
+
       return SecurityRateLimit.response(
         issueLimit
       );
@@ -11582,6 +11630,10 @@ Router.register(
       );
 
     if (!userId) {
+      await auditIssueFailure(
+        "invalid_user_id"
+      );
+
       return {
         error:
           "invalid_user_id"
@@ -11602,6 +11654,11 @@ Router.register(
         .first();
 
     if (!user) {
+      await auditIssueFailure(
+        "user_not_found",
+        userId
+      );
+
       return {
         error:
           "user_not_found"
@@ -11611,6 +11668,11 @@ Router.register(
     if (
       Number(user.is_active) !== 1
     ) {
+      await auditIssueFailure(
+        "user_inactive",
+        userId
+      );
+
       return {
         error:
           "user_inactive"
@@ -11622,6 +11684,11 @@ Router.register(
         user.nick || ""
       ).trim()
     ) {
+      await auditIssueFailure(
+        "user_nick_missing",
+        userId
+      );
+
       return {
         error:
           "user_nick_missing"
