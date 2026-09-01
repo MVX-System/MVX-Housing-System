@@ -11,6 +11,10 @@ import {
 } from "../api/auth";
 
 import {
+  useTranslation,
+} from "../i18n";
+
+import {
   buttonStyle,
   inputStyle,
 } from "../styles/theme";
@@ -18,6 +22,10 @@ import {
 export default function AccountRecoveryPage() {
   const navigate =
     useNavigate();
+
+  const {
+    t,
+  } = useTranslation();
 
   const [
     nick,
@@ -75,7 +83,9 @@ export default function AccountRecoveryPage() {
         !confirmPassword
       ) {
         setError(
-          "Please complete all fields."
+          t(
+            "login.recovery.completeAllFields"
+          )
         );
         return;
       }
@@ -84,7 +94,9 @@ export default function AccountRecoveryPage() {
         newPassword.length < 8
       ) {
         setError(
-          "The new password must contain at least 8 characters."
+          t(
+            "login.recovery.passwordTooShort"
+          )
         );
         return;
       }
@@ -94,7 +106,9 @@ export default function AccountRecoveryPage() {
         confirmPassword
       ) {
         setError(
-          "The passwords do not match."
+          t(
+            "login.recovery.passwordsDoNotMatch"
+          )
         );
         return;
       }
@@ -145,7 +159,9 @@ export default function AccountRecoveryPage() {
         );
 
         setError(
-          "The recovery request could not be completed. Check the Nick and Recovery Code and try again."
+          t(
+            "login.recovery.genericError"
+          )
         );
       } finally {
         setSubmitting(
@@ -190,7 +206,9 @@ export default function AccountRecoveryPage() {
               sectionTitleStyle
             }
           >
-            Password changed
+            {t(
+              "login.recovery.successTitle"
+            )}
           </h2>
 
           <div
@@ -198,7 +216,9 @@ export default function AccountRecoveryPage() {
               successStyle
             }
           >
-            Your password has been changed successfully. Existing sessions have been closed.
+            {t(
+              "login.recovery.successText"
+            )}
           </div>
 
           <button
@@ -212,7 +232,9 @@ export default function AccountRecoveryPage() {
               buttonStyle
             }
           >
-            Go to Login
+            {t(
+              "login.recovery.goToLogin"
+            )}
           </button>
         </div>
       </div>
@@ -254,7 +276,9 @@ export default function AccountRecoveryPage() {
             sectionTitleStyle
           }
         >
-          Account recovery
+          {t(
+            "login.recovery.title"
+          )}
         </h2>
 
         <p
@@ -262,7 +286,9 @@ export default function AccountRecoveryPage() {
             descriptionStyle
           }
         >
-          Enter your Nick, the Recovery Code provided by the administrator, and a new password.
+          {t(
+            "login.recovery.description"
+          )}
         </p>
 
         <label
@@ -270,7 +296,9 @@ export default function AccountRecoveryPage() {
             labelStyle
           }
         >
-          Nick
+          {t(
+            "login.recovery.nick"
+          )}
 
           <input
             type="text"
@@ -302,7 +330,9 @@ export default function AccountRecoveryPage() {
             labelStyle
           }
         >
-          Recovery Code
+          {t(
+            "login.recovery.code"
+          )}
 
           <input
             type="text"
@@ -336,7 +366,9 @@ export default function AccountRecoveryPage() {
             labelStyle
           }
         >
-          New password
+          {t(
+            "login.recovery.newPassword"
+          )}
 
           <input
             type="password"
@@ -365,7 +397,9 @@ export default function AccountRecoveryPage() {
             labelStyle
           }
         >
-          Confirm new password
+          {t(
+            "login.recovery.confirmPassword"
+          )}
 
           <input
             type="password"
@@ -431,8 +465,12 @@ export default function AccountRecoveryPage() {
           }}
         >
           {submitting
-            ? "Changing password..."
-            : "Change password"}
+            ? t(
+                "login.recovery.changingPassword"
+              )
+            : t(
+                "login.recovery.changePassword"
+              )}
         </button>
 
         <button
@@ -449,7 +487,9 @@ export default function AccountRecoveryPage() {
             backButtonStyle
           }
         >
-          Back to Login
+          {t(
+            "login.recovery.backToLogin"
+          )}
         </button>
       </div>
     </div>
