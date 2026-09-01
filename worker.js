@@ -11619,7 +11619,8 @@ Router.register(
         ctx.request
       );
 
-    await ctx.env.DB.batch([
+    const issueBatchResults =
+      await ctx.env.DB.batch([
       ctx.env.DB.prepare(`
         UPDATE account_recovery
         SET
@@ -11678,6 +11679,12 @@ Router.register(
         ),
     ]);
 
+    const previousActiveRecoveryRevoked =
+      Number(
+        issueBatchResults?.[0]?.meta
+          ?.changes || 0
+      ) > 0;
+
     const created =
       await ctx.env.DB.prepare(`
         SELECT
@@ -11725,7 +11732,7 @@ Router.register(
           max_attempts:
             RECOVERY_CODE_MAX_ATTEMPTS,
           previous_active_recovery_revoked:
-            true,
+            previousActiveRecoveryRevoked,
         },
       }
     );
