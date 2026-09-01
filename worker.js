@@ -11763,6 +11763,184 @@ Router.register(
 );
 
 // =========================
+// ADMIN ACCOUNT RECOVERY STATUS
+// PR-1F.1:
+//
+// Read-only administrator view of the latest password-reset recovery state.
+// - Admin authentication is required.
+// - No plaintext Recovery Code or code HMAC is returned.
+// - Status is derived from the latest recovery row for the user.
+// =========================
+Router.register(
+  "GET",
+  "/api/admin/account-recovery/status",
+  async (ctx) => {
+    const admin =
+      await Auth.requireAdmin(ctx);
+
+    if (!admin) {
+      return {
+        error: "forbidden"
+      };
+    }
+
+    const userId =
+      normalizePositiveInteger(
+        ctx.url.searchParams.get(
+          "user_id"
+        )
+      );
+
+    if (!userId) {
+      return {
+        error:
+          "invalid_user_id"
+      };
+    }
+
+    const user =
+      await ctx.env.DB.prepare(`
+        SELECT
+          id,
+          nick,
+          is_active
+        FROM users
+        WHERE id = ?
+        LIMIT 1
+      `)
+        .bind(userId)
+        .first();
+
+    if (!user) {
+      return {
+        error:
+          "user_not_found"
+      };
+    }
+
+    const recovery =
+      await ctx.env.DB.prepare(`
+        SELECT
+          id,
+          user_id,
+          purpose,
+          created_at,
+          expires_at,
+          failed_attempts,
+          max_attempts,
+          used_at,
+          revoked_at,
+          revoked_by_user_id
+        FROM account_recovery
+        WHERE user_id = ?
+          AND purpose =
+            'password_reset'
+        ORDER BY
+          datetime(created_at) DESC,
+          id DESC
+        LIMIT 1
+      `)
+        .bind(userId)
+        .first();
+
+    if (!recovery) {
+      return {
+        ok: true,
+        user: {
+          id:
+            Number(user.id),
+          nick:
+            user.nick || null,
+          is_active:
+            Number(user.is_active) === 1,
+        },
+        recovery: {
+          exists: false,
+          status: "none"
+        }
+      };
+    }
+
+    const failedAttempts =
+      Number(
+        recovery.failed_attempts || 0
+      );
+
+    const maxAttempts =
+      Number(
+        recovery.max_attempts || 0
+      );
+
+    const expiresAtMs =
+      recovery.expires_at
+        ? Date.parse(
+            recovery.expires_at
+          )
+        : NaN;
+
+    let status =
+      "active";
+
+    if (recovery.used_at) {
+      status = "used";
+    } else if (recovery.revoked_at) {
+      status = "revoked";
+    } else if (
+      maxAttempts > 0 &&
+      failedAttempts >=
+        maxAttempts
+    ) {
+      status = "exhausted";
+    } else if (
+      !Number.isFinite(
+        expiresAtMs
+      ) ||
+      expiresAtMs <=
+        Date.now()
+    ) {
+      status = "expired";
+    }
+
+    return {
+      ok: true,
+      user: {
+        id:
+          Number(user.id),
+        nick:
+          user.nick || null,
+        is_active:
+          Number(user.is_active) === 1,
+      },
+      recovery: {
+        exists: true,
+        id:
+          Number(recovery.id),
+        status,
+        created_at:
+          recovery.created_at,
+        expires_at:
+          recovery.expires_at,
+        failed_attempts:
+          failedAttempts,
+        max_attempts:
+          maxAttempts,
+        used_at:
+          recovery.used_at || null,
+        revoked_at:
+          recovery.revoked_at || null,
+        revoked_by_user_id:
+          recovery.revoked_by_user_id === null ||
+          recovery.revoked_by_user_id === undefined
+            ? null
+            : Number(
+                recovery.revoked_by_user_id
+              ),
+      }
+    };
+  }
+);
+
+// =========================
 // ADMIN ACCOUNT RECOVERY REVOKE
 // PR-1D.8:
 //
