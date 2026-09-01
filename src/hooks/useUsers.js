@@ -204,6 +204,149 @@ export function useUsers() {
       []
     );
 
+  // PR-1F:
+  // Read current administrator-visible recovery state for one user.
+  const getRecoveryStatus =
+    useCallback(
+      async (
+        userId
+      ) => {
+        const normalizedUserId =
+          Number(userId);
+
+        if (
+          !Number.isInteger(
+            normalizedUserId
+          ) ||
+          normalizedUserId <= 0
+        ) {
+          throw new Error(
+            "invalid_user_id"
+          );
+        }
+
+        const result =
+          await api(
+            "/api/admin/account-recovery/status?user_id=" +
+              encodeURIComponent(
+                normalizedUserId
+              )
+          );
+
+        if (
+          result?.error ||
+          result?.ok === false
+        ) {
+          throw new Error(
+            result?.error ||
+            "Recovery status could not be loaded."
+          );
+        }
+
+        return result;
+      },
+      []
+    );
+
+  // PR-1F:
+  // Issue a one-time Recovery Code.
+  // The plaintext code is returned only by this call and must be shown once.
+  const issueRecoveryCode =
+    useCallback(
+      async (
+        userId
+      ) => {
+        const normalizedUserId =
+          Number(userId);
+
+        if (
+          !Number.isInteger(
+            normalizedUserId
+          ) ||
+          normalizedUserId <= 0
+        ) {
+          throw new Error(
+            "invalid_user_id"
+          );
+        }
+
+        const result =
+          await api(
+            "/api/admin/account-recovery/issue",
+            {
+              method: "POST",
+              body:
+                JSON.stringify({
+                  user_id:
+                    normalizedUserId,
+                }),
+            }
+          );
+
+        if (
+          result?.error ||
+          result?.ok === false
+        ) {
+          throw new Error(
+            result?.error ||
+            "Recovery code could not be issued."
+          );
+        }
+
+        return result;
+      },
+      []
+    );
+
+  // PR-1F:
+  // Revoke the user's current active Recovery Code.
+  const revokeRecoveryCode =
+    useCallback(
+      async (
+        userId
+      ) => {
+        const normalizedUserId =
+          Number(userId);
+
+        if (
+          !Number.isInteger(
+            normalizedUserId
+          ) ||
+          normalizedUserId <= 0
+        ) {
+          throw new Error(
+            "invalid_user_id"
+          );
+        }
+
+        const result =
+          await api(
+            "/api/admin/account-recovery/revoke",
+            {
+              method: "POST",
+              body:
+                JSON.stringify({
+                  user_id:
+                    normalizedUserId,
+                }),
+            }
+          );
+
+        if (
+          result?.error ||
+          result?.ok === false
+        ) {
+          throw new Error(
+            result?.error ||
+            "Recovery code could not be revoked."
+          );
+        }
+
+        return result;
+      },
+      []
+    );
+
   const loadUserAssignments =
     async (
       userId
@@ -473,6 +616,9 @@ export function useUsers() {
     loadUsers,
     searchUsers,
     getUserDetails,
+    getRecoveryStatus,
+    issueRecoveryCode,
+    revokeRecoveryCode,
 
     assignmentUser,
     setAssignmentUser,
