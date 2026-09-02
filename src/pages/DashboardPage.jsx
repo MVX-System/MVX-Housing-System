@@ -44,7 +44,6 @@ const CONTACTS = [
   {
     roleKey: "manager",
     name: "Jevgēnijs Anosovs",
-    phone: "+371 27424549",
   },
   {
     roleKey: "accountant",
@@ -101,6 +100,14 @@ export default function DashboardPage() {
   ] = useState([]);
 
   const [
+    publicContact,
+    setPublicContact
+  ] = useState({
+    support_email: "",
+    support_phone: "",
+  });
+
+  const [
     residentLoading,
     setResidentLoading
   ] = useState(false);
@@ -122,6 +129,64 @@ export default function DashboardPage() {
       loadDashboard();
       loadApartments();
     }
+
+  }, [mode]);
+
+  useEffect(() => {
+
+    if (mode !== "resident") {
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadPublicContact =
+      async () => {
+
+        try {
+
+          const result =
+            await api(
+              "/api/public/contact-settings"
+            );
+
+          if (
+            cancelled ||
+            !result ||
+            result.error ||
+            result.ok === false
+          ) {
+            return;
+          }
+
+          setPublicContact({
+            support_email:
+              String(
+                result.support_email ||
+                ""
+              ).trim(),
+
+            support_phone:
+              String(
+                result.support_phone ||
+                ""
+              ).trim(),
+          });
+
+        } catch (error) {
+
+          console.error(
+            "LOAD PUBLIC CONTACT SETTINGS ERROR:",
+            error
+          );
+        }
+      };
+
+    loadPublicContact();
+
+    return () => {
+      cancelled = true;
+    };
 
   }, [mode]);
 
@@ -248,6 +313,27 @@ export default function DashboardPage() {
           announcementRows
         ),
       [announcementRows]
+    );
+
+  const administrationContacts =
+    useMemo(
+      () =>
+        CONTACTS.map(
+          (contact) =>
+            contact.roleKey ===
+            "manager"
+              ? {
+                  ...contact,
+                  phone:
+                    publicContact
+                      .support_phone,
+                }
+              : contact
+        ),
+      [
+        publicContact
+          .support_phone,
+      ]
     );
 
   const userName =
@@ -744,32 +830,38 @@ export default function DashboardPage() {
                     Latvija
                   </div>
 
-                  <div
-                    style={{
-                      marginTop: 9,
-                    }}
-                  >
-                    <span
-                      style={{
-                        fontWeight: 700,
-                      }}
-                    >
-                      {t("dashboard.contacts.email")}:
-                    </span>{" "}
+                  {publicContact
+                    .support_email && (
 
-                    <a
-                      href="mailto:irlavas20@inbox.lv"
-                      onClick={(event) =>
-                        event.stopPropagation()
-                      }
+                    <div
                       style={{
-                        ...contactLink,
-                        marginTop: 0,
+                        marginTop: 9,
                       }}
                     >
-                      irlavas20@inbox.lv
-                    </a>
-                  </div>
+                      <span
+                        style={{
+                          fontWeight: 700,
+                        }}
+                      >
+                        {t("dashboard.contacts.email")}:
+                      </span>{" "}
+
+                      <a
+                        href={`mailto:${publicContact.support_email}`}
+                        onClick={(event) =>
+                          event.stopPropagation()
+                        }
+                        style={{
+                          ...contactLink,
+                          marginTop: 0,
+                        }}
+                      >
+                        {publicContact
+                          .support_email}
+                      </a>
+                    </div>
+
+                  )}
 
                 </div>
 
@@ -780,7 +872,7 @@ export default function DashboardPage() {
                   }}
                 >
 
-                  {CONTACTS.map(
+                  {administrationContacts.map(
                     (
                       contact,
                       index
@@ -827,23 +919,39 @@ export default function DashboardPage() {
                           {contact.name}
                         </div>
 
-                        <a
-                          href={`tel:${contact.phone.replace(
-                            /\s+/g,
-                            ""
-                          )}`}
-                          onClick={(event) =>
-                            event.stopPropagation()
-                          }
-                          style={{
-                            ...contactLink,
-                            marginTop: 0,
-                            whiteSpace:
-                              "nowrap",
-                          }}
-                        >
-                          {contact.phone}
-                        </a>
+                        {contact.phone ? (
+
+                          <a
+                            href={`tel:${contact.phone.replace(
+                              /[^\d+]/g,
+                              ""
+                            )}`}
+                            onClick={(event) =>
+                              event.stopPropagation()
+                            }
+                            style={{
+                              ...contactLink,
+                              marginTop: 0,
+                              whiteSpace:
+                                "nowrap",
+                            }}
+                          >
+                            {contact.phone}
+                          </a>
+
+                        ) : (
+
+                          <span
+                            style={{
+                              color:
+                                "var(--text)",
+                              fontSize: 11,
+                            }}
+                          >
+                            —
+                          </span>
+
+                        )}
 
                       </div>
 
