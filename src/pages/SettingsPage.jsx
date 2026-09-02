@@ -66,6 +66,33 @@ const TEXT = {
     mandatoryMessage:
       "For security, replace the temporary password before using the rest of MVX System.",
 
+    contactSection:
+      "Public contact",
+    contactTitle:
+      "MVX Administrator contact",
+    contactHint:
+      "These contact details are shown to users who need help signing in to MVX.",
+    supportEmail:
+      "E-mail",
+    supportPhone:
+      "Phone",
+    saveContact:
+      "Save contact details",
+    savingContact:
+      "Saving contact details...",
+    loadingContact:
+      "Loading contact details...",
+    contactSaved:
+      "Contact details saved.",
+    contactLoadFailed:
+      "Contact details could not be loaded.",
+    contactSaveFailed:
+      "Contact details could not be saved.",
+    invalidContactEmail:
+      "Enter a valid e-mail address.",
+    invalidContactPhone:
+      "Enter a valid phone number.",
+
     waterSection:
       "Water readings",
     waterTitle:
@@ -526,6 +553,33 @@ const TEXT = {
     mandatoryMessage:
       "Drošības nolūkā pirms pārējās MVX System izmantošanas nomainiet pagaidu paroli.",
 
+    contactSection:
+      "Publiskā kontaktinformācija",
+    contactTitle:
+      "MVX administratora kontakti",
+    contactHint:
+      "Šī kontaktinformācija tiek rādīta lietotājiem, kuriem nepieciešama palīdzība, lai pieteiktos MVX.",
+    supportEmail:
+      "E-pasts",
+    supportPhone:
+      "Tālrunis",
+    saveContact:
+      "Saglabāt kontaktinformāciju",
+    savingContact:
+      "Kontaktinformācija tiek saglabāta...",
+    loadingContact:
+      "Tiek ielādēta kontaktinformācija...",
+    contactSaved:
+      "Kontaktinformācija ir saglabāta.",
+    contactLoadFailed:
+      "Neizdevās ielādēt kontaktinformāciju.",
+    contactSaveFailed:
+      "Neizdevās saglabāt kontaktinformāciju.",
+    invalidContactEmail:
+      "Ievadiet derīgu e-pasta adresi.",
+    invalidContactPhone:
+      "Ievadiet derīgu tālruņa numuru.",
+
     waterSection:
       "Ūdens skaitītāju rādījumi",
     waterTitle:
@@ -985,6 +1039,33 @@ const TEXT = {
       "Временный пароль",
     mandatoryMessage:
       "В целях безопасности замените временный пароль до использования остальных разделов MVX System.",
+
+    contactSection:
+      "Публичные контакты",
+    contactTitle:
+      "Контакты Администратора MVX",
+    contactHint:
+      "Эти контактные данные отображаются пользователям, которым нужна помощь со входом в MVX.",
+    supportEmail:
+      "E-mail",
+    supportPhone:
+      "Телефон",
+    saveContact:
+      "Сохранить контактные данные",
+    savingContact:
+      "Сохранение контактных данных...",
+    loadingContact:
+      "Загрузка контактных данных...",
+    contactSaved:
+      "Контактные данные сохранены.",
+    contactLoadFailed:
+      "Не удалось загрузить контактные данные.",
+    contactSaveFailed:
+      "Не удалось сохранить контактные данные.",
+    invalidContactEmail:
+      "Введите корректный e-mail.",
+    invalidContactPhone:
+      "Введите корректный номер телефона.",
 
     waterSection:
       "Показания воды",
@@ -1856,6 +1937,36 @@ export default function SettingsPage() {
   ] = useState("");
 
   const [
+    contactLoading,
+    setContactLoading,
+  ] = useState(false);
+
+  const [
+    contactSaving,
+    setContactSaving,
+  ] = useState(false);
+
+  const [
+    contactError,
+    setContactError,
+  ] = useState("");
+
+  const [
+    contactSuccess,
+    setContactSuccess,
+  ] = useState("");
+
+  const [
+    supportEmail,
+    setSupportEmail,
+  ] = useState("");
+
+  const [
+    supportPhone,
+    setSupportPhone,
+  ] = useState("");
+
+  const [
     waterLoading,
     setWaterLoading,
   ] = useState(false);
@@ -2284,6 +2395,75 @@ export default function SettingsPage() {
   useEffect(() => {
     if (
       !isAdmin ||
+      mode !== "admin" ||
+      mustChangePassword
+    ) {
+      return;
+    }
+
+    const loadContactSettings =
+      async () => {
+        setContactLoading(true);
+        setContactError("");
+
+        try {
+          const result =
+            await api(
+              "/api/admin/contact-settings"
+            );
+
+          if (
+            !result ||
+            result.error ||
+            result.ok === false
+          ) {
+            throw new Error(
+              result?.error ||
+              "contact_settings_load_failed"
+            );
+          }
+
+          setSupportEmail(
+            String(
+              result.settings
+                ?.support_email ||
+              ""
+            )
+          );
+
+          setSupportPhone(
+            String(
+              result.settings
+                ?.support_phone ||
+              ""
+            )
+          );
+        } catch (loadError) {
+          console.error(
+            "LOAD CONTACT SETTINGS ERROR:",
+            loadError
+          );
+
+          setContactError(
+            text.contactLoadFailed
+          );
+        } finally {
+          setContactLoading(false);
+        }
+      };
+
+    loadContactSettings();
+  }, [
+    isAdmin,
+    mode,
+    mustChangePassword,
+    text.contactLoadFailed,
+  ]);
+
+
+  useEffect(() => {
+    if (
+      !isAdmin ||
       mustChangePassword
     ) {
       return;
@@ -2652,6 +2832,113 @@ export default function SettingsPage() {
         }
       }
     };
+
+  const handleContactSubmit =
+    async (event) => {
+      event.preventDefault();
+
+      setContactError("");
+      setContactSuccess("");
+
+      const email =
+        supportEmail.trim();
+
+      const phone =
+        supportPhone.trim();
+
+      if (
+        !email ||
+        email.length > 254 ||
+        !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
+          email
+        )
+      ) {
+        setContactError(
+          text.invalidContactEmail
+        );
+        return;
+      }
+
+      const digitCount =
+        phone.replace(/\D/g, "")
+          .length;
+
+      if (
+        !phone ||
+        phone.length > 40 ||
+        !/^[+0-9\s().-]+$/.test(
+          phone
+        ) ||
+        digitCount < 5 ||
+        digitCount > 20
+      ) {
+        setContactError(
+          text.invalidContactPhone
+        );
+        return;
+      }
+
+      setContactSaving(true);
+
+      try {
+        const result =
+          await api(
+            "/api/admin/contact-settings",
+            {
+              method: "POST",
+              body: JSON.stringify({
+                support_email:
+                  email,
+                support_phone:
+                  phone,
+              }),
+            }
+          );
+
+        if (
+          !result ||
+          result.error ||
+          result.ok === false
+        ) {
+          throw new Error(
+            result?.error ||
+            "contact_settings_save_failed"
+          );
+        }
+
+        setSupportEmail(
+          String(
+            result.settings
+              ?.support_email ||
+            email
+          )
+        );
+
+        setSupportPhone(
+          String(
+            result.settings
+              ?.support_phone ||
+            phone
+          )
+        );
+
+        setContactSuccess(
+          text.contactSaved
+        );
+      } catch (saveError) {
+        console.error(
+          "SAVE CONTACT SETTINGS ERROR:",
+          saveError
+        );
+
+        setContactError(
+          text.contactSaveFailed
+        );
+      } finally {
+        setContactSaving(false);
+      }
+    };
+
 
   const handleWaterSubmit =
     async (event) => {
@@ -3738,6 +4025,121 @@ export default function SettingsPage() {
           </div>
         </div>
       )}
+
+      {isAdmin &&
+        mode === "admin" &&
+        !mustChangePassword && (
+          <section
+            style={{
+              ...sectionStyle,
+              marginBottom: 18,
+            }}
+          >
+            <SectionHeader
+              eyebrow={
+                text.contactSection
+              }
+              title={
+                text.contactTitle
+              }
+              hint={
+                text.contactHint
+              }
+            />
+
+            {contactLoading ? (
+              <div
+                style={noticeStyle}
+              >
+                {text.loadingContact}
+              </div>
+            ) : (
+              <form
+                onSubmit={
+                  handleContactSubmit
+                }
+                style={{
+                  display: "grid",
+                  gap: 14,
+                }}
+              >
+                <TextField
+                  label={
+                    text.supportEmail
+                  }
+                  value={
+                    supportEmail
+                  }
+                  onChange={(
+                    event
+                  ) => {
+                    setSupportEmail(
+                      event.target.value
+                    );
+                    setContactError("");
+                    setContactSuccess("");
+                  }}
+                  type="email"
+                  autoComplete="email"
+                />
+
+                <TextField
+                  label={
+                    text.supportPhone
+                  }
+                  value={
+                    supportPhone
+                  }
+                  onChange={(
+                    event
+                  ) => {
+                    setSupportPhone(
+                      event.target.value
+                    );
+                    setContactError("");
+                    setContactSuccess("");
+                  }}
+                  type="tel"
+                  autoComplete="tel"
+                />
+
+                {contactError && (
+                  <div
+                    role="alert"
+                    style={errorStyle}
+                  >
+                    {contactError}
+                  </div>
+                )}
+
+                {contactSuccess && (
+                  <div
+                    role="status"
+                    style={successStyle}
+                  >
+                    {contactSuccess}
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={
+                    contactSaving
+                  }
+                  style={
+                    primaryButtonStyle(
+                      contactSaving
+                    )
+                  }
+                >
+                  {contactSaving
+                    ? text.savingContact
+                    : text.saveContact}
+                </button>
+              </form>
+            )}
+          </section>
+        )}
 
       {isAdmin &&
         mode === "admin" &&
@@ -6276,6 +6678,30 @@ function PasswordField({
 
       <input
         type="password"
+        value={value}
+        onChange={onChange}
+        autoComplete={
+          autoComplete
+        }
+        style={inputStyle}
+      />
+    </label>
+  );
+}
+
+function TextField({
+  label,
+  value,
+  onChange,
+  type = "text",
+  autoComplete,
+}) {
+  return (
+    <label style={fieldLabelStyle}>
+      {label}
+
+      <input
+        type={type}
         value={value}
         onChange={onChange}
         autoComplete={
