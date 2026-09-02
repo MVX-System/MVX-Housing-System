@@ -6,6 +6,16 @@ const login = {
 
   login: "Pieslēgties",
   recoverAccess: "Atjaunot piekļuvi",
+  forgotCredentials: "Aizmirsāt Nick vai paroli?",
+  haveRecoveryCode: "Man ir Recovery Code",
+
+  help: {
+    title: "Aizmirsāt Nick vai paroli?",
+    message: "Ja esat aizmirsis Nick vai paroli, sazinieties ar MVX administratoru.",
+    email: "E-pasts",
+    phone: "Tālrunis",
+    close: "Aizvērt",
+  },
 
   recovery: {
     title: "Piekļuves atjaunošana",

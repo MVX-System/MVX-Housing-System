@@ -6,6 +6,16 @@ const login = {
 
   login: "Login",
   recoverAccess: "Recover access",
+  forgotCredentials: "Forgot your Nick or password?",
+  haveRecoveryCode: "I have a Recovery Code",
+
+  help: {
+    title: "Forgot your Nick or password?",
+    message: "If you have forgotten your Nick or password, please contact the MVX Administrator.",
+    email: "Email",
+    phone: "Phone",
+    close: "Close",
+  },
 
   recovery: {
     title: "Account recovery",

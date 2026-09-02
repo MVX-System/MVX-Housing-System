@@ -6,6 +6,16 @@ const login = {
 
   login: "Войти",
   recoverAccess: "Восстановить доступ",
+  forgotCredentials: "Забыли Ник или пароль?",
+  haveRecoveryCode: "У меня есть Recovery Code",
+
+  help: {
+    title: "Забыли Ник или пароль?",
+    message: "Если Вы забыли Ник или пароль, обратитесь к Администратору MVX.",
+    email: "Электронная почта",
+    phone: "Телефон",
+    close: "Закрыть",
+  },
 
   recovery: {
     title: "Восстановление доступа",
