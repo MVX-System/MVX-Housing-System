@@ -4733,6 +4733,109 @@ async function getWaterReportingSettings(env) {
 
 
 // =========================
+// PUBLIC CONTACT SETTINGS
+// PR-1J:
+// Centralized public support contacts used by Login and other UI surfaces.
+// The public API exposes only the support email and phone.
+// Administrative updates are audited without storing contact values.
+// =========================
+
+const PUBLIC_CONTACT_SETTINGS_ID = 1;
+
+function normalizeSupportEmail(value) {
+  const email =
+    String(value || "")
+      .trim();
+
+  if (
+    !email ||
+    email.length > 254 ||
+    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
+      email
+    )
+  ) {
+    return null;
+  }
+
+  return email;
+}
+
+function normalizeSupportPhone(value) {
+  const phone =
+    String(value || "")
+      .trim();
+
+  if (
+    !phone ||
+    phone.length > 40 ||
+    !/^[+0-9\s().-]+$/.test(
+      phone
+    )
+  ) {
+    return null;
+  }
+
+  const digitCount =
+    phone.replace(/\D/g, "")
+      .length;
+
+  if (
+    digitCount < 5 ||
+    digitCount > 20
+  ) {
+    return null;
+  }
+
+  return phone;
+}
+
+async function ensurePublicContactSettingsTable(env) {
+  await env.DB.prepare(`
+    CREATE TABLE IF NOT EXISTS public_contact_settings (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      support_email TEXT,
+      support_phone TEXT,
+      updated_by INTEGER,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+  `).run();
+
+  await env.DB.prepare(`
+    INSERT OR IGNORE INTO public_contact_settings (
+      id,
+      support_email,
+      support_phone
+    )
+    VALUES (?, NULL, NULL)
+  `)
+    .bind(
+      PUBLIC_CONTACT_SETTINGS_ID
+    )
+    .run();
+}
+
+async function getPublicContactSettings(env) {
+  return await env.DB.prepare(`
+    SELECT
+      id,
+      support_email,
+      support_phone,
+      updated_by,
+      created_at,
+      updated_at
+    FROM public_contact_settings
+    WHERE id = ?
+    LIMIT 1
+  `)
+    .bind(
+      PUBLIC_CONTACT_SETTINGS_ID
+    )
+    .first();
+}
+
+
+// =========================
 // BACKUP STATUS MODEL
 // Stage 2I-SR14B:
 // Read-only helpers for Admin Backup Management.
@@ -7566,6 +7669,175 @@ function addMonthsToIsoDate(
 // =========================
 // ROUTES
 // =========================
+
+// =========================
+// PUBLIC CONTACT SETTINGS
+// PR-1J:
+// Intentionally unauthenticated because Login needs these contacts
+// before a user has an MVX session. No other system settings are exposed.
+// =========================
+Router.register(
+  "GET",
+  "/api/public/contact-settings",
+  async (ctx) => {
+    const settings =
+      await getPublicContactSettings(
+        ctx.env
+      );
+
+    if (!settings) {
+      return {
+        ok: true,
+        support_email: null,
+        support_phone: null,
+      };
+    }
+
+    return {
+      ok: true,
+      support_email:
+        settings.support_email ||
+        null,
+      support_phone:
+        settings.support_phone ||
+        null,
+    };
+  }
+);
+
+// =========================
+// ADMIN CONTACT SETTINGS
+// =========================
+Router.register(
+  "GET",
+  "/api/admin/contact-settings",
+  async (ctx) => {
+    const admin =
+      await Auth.requireAdmin(ctx);
+
+    if (!admin) {
+      return {
+        error: "forbidden"
+      };
+    }
+
+    const settings =
+      await getPublicContactSettings(
+        ctx.env
+      );
+
+    return {
+      ok: true,
+      settings: settings || {
+        id:
+          PUBLIC_CONTACT_SETTINGS_ID,
+        support_email: null,
+        support_phone: null,
+        updated_by: null,
+        created_at: null,
+        updated_at: null,
+      },
+    };
+  }
+);
+
+Router.register(
+  "POST",
+  "/api/admin/contact-settings",
+  async (ctx) => {
+    const admin =
+      await Auth.requireAdmin(ctx);
+
+    if (!admin) {
+      return {
+        error: "forbidden"
+      };
+    }
+
+    const body =
+      await ctx.request
+        .json()
+        .catch(() => ({}));
+
+    const supportEmail =
+      normalizeSupportEmail(
+        body.support_email
+      );
+
+    const supportPhone =
+      normalizeSupportPhone(
+        body.support_phone
+      );
+
+    if (!supportEmail) {
+      return {
+        error:
+          "invalid_support_email"
+      };
+    }
+
+    if (!supportPhone) {
+      return {
+        error:
+          "invalid_support_phone"
+      };
+    }
+
+    await ensurePublicContactSettingsTable(
+      ctx.env
+    );
+
+    const nowIso =
+      new Date().toISOString();
+
+    await ctx.env.DB.prepare(`
+      UPDATE public_contact_settings
+      SET
+        support_email = ?,
+        support_phone = ?,
+        updated_by = ?,
+        updated_at = ?
+      WHERE id = ?
+    `)
+      .bind(
+        supportEmail,
+        supportPhone,
+        admin.user_id,
+        nowIso,
+        PUBLIC_CONTACT_SETTINGS_ID
+      )
+      .run();
+
+    await SecurityAudit.recordSafe(
+      ctx,
+      {
+        actorUserId:
+          admin.user_id,
+        action:
+          "admin.contact_settings_update",
+        targetType:
+          "public_contact_settings",
+        targetId:
+          String(
+            PUBLIC_CONTACT_SETTINGS_ID
+          ),
+        details: {
+          contact_fields_updated: 2,
+        },
+      }
+    );
+
+    return {
+      ok: true,
+      settings:
+        await getPublicContactSettings(
+          ctx.env
+        ),
+    };
+  }
+);
+
+
 
 // =========================
 // ANNOUNCEMENT HELPERS
