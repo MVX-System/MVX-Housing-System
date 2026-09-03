@@ -1,43 +1,87 @@
 {
-	"name": "mvx-housing-api",
-	"main": "worker.js",
-	"compatibility_date": "2026-04-21",
-	"d1_databases": [
-		{
-			"binding": "DB",
-			"database_name": "housing-db",
-			"database_id": "ebf27bcc-9980-4564-afe9-db14e444220f"
-		},
-		{
-			"binding": "PII_DB",
-			"database_name": "housing-pii-db",
-			"database_id": "5f20d702-446a-4a22-9d91-7ecbdc931bd0"
-		},
-		{
-			"binding": "OPS_DB",
-			"database_name": "housing-ops-db",
-			"database_id": "1a464954-9b41-485b-9933-ba42525a34ba"
-		}
-	],
-	"r2_buckets": [
-		{
-			"binding": "WATER_CERTIFICATES",
-			"bucket_name": "mvx-water-meter-certificates"
-		}
-	],
-	"vars": {
-		"VAPID_PUBLIC_KEY": "BGghmhEbwKbH8P1_pDroY0TLX_S-74vYoLxdsIGa22AbD-8mu6a1Lusl_xIhrrYM1lDaNk42S0bMCm9qsbw2JRo",
-		"VAPID_SUBJECT": "mailto:irlavas20@inbox.lv",
-		"GITHUB_OWNER": "MVX-System",
-		"GITHUB_REPO": "MVX-Housing-System",
-		"GITHUB_BACKUP_WORKFLOW": "mvx-weekly-backup.yml",
-		"CLOUDFLARE_ACCOUNT_ID": "9b022a12befdc53491eaa8fd72f4f791",
-		"MAIN_D1_DATABASE_ID": "ebf27bcc-9980-4564-afe9-db14e444220f",
-		"PII_D1_DATABASE_ID": "5f20d702-446a-4a22-9d91-7ecbdc931bd0"
-	},
-	"triggers": {
-		"crons": [
-			"17 3 * * *"
-		]
-	}
+  "name": "mvx-housing-api",
+  "main": "worker.js",
+  "compatibility_date": "2026-04-21",
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "housing-db",
+      "database_id": "ebf27bcc-9980-4564-afe9-db14e444220f"
+    },
+    {
+      "binding": "PII_DB",
+      "database_name": "housing-pii-db",
+      "database_id": "5f20d702-446a-4a22-9d91-7ecbdc931bd0"
+    },
+    {
+      "binding": "OPS_DB",
+      "database_name": "housing-ops-db",
+      "database_id": "1a464954-9b41-485b-9933-ba42525a34ba"
+    }
+  ],
+
+  "r2_buckets": [
+    {
+      "binding": "WATER_CERTIFICATES",
+      "bucket_name": "mvx-water-meter-certificates"
+    }
+  ],
+
+  "vars": {
+    "VAPID_PUBLIC_KEY": "BGghmhEbwKbH8P1_pDroY0TLX_S-74vYoLxdsIGa22AbD-8mu6a1Lusl_xIhrrYM1lDaNk42S0bMCm9qsbw2JRo",
+    "VAPID_SUBJECT": "mailto:irlavas20@inbox.lv",
+    "GITHUB_OWNER": "MVX-System",
+    "GITHUB_REPO": "MVX-Housing-System",
+    "GITHUB_BACKUP_WORKFLOW": "mvx-weekly-backup.yml",
+    "CLOUDFLARE_ACCOUNT_ID": "9b022a12befdc53491eaa8fd72f4f791",
+    "MAIN_D1_DATABASE_ID": "ebf27bcc-9980-4564-afe9-db14e444220f",
+    "PII_D1_DATABASE_ID": "5f20d702-446a-4a22-9d91-7ecbdc931bd0"
+  },
+
+  "triggers": {
+    "crons": [
+      "17 3 * * *"
+    ]
+  },
+
+  "env": {
+    "test": {
+      "name": "mvx-housing-api-test",
+
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "housing-test-db",
+          "database_id": "19c88ce8-cae4-4a4a-983f-a6af2bc1119f"
+        },
+        {
+          "binding": "PII_DB",
+          "database_name": "housing-test-pii-db",
+          "database_id": "9d061b87-ca08-4250-8f82-26d7e2466d58"
+        },
+        {
+          "binding": "OPS_DB",
+          "database_name": "housing-test-ops-db",
+          "database_id": "6d109635-1dd7-4d22-bae7-01f052f01cba"
+        }
+      ],
+
+      "r2_buckets": [
+        {
+          "binding": "WATER_CERTIFICATES",
+          "bucket_name": "mvx-water-meter-certificates-test",
+          "jurisdiction": "eu"
+        }
+      ],
+
+      "vars": {
+        "MVX_ENVIRONMENT": "test"
+      },
+
+      "triggers": {
+        "crons": []
+      }
+    }
+  }
 }
