@@ -19,7 +19,7 @@ export default {
 class App {
 static async handle(request, env) {
   const url = new URL(request.url);
-  const cors = this.cors(request);
+  const cors = this.cors(request, env);
 
   try {
     if (request.method === "OPTIONS") {
@@ -303,13 +303,28 @@ static async handle(request, env) {
     );
   }
 
-  static cors(request) {
-    const allowedOrigins = new Set([
-      "https://mvx-housing-system.pages.dev",
-      "https://mvx-housing-system-migration.pages.dev",
-      "http://localhost:5173",
-      "http://127.0.0.1:5173",
-    ]);
+  static cors(request, env) {
+    const environment =
+      String(
+        env?.MVX_ENVIRONMENT ||
+          "production"
+      )
+        .trim()
+        .toLowerCase();
+
+    const allowedOrigins =
+      environment === "test"
+        ? new Set([
+            "https://mvx-housing-system-test.pages.dev",
+            "http://localhost:5173",
+            "http://127.0.0.1:5173",
+          ])
+        : new Set([
+            "https://mvx-housing-system.pages.dev",
+            "https://mvx-housing-system-migration.pages.dev",
+            "http://localhost:5173",
+            "http://127.0.0.1:5173",
+          ]);
 
     const origin =
       request?.headers?.get("Origin") || "";
