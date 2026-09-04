@@ -1,8 +1,16 @@
-const API =
-  "https://mvx-housing-api.mvx-system.workers.dev";
+const API = String(
+  import.meta.env.VITE_API_BASE_URL || ""
+)
+  .trim()
+  .replace(/\/+$/, "");
+
+if (!API) {
+  throw new Error(
+    "VITE_API_BASE_URL is not configured"
+  );
+}
 
 function getAuthHeaders() {
-
   const token =
     localStorage.getItem("token");
 
@@ -18,7 +26,6 @@ export async function api(
   url,
   options = {}
 ) {
-
   const isFormData =
     options.body instanceof FormData;
 
@@ -26,7 +33,6 @@ export async function api(
     API + url,
     {
       ...options,
-
       headers: {
         ...(
           isFormData
@@ -36,9 +42,7 @@ export async function api(
                   "application/json",
               }
         ),
-
         ...getAuthHeaders(),
-
         ...(options.headers || {}),
       },
     }
@@ -51,15 +55,12 @@ export async function apiFile(
   url,
   options = {}
 ) {
-
   return await fetch(
     API + url,
     {
       ...options,
-
       headers: {
         ...getAuthHeaders(),
-
         ...(options.headers || {}),
       },
     }

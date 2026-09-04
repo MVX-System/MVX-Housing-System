@@ -1,7 +1,7 @@
 <!doctype html>
+
 <html lang="en">
   <head>
-
     <meta charset="UTF-8" />
 
     <link
@@ -21,13 +21,11 @@
 
     <meta
       http-equiv="Content-Security-Policy"
-      content="connect-src 'self' https://mvx-housing-api.mvx-system.workers.dev;"
+      content="connect-src 'self' %VITE_API_BASE_URL%;"
     />
-
   </head>
 
   <body>
-
     <div id="root"></div>
 
     <script
@@ -38,6 +36,5 @@
       type="module"
       src="/src/main.jsx"
     ></script>
-
   </body>
 </html>
