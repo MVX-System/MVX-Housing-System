@@ -319,12 +319,20 @@ static async handle(request, env) {
             "http://localhost:5173",
             "http://127.0.0.1:5173",
           ])
-        : new Set([
-            "https://mvx-housing-system.pages.dev",
-            "https://mvx-housing-system-migration.pages.dev",
-            "http://localhost:5173",
-            "http://127.0.0.1:5173",
-          ]);
+        : environment === "demo"
+          ? new Set([
+              "https://mvx-housing-system-demo.pages.dev",
+              "http://localhost:5173",
+              "http://127.0.0.1:5173",
+            ])
+          : environment === "production"
+            ? new Set([
+                "https://mvx-housing-system.pages.dev",
+                "https://mvx-housing-system-migration.pages.dev",
+                "http://localhost:5173",
+                "http://127.0.0.1:5173",
+              ])
+            : new Set();
 
     const origin =
       request?.headers?.get("Origin") || "";

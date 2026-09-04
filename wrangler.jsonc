@@ -82,6 +82,39 @@
       "triggers": {
         "crons": []
       }
+    },
+    "demo": {
+      "name": "mvx-housing-api-demo",
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "housing-demo-db",
+          "database_id": "1056bcbb-e45c-4125-a9ab-5b5ce2ccbde2"
+        },
+        {
+          "binding": "PII_DB",
+          "database_name": "housing-demo-pii-db",
+          "database_id": "d447e3dc-c8f3-4e13-9f7d-146fdfce786f"
+        },
+        {
+          "binding": "OPS_DB",
+          "database_name": "housing-demo-ops-db",
+          "database_id": "ef5ad1f0-b35a-4d53-b07a-9e05bd15a341"
+        }
+      ],
+      "r2_buckets": [
+        {
+          "binding": "WATER_CERTIFICATES",
+          "bucket_name": "mvx-water-meter-certificates-demo",
+          "jurisdiction": "eu"
+        }
+      ],
+      "vars": {
+        "MVX_ENVIRONMENT": "demo"
+      },
+      "triggers": {
+        "crons": []
+      }
     }
   }
 }
