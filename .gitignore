@@ -22,3 +22,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# MVX DEMO generated water meter calibration certificates
+/MVX_DEMO_Water_Meter_Certificates_60/
+/MVX_DEMO_Water_Meter_Certificates_60.zip
+/manifest.csv
