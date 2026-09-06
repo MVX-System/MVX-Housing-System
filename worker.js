@@ -305,10 +305,7 @@ static async handle(request, env) {
 
   static cors(request, env) {
     const environment =
-      String(
-        env?.MVX_ENVIRONMENT ||
-          "production"
-      )
+      String(env?.MVX_ENVIRONMENT || "")
         .trim()
         .toLowerCase();
 
