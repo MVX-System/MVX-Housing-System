@@ -11,7 +11,7 @@ const announcements = {
 
   resident: {
     title: "Announcements",
-    subtitle: "Current information from DzĪKS IRLAVA 20.",
+    subtitle: "Current information from {{facilityName}}.",
     noCurrent: "There are no current announcements.",
     showLess: "Show less",
     readPreview: "Read preview",

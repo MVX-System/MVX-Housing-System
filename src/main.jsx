@@ -1,4 +1,5 @@
 import { StrictMode } from "react";
+
 import { createRoot } from "react-dom/client";
 
 import "./index.css";
@@ -7,7 +8,13 @@ import {
   RouterProvider,
 } from "react-router-dom";
 
-import { router } from "./router/router";
+import {
+  router,
+} from "./router/router";
+
+import {
+  FacilityProvider,
+} from "./context/FacilityContext";
 
 import {
   AuthProvider,
@@ -76,7 +83,6 @@ async function registerServiceWorker() {
     );
 
     return registration;
-
   } catch (error) {
     console.error(
       "MVX service worker registration failed:",
@@ -99,25 +105,17 @@ window.addEventListener(
 createRoot(
   document.getElementById("root")
 ).render(
-
   <StrictMode>
-
     <LanguageProvider>
-
-      <AuthProvider>
-
-        <ModeProvider>
-
-          <RouterProvider
-            router={router}
-          />
-
-        </ModeProvider>
-
-      </AuthProvider>
-
+      <FacilityProvider>
+        <AuthProvider>
+          <ModeProvider>
+            <RouterProvider
+              router={router}
+            />
+          </ModeProvider>
+        </AuthProvider>
+      </FacilityProvider>
     </LanguageProvider>
-
   </StrictMode>
-
 );

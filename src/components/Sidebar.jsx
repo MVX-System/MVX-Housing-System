@@ -18,6 +18,10 @@ import {
 } from "../context/ModeContext";
 
 import {
+  useFacility,
+} from "../context/FacilityContext";
+
+import {
   useTranslation,
 } from "../i18n";
 
@@ -157,6 +161,11 @@ export default function Sidebar({
     mode,
     setMode,
   } = useMode();
+
+  const {
+    facility,
+    loading: facilityLoading,
+  } = useFacility();
 
   const {
     t,
@@ -370,7 +379,10 @@ export default function Sidebar({
           </div>
 
           <div>
-            DzĪKS IRLAVA 20
+            {facilityLoading
+              ? "..."
+              : facility?.display_name ||
+                "Facility"}
           </div>
         </h2>
 

@@ -20,6 +20,10 @@ import {
 } from "../context/AuthContext";
 
 import {
+  useFacility,
+} from "../context/FacilityContext";
+
+import {
   useTranslation,
 } from "../i18n";
 
@@ -43,17 +47,12 @@ import {
 const CONTACTS = [
   {
     roleKey: "manager",
-    name: "Jevgēnijs Anosovs",
   },
   {
     roleKey: "accountant",
-    name: "Maija Malmigo",
-    phone: "+371 29283923",
   },
   {
     roleKey: "heatingTechnician",
-    name: "Igors Guļko",
-    phone: "+371 28218233",
   },
 ];
 
@@ -66,6 +65,23 @@ export default function DashboardPage() {
   const {
     me,
   } = useAuth();
+
+  const {
+    facility,
+  } = useFacility();
+
+  const facilityDisplayName =
+    facility?.display_name ||
+    "Facility";
+
+  const facilityAddress = [
+    facility?.address_line,
+    facility?.city,
+    facility?.postal_code,
+    facility?.country,
+  ]
+    .filter(Boolean)
+    .join(", ");
 
   const {
     t,
@@ -439,7 +455,7 @@ export default function DashboardPage() {
                 "0.04em",
             }}
           >
-            DzĪKS IRLAVA 20
+            {facilityDisplayName}
           </div>
 
         )}
@@ -785,7 +801,7 @@ export default function DashboardPage() {
 
             <HomeTile
               title={t("dashboard.contacts.title")}
-              subtitle="DzĪKS Irlava 20"
+              subtitle={facilityDisplayName}
               wide
             >
 
@@ -817,7 +833,7 @@ export default function DashboardPage() {
                       fontWeight: 800,
                     }}
                   >
-                    DzĪKS Irlava 20
+                    {facilityDisplayName}
                   </div>
 
                   <div
@@ -825,9 +841,7 @@ export default function DashboardPage() {
                       marginTop: 5,
                     }}
                   >
-                    Irlavas iela 20,
-                    Rīga, LV-1046,
-                    Latvija
+                    {facilityAddress || "—"}
                   </div>
 
                   {publicContact
@@ -916,7 +930,7 @@ export default function DashboardPage() {
                             fontSize: 11,
                           }}
                         >
-                          {contact.name}
+                          {contact.name || "—"}
                         </div>
 
                         {contact.phone ? (

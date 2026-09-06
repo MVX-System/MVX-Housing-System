@@ -11,6 +11,10 @@ import {
 } from "../api/auth";
 
 import {
+  useFacility,
+} from "../context/FacilityContext";
+
+import {
   useTranslation,
 } from "../i18n";
 
@@ -22,6 +26,17 @@ import {
 export default function AccountRecoveryPage() {
   const navigate =
     useNavigate();
+
+  const {
+    facility,
+    loading: facilityLoading,
+  } = useFacility();
+
+  const facilityDisplayName =
+    facilityLoading
+      ? "..."
+      : facility?.display_name ||
+        "Facility";
 
   const {
     t,
@@ -197,7 +212,7 @@ export default function AccountRecoveryPage() {
             </div>
 
             <div>
-              DzĪKS IRLAVA 20
+              {facilityDisplayName}
             </div>
           </h1>
 
@@ -267,7 +282,7 @@ export default function AccountRecoveryPage() {
           </div>
 
           <div>
-            DzĪKS IRLAVA 20
+            {facilityDisplayName}
           </div>
         </h1>
 

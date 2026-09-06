@@ -10,6 +10,10 @@ import useAnnouncements
   from "../hooks/useAnnouncements";
 
 import {
+  useFacility,
+} from "../context/FacilityContext";
+
+import {
   useTranslation,
 } from "../i18n";
 
@@ -224,6 +228,17 @@ export default function AnnouncementsPage() {
     useNavigate();
 
   const {
+    facility,
+    loading: facilityLoading,
+  } = useFacility();
+
+  const facilityDisplayName =
+    facilityLoading
+      ? "..."
+      : facility?.display_name ||
+        "Facility";
+
+  const {
     t,
     language,
   } = useTranslation();
@@ -349,7 +364,11 @@ export default function AnnouncementsPage() {
             }}
           >
             {t(
-              "announcements.resident.subtitle"
+              "announcements.resident.subtitle",
+              {
+                facilityName:
+                  facilityDisplayName,
+              }
             )}
           </p>
         </div>

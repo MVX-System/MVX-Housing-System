@@ -11,7 +11,7 @@ const announcements = {
 
   resident: {
     title: "Объявления",
-    subtitle: "Актуальная информация от DzĪKS IRLAVA 20.",
+    subtitle: "Актуальная информация от {{facilityName}}.",
     noCurrent: "Актуальных объявлений нет.",
     showLess: "Свернуть",
     readPreview: "Читать далее",

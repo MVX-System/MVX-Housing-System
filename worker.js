@@ -4755,6 +4755,58 @@ async function getWaterReportingSettings(env) {
 }
 
 
+
+// =========================
+// PUBLIC FACILITY PROFILE
+// PR-2I:
+// Unauthenticated because Login and Account Recovery need
+// the facility identity before an MVX session exists.
+// =========================
+
+Router.register(
+  "GET",
+  "/api/public/facility-profile",
+  async (ctx) => {
+    const facility =
+      await getFacilityProfile(
+        ctx.env
+      );
+
+    if (!facility) {
+      return {
+        ok: true,
+        facility: null,
+      };
+    }
+
+    return {
+      ok: true,
+      facility: {
+        id:
+          facility.id,
+        display_name:
+          facility.display_name,
+        legal_name:
+          facility.legal_name ||
+          null,
+        address_line:
+          facility.address_line ||
+          null,
+        city:
+          facility.city ||
+          null,
+        postal_code:
+          facility.postal_code ||
+          null,
+        country:
+          facility.country ||
+          null,
+      },
+    };
+  }
+);
+
+
 // =========================
 // PUBLIC CONTACT SETTINGS
 // PR-1J:
@@ -4853,6 +4905,40 @@ async function getPublicContactSettings(env) {
   `)
     .bind(
       PUBLIC_CONTACT_SETTINGS_ID
+    )
+    .first();
+}
+
+
+
+// =========================
+// FACILITY PROFILE
+// PR-2I:
+// Public read-only identity of the facility served by this environment.
+// One environment currently serves one facility.
+// =========================
+
+const FACILITY_PROFILE_ID = 1;
+
+async function getFacilityProfile(env) {
+  return await env.DB.prepare(`
+    SELECT
+      id,
+      display_name,
+      legal_name,
+      address_line,
+      city,
+      postal_code,
+      country,
+      updated_by,
+      created_at,
+      updated_at
+    FROM facility_profile
+    WHERE id = ?
+    LIMIT 1
+  `)
+    .bind(
+      FACILITY_PROFILE_ID
     )
     .first();
 }
@@ -8601,10 +8687,20 @@ Router.register(
         )
         .all();
 
+    const facility =
+      await getFacilityProfile(
+        ctx.env
+      );
+
+    const authorLabel =
+      facility?.display_name ||
+      "MVX System";
+
     return (result.results || []).map(
       (announcement) => ({
         ...announcement,
-        author_label: "DzĪKS Irlava 20",
+        author_label:
+          authorLabel,
       })
     );
   }
@@ -8699,9 +8795,19 @@ Router.register(
       };
     }
 
+    const facility =
+      await getFacilityProfile(
+        ctx.env
+      );
+
+    const authorLabel =
+      facility?.display_name ||
+      "MVX System";
+
     return {
       ...announcement,
-      author_label: "DzĪKS Irlava 20",
+      author_label:
+        authorLabel,
     };
   }
 );

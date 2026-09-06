@@ -2,6 +2,11 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { useAuth } from "../context/AuthContext";
+
+import {
+  useFacility,
+} from "../context/FacilityContext";
+
 import { useTranslation } from "../i18n";
 import { api } from "../services/api";
 
@@ -12,6 +17,12 @@ import {
 
 export default function LoginPage() {
   const { login } = useAuth();
+
+  const {
+    facility,
+    loading: facilityLoading,
+  } = useFacility();
+
   const { t } = useTranslation();
 
   const navigate = useNavigate();
@@ -109,7 +120,12 @@ export default function LoginPage() {
             MVX System
           </div>
 
-          <div>DzĪKS IRLAVA 20</div>
+          <div>
+            {facilityLoading
+              ? "..."
+              : facility?.display_name ||
+                "Facility"}
+          </div>
         </h1>
 
         <input

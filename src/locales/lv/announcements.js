@@ -11,7 +11,7 @@ const announcements = {
 
   resident: {
     title: "Paziņojumi",
-    subtitle: "Aktuālā informācija no DzĪKS IRLAVA 20.",
+    subtitle: "Aktuālā informācija no {{facilityName}}.",
     noCurrent: "Pašlaik nav aktuālu paziņojumu.",
     showLess: "Rādīt mazāk",
     readPreview: "Lasīt priekšskatījumu",
