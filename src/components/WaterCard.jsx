@@ -234,14 +234,14 @@ export default function WaterCard({
   };
 
   const labelStyle = {
-    color: "#6b7280",
+    color: "var(--text)",
     fontSize: 13,
   };
 
   const valueStyle = {
     fontWeight: 600,
     textAlign: "right",
-    color: "#111827",
+    color: "var(--text-h)",
     fontSize: 14,
   };
 
@@ -250,9 +250,9 @@ export default function WaterCard({
       style={{
         padding: 14,
         border:
-          "1px solid #e5e7eb",
+          "1px solid var(--border)",
         borderRadius: 12,
-        background: "#f9fafb",
+        background: "var(--surface-soft)",
       }}
     >
 
@@ -286,7 +286,7 @@ export default function WaterCard({
             <div
               style={{
                 marginTop: 2,
-                color: "#4b5563",
+                color: "var(--text)",
                 fontSize: 13,
                 fontWeight: 600,
               }}
@@ -329,7 +329,7 @@ export default function WaterCard({
           marginBottom: 12,
           paddingBottom: 10,
           borderBottom:
-            "1px solid #e5e7eb",
+            "1px solid var(--border)",
         }}
       >
 
@@ -428,7 +428,7 @@ export default function WaterCard({
             marginBottom: 6,
             fontSize: 14,
             fontWeight: 600,
-            color: "#374151",
+            color: "var(--text-h)",
           }}
         >
           {t(
@@ -473,7 +473,7 @@ export default function WaterCard({
                   : "text",
               background:
                 controlsDisabled
-                  ? "#f3f4f6"
+                  ? "var(--surface-muted)"
                   : inputStyle
                       .background,
             }}
@@ -513,7 +513,7 @@ export default function WaterCard({
         <div
           style={{
             marginTop: 7,
-            color: "#6b7280",
+            color: "var(--text)",
             fontSize: 12,
             lineHeight: 1.4,
           }}
@@ -533,10 +533,10 @@ export default function WaterCard({
           marginTop: 10,
           padding: "9px 12px",
           border:
-            "1px solid #d1d5db",
+            "1px solid var(--border)",
           borderRadius: 9,
-          background: "#ffffff",
-          color: "#374151",
+          background: "var(--surface)",
+          color: "var(--text-h)",
           fontWeight: 600,
           cursor: "pointer",
         }}

@@ -93,12 +93,15 @@ const buttonStyle = {
   padding: "9px 10px",
   minHeight: 36,
   borderRadius: 9,
-  border: "none",
+  border: "1px solid var(--accent)",
+  background: "var(--accent)",
+  color: "#ffffff",
   cursor: "pointer",
   width: "100%",
   boxSizing:
     "border-box",
   fontSize: 12,
+  fontWeight: 600,
   lineHeight: 1.2,
   whiteSpace: "normal",
   overflowWrap:

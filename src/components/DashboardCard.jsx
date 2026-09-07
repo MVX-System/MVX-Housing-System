@@ -11,7 +11,7 @@ export default function DashboardCard({
       <div
         style={{
           fontSize: 14,
-          color: "#6b7280",
+          color: "var(--text)",
           marginBottom: 12,
           fontWeight: 600,
           textTransform: "uppercase",
@@ -25,7 +25,7 @@ export default function DashboardCard({
         style={{
           fontSize: 42,
           fontWeight: 700,
-          color: "#111827",
+          color: "var(--text-h)",
           lineHeight: 1,
         }}
       >

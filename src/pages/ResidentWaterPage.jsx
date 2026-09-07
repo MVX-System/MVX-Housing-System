@@ -315,7 +315,7 @@ export default function ResidentWaterPage() {
           style={{
             marginTop: 8,
             marginBottom: 0,
-            color: "#6b7280",
+            color: "var(--text)",
             lineHeight: 1.5,
           }}
         >
@@ -333,16 +333,16 @@ export default function ResidentWaterPage() {
           border:
             submissionAllowed
               ? "1px solid #86efac"
-              : "1px solid #d1d5db",
+              : "1px solid var(--border)",
           borderRadius: 14,
           background:
             submissionAllowed
               ? "#f0fdf4"
-              : "#f9fafb",
+              : "var(--surface-soft)",
           color:
             submissionAllowed
               ? "#166534"
-              : "#4b5563",
+              : "var(--text)",
         }}
       >
 
@@ -372,10 +372,10 @@ export default function ResidentWaterPage() {
           style={{
             padding: 24,
             border:
-              "1px solid #e5e7eb",
+              "1px solid var(--border)",
             borderRadius: 16,
-            background: "#ffffff",
-            color: "#6b7280",
+            background: "var(--surface)",
+            color: "var(--text)",
           }}
         >
           {t(
@@ -397,9 +397,9 @@ export default function ResidentWaterPage() {
                 marginBottom: 28,
                 padding: 20,
                 border:
-                  "1px solid #e5e7eb",
+                  "1px solid var(--border)",
                 borderRadius: 18,
-                background: "#ffffff",
+                background: "var(--surface)",
                 boxShadow:
                   "0 4px 16px rgba(15, 23, 42, 0.05)",
               }}
@@ -415,7 +415,7 @@ export default function ResidentWaterPage() {
                   marginBottom: 18,
                   paddingBottom: 14,
                   borderBottom:
-                    "1px solid #e5e7eb",
+                    "1px solid var(--border)",
                 }}
               >
 
@@ -423,7 +423,7 @@ export default function ResidentWaterPage() {
 
                   <div
                     style={{
-                      color: "#6b7280",
+                      color: "var(--text)",
                       fontSize: 13,
                       fontWeight: 600,
                       textTransform:
@@ -458,8 +458,8 @@ export default function ResidentWaterPage() {
                   style={{
                     padding: "6px 11px",
                     borderRadius: 999,
-                    background: "#f3f4f6",
-                    color: "#4b5563",
+                    background: "var(--surface-muted)",
+                    color: "var(--text)",
                     fontSize: 13,
                     fontWeight: 600,
                   }}
