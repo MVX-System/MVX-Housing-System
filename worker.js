@@ -14280,6 +14280,49 @@ Router.register(
       };
     }
 
+    const environment =
+      String(
+        ctx.env?.MVX_ENVIRONMENT ||
+        ""
+      )
+        .trim()
+        .toLowerCase();
+
+    const resourceNames =
+      environment === "test"
+        ? {
+            main:
+              "housing-test-db",
+            pii:
+              "housing-test-pii-db",
+            r2:
+              "mvx-water-meter-certificates-test",
+          }
+        : environment === "demo"
+          ? {
+              main:
+                "housing-demo-db",
+              pii:
+                "housing-demo-pii-db",
+              r2:
+                "mvx-water-meter-certificates-demo",
+            }
+          : environment ===
+              "production"
+            ? {
+                main:
+                  "housing-db",
+                pii:
+                  "housing-pii-db",
+                r2:
+                  "mvx-water-meter-certificates",
+              }
+            : {
+                main: null,
+                pii: null,
+                r2: null,
+              };
+
     const [
       settings,
       lastRun,
@@ -14301,10 +14344,40 @@ Router.register(
         ),
       ]);
 
+    const githubBackup =
+      getGitHubBackupConfiguration(
+        ctx.env
+      );
+
+    const cloudflareBackup =
+      getCloudflareD1ReadConfiguration(
+        ctx.env
+      );
+
+    const backupManagementEnabled =
+      environment ===
+        "production" &&
+      githubBackup.ok;
+
+    const effectiveSettings =
+      backupManagementEnabled
+        ? settings
+        : {
+            ...settings,
+            automatic_enabled:
+              false,
+          };
+
     return {
       ok: true,
 
-      settings,
+      environment,
+
+      management_enabled:
+        backupManagementEnabled,
+
+      settings:
+        effectiveSettings,
 
       last_run:
         lastRun,
@@ -14314,34 +14387,60 @@ Router.register(
 
       protection: {
         main_d1_time_travel: {
-          enabled: true,
+          enabled:
+            cloudflareBackup
+              .configured,
           database:
-            "housing-db",
+            resourceNames.main,
         },
 
         pii_d1_time_travel: {
-          enabled: true,
+          enabled:
+            cloudflareBackup
+              .configured,
           database:
-            "housing-pii-db",
+            resourceNames.pii,
         },
 
         r2_bucket_lock: {
-          enabled: true,
+          enabled:
+            environment ===
+              "production"
+              ? true
+              : null,
           bucket:
-            "mvx-water-meter-certificates",
-          retention_days: 90,
+            resourceNames.r2,
+          retention_days:
+            environment ===
+              "production"
+              ? 90
+              : null,
+          status:
+            environment ===
+              "production"
+              ? "configured"
+              : "not_verified",
         },
 
         offsite_backup: {
-          enabled: true,
+          enabled:
+            githubBackup.ok,
           provider:
-            "MEGA",
+            githubBackup.ok
+              ? "MEGA"
+              : null,
           destination:
-            "/MVX-Backups",
+            githubBackup.ok
+              ? "/MVX-Backups"
+              : null,
           schedule:
-            "weekly",
+            backupManagementEnabled
+              ? "weekly"
+              : null,
           schedule_utc:
-            "Sunday 03:30",
+            backupManagementEnabled
+              ? "Sunday 03:30"
+              : null,
         },
       },
     };
@@ -14409,6 +14508,25 @@ Router.register(
     if (!admin) {
       return {
         error: "forbidden"
+      };
+    }
+
+    const environment =
+      String(
+        ctx.env
+          ?.MVX_ENVIRONMENT ||
+        ""
+      )
+        .trim()
+        .toLowerCase();
+
+    if (
+      environment !==
+        "production"
+    ) {
+      return {
+        error:
+          "backup_management_unavailable"
       };
     }
 
@@ -14501,6 +14619,25 @@ Router.register(
     if (!admin) {
       return {
         error: "forbidden"
+      };
+    }
+
+    const environment =
+      String(
+        ctx.env
+          ?.MVX_ENVIRONMENT ||
+        ""
+      )
+        .trim()
+        .toLowerCase();
+
+    if (
+      environment !==
+        "production"
+    ) {
+      return {
+        error:
+          "backup_management_unavailable"
       };
     }
 

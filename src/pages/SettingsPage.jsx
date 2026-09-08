@@ -171,6 +171,12 @@ const TEXT = {
       "Backup protection",
     backupHint:
       "Review backup protection, automatic backup status, and recent backup runs.",
+    backupManagementUnavailableTitle:
+      "Backup management is unavailable in this environment.",
+    backupManagementUnavailableMessage:
+      "Backup creation and automatic backup controls are intentionally disabled here.",
+    backupNotVerified:
+      "Not verified",
     automaticBackup:
       "Automatic backup",
     automaticOn:
@@ -658,6 +664,12 @@ const TEXT = {
       "Rezerves kopiju aizsardzība",
     backupHint:
       "Pārskatiet aizsardzības stāvokli, automātiskās rezerves kopijas un pēdējos izpildes rezultātus.",
+    backupManagementUnavailableTitle:
+      "Rezerves kopiju pārvaldība šajā vidē nav pieejama.",
+    backupManagementUnavailableMessage:
+      "Rezerves kopiju izveide un automātiskās rezerves kopijas vadība šajā vidē ir apzināti atspējota.",
+    backupNotVerified:
+      "Nav pārbaudīts",
     automaticBackup:
       "Automātiskā rezerves kopija",
     automaticOn:
@@ -1145,6 +1157,12 @@ const TEXT = {
       "Управление резервными копиями",
     backupHint:
       "Просмотр защиты, статуса автоматического резервного копирования и последних запусков.",
+    backupManagementUnavailableTitle:
+      "Управление резервными копиями в этой среде недоступно.",
+    backupManagementUnavailableMessage:
+      "Создание резервных копий и управление автоматическим копированием в этой среде намеренно отключены.",
+    backupNotVerified:
+      "Не проверено",
     automaticBackup:
       "Автоматическое резервное копирование",
     automaticOn:
@@ -1778,6 +1796,23 @@ function getBackupAlerts(
     return [];
   }
 
+  if (
+    backupStatus
+      ?.management_enabled ===
+      false
+  ) {
+    return [
+      {
+        key:
+          "management-unavailable",
+        title:
+          text.backupManagementUnavailableTitle,
+        message:
+          text.backupManagementUnavailableMessage,
+      },
+    ];
+  }
+
   const alerts = [];
 
   const automaticEnabled =
@@ -2078,6 +2113,12 @@ export default function SettingsPage() {
     backupStatus,
     setBackupStatus,
   ] = useState(null);
+
+  const backupManagementAvailable =
+    Boolean(backupStatus) &&
+    backupStatus
+      ?.management_enabled !==
+      false;
 
   const [
     backupRuns,
@@ -3279,6 +3320,10 @@ export default function SettingsPage() {
 
   const handleToggleAutomaticBackup =
     async () => {
+      if (!backupManagementAvailable) {
+        return;
+      }
+
       setBackupError("");
       setBackupSuccess("");
       setBackupSaving(true);
@@ -3336,6 +3381,10 @@ export default function SettingsPage() {
 
   const handleCreateBackup =
     async () => {
+      if (!backupManagementAvailable) {
+        return;
+      }
+
       setBackupError("");
       setBackupSuccess("");
       setBackupCreating(true);
@@ -4504,12 +4553,18 @@ export default function SettingsPage() {
                       backupStatus
                         ?.protection
                         ?.r2_bucket_lock
-                        ?.enabled
-                        ? `${text.automaticOn} · ${backupStatus
+                        ?.status ===
+                      "not_verified"
+                        ? text.backupNotVerified
+                        : backupStatus
                             ?.protection
                             ?.r2_bucket_lock
-                            ?.retention_days || "—"} ${text.days}`
-                        : text.automaticOff
+                            ?.enabled
+                          ? `${text.automaticOn} · ${backupStatus
+                              ?.protection
+                              ?.r2_bucket_lock
+                              ?.retention_days || "—"} ${text.days}`
+                          : text.automaticOff
                     }
                   />
 
@@ -4545,14 +4600,16 @@ export default function SettingsPage() {
                   <button
                     type="button"
                     disabled={
-                      backupSaving
+                      backupSaving ||
+                      !backupManagementAvailable
                     }
                     onClick={
                       handleToggleAutomaticBackup
                     }
                     style={
                       secondaryButtonStyle(
-                        backupSaving
+                        backupSaving ||
+                        !backupManagementAvailable
                       )
                     }
                   >
@@ -4568,14 +4625,16 @@ export default function SettingsPage() {
                   <button
                     type="button"
                     disabled={
-                      backupCreating
+                      backupCreating ||
+                      !backupManagementAvailable
                     }
                     onClick={
                       handleCreateBackup
                     }
                     style={
                       primaryButtonStyle(
-                        backupCreating
+                        backupCreating ||
+                        !backupManagementAvailable
                       )
                     }
                   >
