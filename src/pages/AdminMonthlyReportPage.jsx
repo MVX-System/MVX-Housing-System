@@ -120,7 +120,22 @@ export default function AdminMonthlyReportPage() {
         null;
 
       if (!defaultPeriod) {
-        await loadCurrentWaterReportingPeriod();
+        const current =
+          await loadCurrentWaterReportingPeriod();
+
+        const currentPeriod =
+          current?.period || null;
+
+        if (
+          currentPeriod?.period_year &&
+          currentPeriod?.period_month
+        ) {
+          await loadAdminMonthlyReport(
+            currentPeriod.period_year,
+            currentPeriod.period_month
+          );
+        }
+
         return;
       }
 
@@ -151,7 +166,6 @@ export default function AdminMonthlyReportPage() {
         String(item.id) ===
         String(selectedPeriodId)
     ) ||
-    period ||
     null;
 
   const isClosedEntryPeriod =
@@ -2215,6 +2229,9 @@ export default function AdminMonthlyReportPage() {
 
                                 <button
                                   type="button"
+                                  disabled={
+                                    !selectedEntryPeriod?.id
+                                  }
                                   onClick={() =>
                                     openReceiveReadings(
                                       apartmentId,
