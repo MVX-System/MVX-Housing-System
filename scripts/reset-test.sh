@@ -270,6 +270,90 @@ print(
 '
 }
 
+certificate_keys_json() {
+  d1_json \
+    "$MAIN_DB" \
+    "
+    SELECT DISTINCT certificate_file_key
+    FROM water_meter_calibrations
+    WHERE certificate_file_key IS NOT NULL
+      AND TRIM(certificate_file_key) <> ''
+    ORDER BY certificate_file_key;
+    "
+}
+
+certificate_keys_from_json() {
+  python3 -c '
+import json
+import sys
+
+data = json.load(sys.stdin)
+
+for entry in data:
+    if not isinstance(entry, dict):
+        continue
+
+    for row in entry.get("results") or []:
+        key = row.get("certificate_file_key")
+
+        if key:
+            print(key)
+'
+}
+
+# Return values:
+#   0 = object exists
+#   1 = object definitely does not exist
+#   2 = R2 probe failed for another reason
+r2_object_state() {
+  local object_key="$1"
+  local temp_dir
+  local temp_file
+  local output
+  local status
+
+  temp_dir="$(
+    mktemp -d \
+      "${TMPDIR:-/tmp}/mvx-r2-probe.XXXXXX"
+  )"
+
+  temp_file="${temp_dir}/object.bin"
+
+  if output="$(
+    npx wrangler r2 object get \
+      "${R2_BUCKET}/${object_key}" \
+      --file "$temp_file" \
+      --remote \
+      --jurisdiction "$R2_JURISDICTION" \
+      --profile "$PROFILE" \
+      2>&1
+  )"; then
+    status=0
+  else
+    status=$?
+  fi
+
+  rm -rf "$temp_dir"
+
+  if [[ "$status" -eq 0 ]]; then
+    return 0
+  fi
+
+  if printf '%s\n' "$output" \
+    | grep -Fq \
+      "The specified key does not exist."; then
+    return 1
+  fi
+
+  echo \
+    "ERROR: unexpected R2 probe failure for: $object_key" \
+    >&2
+
+  printf '%s\n' "$output" >&2
+
+  return 2
+}
+
 # ---------------------------------------------------------
 # Dynamic reporting-period calculation
 # ---------------------------------------------------------
@@ -475,18 +559,73 @@ echo
 
 echo "===== TEST R2 CONSISTENCY ====="
 
-R2_COUNT="$(r2_object_count)"
+R2_COUNT="$(
+  r2_object_count 2>/dev/null \
+    || printf 'unavailable'
+)"
+
 KEY_COUNT="$(certificate_key_count)"
 
-echo "R2 object_count:     $R2_COUNT"
-echo "D1 certificate keys: $KEY_COUNT"
+echo "R2 object_count (advisory): $R2_COUNT"
+echo "D1 certificate keys:        $KEY_COUNT"
 
 if [[ "$R2_COUNT" != "$KEY_COUNT" ]]; then
-  fail \
-    "TEST R2 object count does not match D1 certificate keys. Refusing automatic reset because orphan/missing objects may exist."
+  echo \
+    "WARN: R2 aggregate object_count differs from D1 certificate-key count."
+
+  echo \
+    "WARN: aggregate bucket statistics may be delayed."
+
+  echo \
+    "WARN: direct object probes are used as the reset interlock."
 fi
 
-echo "PASS: TEST R2 objects match D1 certificate-key count"
+CERTIFICATE_KEYS_JSON="$(
+  certificate_keys_json
+)"
+
+while IFS= read -r object_key; do
+  [[ -n "$object_key" ]] || continue
+
+  case "$object_key" in
+    water-meters/*)
+      ;;
+    *)
+      fail \
+        "Unexpected TEST R2 object key prefix: $object_key"
+      ;;
+  esac
+
+  echo \
+    "Checking TEST R2 object: $object_key"
+
+  if r2_object_state "$object_key"; then
+    echo \
+      "PASS: TEST R2 object exists"
+  else
+    probe_status=$?
+
+    case "$probe_status" in
+      1)
+        fail \
+          "D1 references a missing TEST R2 object: $object_key"
+        ;;
+      *)
+        fail \
+          "Unable to verify TEST R2 object because the direct R2 probe failed: $object_key"
+        ;;
+    esac
+  fi
+
+done < <(
+  printf '%s' \
+    "$CERTIFICATE_KEYS_JSON" \
+    | certificate_keys_from_json
+)
+
+echo \
+  "PASS: every D1 certificate key resolves to a TEST R2 object"
+
 echo
 
 echo "===== CURRENT TEST RUNTIME COUNTS ====="
@@ -536,17 +675,7 @@ echo
 
 echo "===== DELETE TEST CERTIFICATE OBJECTS ====="
 
-CERTIFICATE_KEYS_JSON="$(
-  d1_json \
-    "$MAIN_DB" \
-    "
-    SELECT DISTINCT certificate_file_key
-    FROM water_meter_calibrations
-    WHERE certificate_file_key IS NOT NULL
-      AND TRIM(certificate_file_key) <> ''
-    ORDER BY certificate_file_key;
-    "
-)"
+# Reuse the certificate-key inventory verified above.
 
 DELETED_OBJECTS=0
 
@@ -573,23 +702,9 @@ while IFS= read -r object_key; do
 
   DELETED_OBJECTS=$((DELETED_OBJECTS + 1))
 done < <(
-  printf '%s' "$CERTIFICATE_KEYS_JSON" \
-    | python3 -c '
-import json
-import sys
-
-data = json.load(sys.stdin)
-
-for entry in data:
-    if not isinstance(entry, dict):
-        continue
-
-    for row in entry.get("results") or []:
-        key = row.get("certificate_file_key")
-
-        if key:
-            print(key)
-'
+  printf '%s' \
+    "$CERTIFICATE_KEYS_JSON" \
+    | certificate_keys_from_json
 )
 
 echo "Deleted TEST R2 objects: $DELETED_OBJECTS"
@@ -1453,14 +1568,54 @@ printf '%s' "$POST_OPS_JSON" \
   | assert_boolean_row \
       "OPS D1 post-reset state"
 
-POST_R2_COUNT="$(r2_object_count)"
+POST_R2_COUNT="$(
+  r2_object_count 2>/dev/null \
+    || printf 'unavailable'
+)"
+
+echo \
+  "R2 object_count after reset (advisory): $POST_R2_COUNT"
 
 if [[ "$POST_R2_COUNT" != "0" ]]; then
-  fail \
-    "TEST R2 is not empty after reset: object_count=$POST_R2_COUNT"
+  echo \
+    "WARN: aggregate R2 object_count is non-zero or unavailable after reset."
+
+  echo \
+    "WARN: direct absence probes are authoritative for reset-managed certificate objects."
 fi
 
-echo "PASS: TEST R2 is empty"
+while IFS= read -r object_key; do
+  [[ -n "$object_key" ]] || continue
+
+  echo \
+    "Checking deleted TEST R2 object: $object_key"
+
+  if r2_object_state "$object_key"; then
+    fail \
+      "TEST R2 certificate object still exists after reset: $object_key"
+  else
+    probe_status=$?
+
+    case "$probe_status" in
+      1)
+        echo \
+          "PASS: TEST R2 certificate object is absent"
+        ;;
+      *)
+        fail \
+          "Unable to verify TEST R2 object absence because the direct R2 probe failed: $object_key"
+        ;;
+    esac
+  fi
+
+done < <(
+  printf '%s' \
+    "$CERTIFICATE_KEYS_JSON" \
+    | certificate_keys_from_json
+)
+
+echo \
+  "PASS: all reset-managed TEST R2 certificate objects are absent"
 echo
 
 echo "============================================"
