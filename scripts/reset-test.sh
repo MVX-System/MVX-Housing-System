@@ -4,6 +4,7 @@ set -euo pipefail
 
 PROFILE="mvx-system"
 CI_MODE="${MVX_TEST_RESET_CI:-false}"
+CI_WRANGLER_VERSION="4.130.0"
 
 MAIN_DB="housing-test-db"
 PII_DB="housing-test-pii-db"
@@ -87,6 +88,11 @@ require_command npx
 # Wrangler authentication mode
 # ---------------------------------------------------------
 
+WRANGLER_CMD=(
+  npx
+  wrangler
+)
+
 WRANGLER_AUTH_ARGS=(
   --profile
   "$PROFILE"
@@ -104,6 +110,12 @@ case "$CI_MODE" in
 
     [[ -n "${CLOUDFLARE_ACCOUNT_ID:-}" ]] \
       || fail "CLOUDFLARE_ACCOUNT_ID is required in CI mode"
+
+    WRANGLER_CMD=(
+      npx
+      --yes
+      "wrangler@${CI_WRANGLER_VERSION}"
+    )
 
     WRANGLER_AUTH_ARGS=()
     ;;
@@ -161,7 +173,7 @@ d1_json() {
   local db="$1"
   local sql="$2"
 
-  npx wrangler d1 execute "$db" \
+  "${WRANGLER_CMD[@]}" d1 execute "$db" \
     --remote \
     "${WRANGLER_AUTH_ARGS[@]}" \
     --json \
@@ -223,7 +235,7 @@ print("PASS: " + label)
 }
 
 r2_info_json() {
-  npx wrangler r2 bucket info \
+  "${WRANGLER_CMD[@]}" r2 bucket info \
     "$R2_BUCKET" \
     --jurisdiction "$R2_JURISDICTION" \
     "${WRANGLER_AUTH_ARGS[@]}" \
@@ -350,7 +362,7 @@ r2_object_state() {
   temp_file="${temp_dir}/object.bin"
 
   if output="$(
-    npx wrangler r2 object get \
+    "${WRANGLER_CMD[@]}" r2 object get \
       "${R2_BUCKET}/${object_key}" \
       --file "$temp_file" \
       --remote \
@@ -723,7 +735,7 @@ while IFS= read -r object_key; do
 
   echo "Deleting TEST R2 object: $object_key"
 
-  npx wrangler r2 object delete \
+  "${WRANGLER_CMD[@]}" r2 object delete \
     "${R2_BUCKET}/${object_key}" \
     --remote \
     --jurisdiction "$R2_JURISDICTION" \
