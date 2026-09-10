@@ -3,6 +3,7 @@
 set -euo pipefail
 
 PROFILE="mvx-system"
+CI_MODE="${MVX_TEST_RESET_CI:-false}"
 
 MAIN_DB="housing-test-db"
 PII_DB="housing-test-pii-db"
@@ -83,6 +84,35 @@ require_command python3
 require_command npx
 
 # ---------------------------------------------------------
+# Wrangler authentication mode
+# ---------------------------------------------------------
+
+WRANGLER_AUTH_ARGS=(
+  --profile
+  "$PROFILE"
+)
+
+case "$CI_MODE" in
+  false)
+    ;;
+  true)
+    [[ "${GITHUB_ACTIONS:-}" == "true" ]] \
+      || fail "CI mode is allowed only inside GitHub Actions"
+
+    [[ -n "${CLOUDFLARE_API_TOKEN:-}" ]] \
+      || fail "CLOUDFLARE_API_TOKEN is required in CI mode"
+
+    [[ -n "${CLOUDFLARE_ACCOUNT_ID:-}" ]] \
+      || fail "CLOUDFLARE_ACCOUNT_ID is required in CI mode"
+
+    WRANGLER_AUTH_ARGS=()
+    ;;
+  *)
+    fail "MVX_TEST_RESET_CI must be true or false"
+    ;;
+esac
+
+# ---------------------------------------------------------
 # Hard TEST-only safety boundary
 # ---------------------------------------------------------
 
@@ -133,7 +163,7 @@ d1_json() {
 
   npx wrangler d1 execute "$db" \
     --remote \
-    --profile "$PROFILE" \
+    "${WRANGLER_AUTH_ARGS[@]}" \
     --json \
     --command "$sql"
 }
@@ -196,7 +226,7 @@ r2_info_json() {
   npx wrangler r2 bucket info \
     "$R2_BUCKET" \
     --jurisdiction "$R2_JURISDICTION" \
-    --profile "$PROFILE" \
+    "${WRANGLER_AUTH_ARGS[@]}" \
     --json
 }
 
@@ -325,7 +355,7 @@ r2_object_state() {
       --file "$temp_file" \
       --remote \
       --jurisdiction "$R2_JURISDICTION" \
-      --profile "$PROFILE" \
+      "${WRANGLER_AUTH_ARGS[@]}" \
       2>&1
   )"; then
     status=0
@@ -697,7 +727,7 @@ while IFS= read -r object_key; do
     "${R2_BUCKET}/${object_key}" \
     --remote \
     --jurisdiction "$R2_JURISDICTION" \
-    --profile "$PROFILE" \
+    "${WRANGLER_AUTH_ARGS[@]}" \
     --force
 
   DELETED_OBJECTS=$((DELETED_OBJECTS + 1))
