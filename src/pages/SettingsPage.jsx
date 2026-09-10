@@ -207,6 +207,26 @@ const TEXT = {
       "Backup could not be started.",
     backupAlreadyRunning:
       "A backup is already in progress.",
+    testResetSection:
+      "TEST environment",
+    testResetTitle:
+      "Reset TEST environment",
+    testResetWarning:
+      "This operation permanently deletes the current TEST runtime data and restores the approved synthetic baseline. Active TEST sessions will be revoked. DEMO and PROD are not affected.",
+    testResetConfirmationLabel:
+      'Type exactly "RESET TEST" to confirm.',
+    testResetConfirmationPlaceholder:
+      "RESET TEST",
+    testResetButton:
+      "Reset TEST environment",
+    testResetRunning:
+      "Sending TEST reset request...",
+    testResetAccepted:
+      "Reset request accepted. The TEST environment is being restored. Your current TEST session will be revoked; sign in again after the reset finishes.",
+    testResetFailed:
+      "TEST environment reset could not be started.",
+    testResetConfirmationMismatch:
+      'Enter exactly "RESET TEST".',
     lastBackup:
       "Last backup",
     lastSuccessfulBackup:
@@ -700,6 +720,26 @@ const TEXT = {
       "Neizdevās sākt rezerves kopiju.",
     backupAlreadyRunning:
       "Rezerves kopija jau tiek veidota.",
+    testResetSection:
+      "TEST vide",
+    testResetTitle:
+      "Atiestatīt TEST vidi",
+    testResetWarning:
+      "Šī darbība neatgriezeniski dzēsīs pašreizējos TEST izpildvides datus un atjaunos apstiprināto sintētisko bāzes stāvokli. Aktīvās TEST sesijas tiks anulētas. DEMO un PROD netiks ietekmētas.",
+    testResetConfirmationLabel:
+      'Ievadiet precīzi "RESET TEST", lai apstiprinātu.',
+    testResetConfirmationPlaceholder:
+      "RESET TEST",
+    testResetButton:
+      "Atiestatīt TEST vidi",
+    testResetRunning:
+      "Tiek nosūtīts TEST vides atiestatīšanas pieprasījums...",
+    testResetAccepted:
+      "Atiestatīšanas pieprasījums ir pieņemts. TEST vide tiek atjaunota. Pašreizējā TEST sesija tiks anulēta; pēc atiestatīšanas pabeigšanas piesakieties vēlreiz.",
+    testResetFailed:
+      "Neizdevās sākt TEST vides atiestatīšanu.",
+    testResetConfirmationMismatch:
+      'Ievadiet precīzi "RESET TEST".',
     lastBackup:
       "Pēdējā rezerves kopija",
     lastSuccessfulBackup:
@@ -1193,6 +1233,26 @@ const TEXT = {
       "Не удалось запустить резервное копирование.",
     backupAlreadyRunning:
       "Резервное копирование уже выполняется.",
+    testResetSection:
+      "Среда TEST",
+    testResetTitle:
+      "Сброс среды TEST",
+    testResetWarning:
+      "Эта операция безвозвратно удалит текущие рабочие данные TEST и восстановит утвержденное синтетическое исходное состояние. Все активные TEST-сессии будут аннулированы. DEMO и PROD не затрагиваются.",
+    testResetConfirmationLabel:
+      'Для подтверждения введите точно "RESET TEST".',
+    testResetConfirmationPlaceholder:
+      "RESET TEST",
+    testResetButton:
+      "Сбросить среду TEST",
+    testResetRunning:
+      "Отправка запроса на сброс TEST...",
+    testResetAccepted:
+      "Запрос на сброс принят. Среда TEST восстанавливается. Текущая TEST-сессия будет аннулирована; после завершения сброса войдите в систему снова.",
+    testResetFailed:
+      "Не удалось запустить сброс среды TEST.",
+    testResetConfirmationMismatch:
+      'Введите точно "RESET TEST".',
     lastBackup:
       "Последняя резервная копия",
     lastSuccessfulBackup:
@@ -2113,6 +2173,30 @@ export default function SettingsPage() {
     backupStatus,
     setBackupStatus,
   ] = useState(null);
+
+  const [
+    testResetConfirmation,
+    setTestResetConfirmation,
+  ] = useState("");
+
+  const [
+    testResetCreating,
+    setTestResetCreating,
+  ] = useState(false);
+
+  const [
+    testResetError,
+    setTestResetError,
+  ] = useState("");
+
+  const [
+    testResetSuccess,
+    setTestResetSuccess,
+  ] = useState("");
+
+  const testEnvironmentResetAvailable =
+    backupStatus?.environment ===
+    "test";
 
   const backupManagementAvailable =
     Boolean(backupStatus) &&
@@ -3440,6 +3524,79 @@ export default function SettingsPage() {
       }
     };
 
+  const handleTestEnvironmentReset =
+    async () => {
+      if (
+        !testEnvironmentResetAvailable
+      ) {
+        return;
+      }
+
+      const confirmation =
+        testResetConfirmation.trim();
+
+      if (
+        confirmation !==
+        "RESET TEST"
+      ) {
+        setTestResetError(
+          text.testResetConfirmationMismatch
+        );
+        setTestResetSuccess("");
+        return;
+      }
+
+      setTestResetError("");
+      setTestResetSuccess("");
+      setTestResetCreating(true);
+
+      try {
+        const result =
+          await api(
+            "/api/admin/test-environment/reset",
+            {
+              method: "POST",
+              body:
+                JSON.stringify({
+                  confirmation:
+                    "RESET TEST",
+                }),
+            }
+          );
+
+        if (
+          !result ||
+          result.error ||
+          result.ok !== true ||
+          result.dispatch_accepted !==
+            true ||
+          result.reset_environment !==
+            "test"
+        ) {
+          throw new Error(
+            result?.error ||
+            "test_environment_reset_failed"
+          );
+        }
+
+        setTestResetConfirmation("");
+        setTestResetSuccess(
+          text.testResetAccepted
+        );
+      } catch (resetError) {
+        console.error(
+          "TEST ENVIRONMENT RESET ERROR:",
+          resetError
+        );
+
+        setTestResetError(
+          text.testResetFailed
+        );
+      } finally {
+        setTestResetCreating(false);
+      }
+    };
+
   const handleRefreshBackup =
     async () => {
       setBackupError("");
@@ -4660,6 +4817,166 @@ export default function SettingsPage() {
                     {text.refreshBackup}
                   </button>
                 </div>
+
+                {testEnvironmentResetAvailable && (
+                  <div
+                    style={{
+                      display: "grid",
+                      gap: 12,
+                      padding: 14,
+                      border:
+                        "1px solid var(--border)",
+                      borderRadius: 12,
+                      background:
+                        "var(--surface-soft)",
+                    }}
+                  >
+                    <div>
+                      <div
+                        style={{
+                          color:
+                            "var(--text-h)",
+                          fontSize: 12,
+                          fontWeight: 800,
+                          textTransform:
+                            "uppercase",
+                          letterSpacing:
+                            "0.04em",
+                        }}
+                      >
+                        {text.testResetSection}
+                      </div>
+
+                      <div
+                        style={{
+                          marginTop: 4,
+                          color:
+                            "var(--text-h)",
+                          fontSize: 16,
+                          fontWeight: 800,
+                        }}
+                      >
+                        {text.testResetTitle}
+                      </div>
+                    </div>
+
+                    <div
+                      role="alert"
+                      style={errorStyle}
+                    >
+                      {text.testResetWarning}
+                    </div>
+
+                    <label
+                      style={{
+                        display: "grid",
+                        gap: 6,
+                      }}
+                    >
+                      <span
+                        style={{
+                          color:
+                            "var(--text)",
+                          fontSize: 12,
+                          fontWeight: 700,
+                        }}
+                      >
+                        {
+                          text
+                            .testResetConfirmationLabel
+                        }
+                      </span>
+
+                      <input
+                        type="text"
+                        value={
+                          testResetConfirmation
+                        }
+                        onChange={(event) => {
+                          setTestResetConfirmation(
+                            event.target.value
+                          );
+                          setTestResetError("");
+                        }}
+                        disabled={
+                          testResetCreating ||
+                          Boolean(
+                            testResetSuccess
+                          )
+                        }
+                        placeholder={
+                          text
+                            .testResetConfirmationPlaceholder
+                        }
+                        autoComplete="off"
+                        autoCapitalize="none"
+                        spellCheck={false}
+                        style={{
+                          width: "100%",
+                          boxSizing:
+                            "border-box",
+                          padding:
+                            "10px 12px",
+                          border:
+                            "1px solid var(--border)",
+                          borderRadius: 10,
+                          background:
+                            "var(--surface)",
+                          color:
+                            "var(--text-h)",
+                          fontSize: 14,
+                        }}
+                      />
+                    </label>
+
+                    <button
+                      type="button"
+                      disabled={
+                        testResetCreating ||
+                        Boolean(
+                          testResetSuccess
+                        ) ||
+                        testResetConfirmation
+                          .trim() !==
+                          "RESET TEST"
+                      }
+                      onClick={
+                        handleTestEnvironmentReset
+                      }
+                      style={primaryButtonStyle(
+                        testResetCreating ||
+                          Boolean(
+                            testResetSuccess
+                          ) ||
+                          testResetConfirmation
+                            .trim() !==
+                            "RESET TEST"
+                      )}
+                    >
+                      {testResetCreating
+                        ? text.testResetRunning
+                        : text.testResetButton}
+                    </button>
+
+                    {testResetError && (
+                      <div
+                        role="alert"
+                        style={errorStyle}
+                      >
+                        {testResetError}
+                      </div>
+                    )}
+
+                    {testResetSuccess && (
+                      <div
+                        role="status"
+                        style={successStyle}
+                      >
+                        {testResetSuccess}
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {backupError && (
                   <div
