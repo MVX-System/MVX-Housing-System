@@ -120,7 +120,22 @@ export default function AdminMonthlyReportPage() {
         null;
 
       if (!defaultPeriod) {
-        await loadCurrentWaterReportingPeriod();
+        const current =
+          await loadCurrentWaterReportingPeriod();
+
+        const currentPeriod =
+          current?.period || null;
+
+        if (
+          currentPeriod?.period_year &&
+          currentPeriod?.period_month
+        ) {
+          await loadAdminMonthlyReport(
+            currentPeriod.period_year,
+            currentPeriod.period_month
+          );
+        }
+
         return;
       }
 
@@ -151,7 +166,6 @@ export default function AdminMonthlyReportPage() {
         String(item.id) ===
         String(selectedPeriodId)
     ) ||
-    period ||
     null;
 
   const isClosedEntryPeriod =
@@ -2215,6 +2229,9 @@ export default function AdminMonthlyReportPage() {
 
                                 <button
                                   type="button"
+                                  disabled={
+                                    !selectedEntryPeriod?.id
+                                  }
                                   onClick={() =>
                                     openReceiveReadings(
                                       apartmentId,
@@ -2226,16 +2243,24 @@ export default function AdminMonthlyReportPage() {
                                     padding:
                                       "9px 12px",
                                     border:
-                                      "1px solid #c2410c",
+                                      selectedEntryPeriod?.id
+                                        ? "1px solid #c2410c"
+                                        : "1px solid #d1d5db",
                                     borderRadius: 9,
                                     background:
-                                      "#ffffff",
+                                      selectedEntryPeriod?.id
+                                        ? "#ffffff"
+                                        : "#f3f4f6",
                                     color:
-                                      "#9a3412",
+                                      selectedEntryPeriod?.id
+                                        ? "#9a3412"
+                                        : "#9ca3af",
                                     fontSize: 12,
                                     fontWeight: 700,
                                     cursor:
-                                      "pointer",
+                                      selectedEntryPeriod?.id
+                                        ? "pointer"
+                                        : "not-allowed",
                                   }}
                                 >
                                   Receive readings
