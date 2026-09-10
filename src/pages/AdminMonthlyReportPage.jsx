@@ -105,10 +105,17 @@ export default function AdminMonthlyReportPage() {
 
     const loadReport = async () => {
 
+      const current =
+        await loadCurrentWaterReportingPeriod();
+
       const periods =
         await loadAdminReadingEntryPeriods();
 
+      const currentPeriod =
+        current?.period || null;
+
       const defaultPeriod =
+        currentPeriod ||
         periods.find(
           (item) =>
             item.status === "open"
@@ -120,22 +127,6 @@ export default function AdminMonthlyReportPage() {
         null;
 
       if (!defaultPeriod) {
-        const current =
-          await loadCurrentWaterReportingPeriod();
-
-        const currentPeriod =
-          current?.period || null;
-
-        if (
-          currentPeriod?.period_year &&
-          currentPeriod?.period_month
-        ) {
-          await loadAdminMonthlyReport(
-            currentPeriod.period_year,
-            currentPeriod.period_month
-          );
-        }
-
         return;
       }
 
@@ -159,6 +150,36 @@ export default function AdminMonthlyReportPage() {
   const period =
     adminMonthlyReport?.period ||
     currentWaterReportingPeriod?.period;
+
+  const reportingPeriods = [
+    ...(
+      currentWaterReportingPeriod?.period
+        ? [
+            currentWaterReportingPeriod.period
+          ]
+        : []
+    ),
+    ...adminReadingEntryPeriods,
+  ]
+    .filter(
+      (
+        item,
+        index,
+        items
+      ) =>
+        items.findIndex(
+          (candidate) =>
+            String(candidate.id) ===
+            String(item.id)
+        ) === index
+    )
+    .sort(
+      (a, b) =>
+        Number(b.period_year) -
+          Number(a.period_year) ||
+        Number(b.period_month) -
+          Number(a.period_month)
+    );
 
   const selectedEntryPeriod =
     adminReadingEntryPeriods.find(
@@ -1098,7 +1119,7 @@ export default function AdminMonthlyReportPage() {
     async (value) => {
 
       const nextPeriod =
-        adminReadingEntryPeriods.find(
+        reportingPeriods.find(
           (item) =>
             String(item.id) ===
             String(value)
@@ -1558,7 +1579,7 @@ export default function AdminMonthlyReportPage() {
                   Reporting period
                 </div>
 
-                {adminReadingEntryPeriods.length > 1 ? (
+                {reportingPeriods.length > 1 ? (
 
                   <select
                     value={
@@ -1582,7 +1603,7 @@ export default function AdminMonthlyReportPage() {
                       fontWeight: 700,
                     }}
                   >
-                    {adminReadingEntryPeriods.map(
+                    {reportingPeriods.map(
                       (item) => (
                         <option
                           key={item.id}
