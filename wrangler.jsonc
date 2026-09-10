@@ -77,7 +77,10 @@
       ],
 
       "vars": {
-        "MVX_ENVIRONMENT": "test"
+        "MVX_ENVIRONMENT": "test",
+        "GITHUB_TEST_RESET_OWNER": "MVX-System",
+        "GITHUB_TEST_RESET_REPO": "MVX-Housing-System",
+        "GITHUB_TEST_RESET_WORKFLOW": "mvx-test-reset.yml"
       },
 
       "triggers": {

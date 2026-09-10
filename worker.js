@@ -4104,6 +4104,29 @@ const ROLLBACK_RETRY_AUTHORIZATION_TTL_MINUTES = 5;
 const ROLLBACK_DISPATCH_STALE_MINUTES = 10;
 const ROLLBACK_RUNNING_STALE_MINUTES = 30;
 
+// PR-3G:
+// TEST environment reset dispatch is deliberately rare.
+// The destructive operation itself runs only in the protected
+// GitHub Actions workflow.
+const ADMIN_TEST_ENVIRONMENT_RESET_LIMIT = {
+  maxRequests: 3,
+  windowSeconds: 60 * 60,
+  blockSeconds: 60 * 60,
+};
+
+const TEST_ENVIRONMENT_RESET_CONFIRMATION =
+  "RESET TEST";
+
+const TEST_ENVIRONMENT_RESET_GITHUB_OWNER =
+  "MVX-System";
+
+const TEST_ENVIRONMENT_RESET_GITHUB_REPO =
+  "MVX-Housing-System";
+
+const TEST_ENVIRONMENT_RESET_GITHUB_WORKFLOW =
+  "mvx-test-reset.yml";
+
+
 const ADMIN_RESTORE_PASSWORD_FAILURE_LIMIT = {
   maxAttempts: 5,
   windowSeconds: 15 * 60,
@@ -5368,6 +5391,71 @@ function getGitHubBackupConfiguration(
       ok: false,
       error:
         "backup_github_not_configured",
+    };
+  }
+
+  return {
+    ok: true,
+    owner,
+    repo,
+    workflow,
+    token,
+  };
+}
+
+
+function getGitHubTestResetConfiguration(
+  env
+) {
+  const owner =
+    String(
+      env?.GITHUB_TEST_RESET_OWNER ||
+      ""
+    ).trim();
+
+  const repo =
+    String(
+      env?.GITHUB_TEST_RESET_REPO ||
+      ""
+    ).trim();
+
+  const workflow =
+    String(
+      env?.GITHUB_TEST_RESET_WORKFLOW ||
+      ""
+    ).trim();
+
+  const token =
+    String(
+      env?.GITHUB_TEST_RESET_TOKEN ||
+      ""
+    ).trim();
+
+  if (
+    !owner ||
+    !repo ||
+    !workflow ||
+    !token
+  ) {
+    return {
+      ok: false,
+      error:
+        "test_environment_reset_github_not_configured",
+    };
+  }
+
+  if (
+    owner !==
+      TEST_ENVIRONMENT_RESET_GITHUB_OWNER ||
+    repo !==
+      TEST_ENVIRONMENT_RESET_GITHUB_REPO ||
+    workflow !==
+      TEST_ENVIRONMENT_RESET_GITHUB_WORKFLOW
+  ) {
+    return {
+      ok: false,
+      error:
+        "test_environment_reset_github_target_mismatch",
     };
   }
 
@@ -14971,6 +15059,319 @@ Router.register(
   }
 );
 
+
+
+// =========================
+// TEST ENVIRONMENT RESET
+// PR-3G:
+//
+// This endpoint NEVER performs the reset itself.
+// It is available only in MVX_ENVIRONMENT=test and only to an
+// authenticated administrator. After exact confirmation and
+// rate limiting, it dispatches the protected GitHub workflow.
+//
+// The workflow performs the destructive operation against the
+// hard-coded TEST resources through scripts/reset-test.sh.
+// =========================
+
+Router.register(
+  "POST",
+  "/api/admin/test-environment/reset",
+  async (ctx) => {
+    const environment =
+      String(
+        ctx.env
+          ?.MVX_ENVIRONMENT ||
+        ""
+      )
+        .trim()
+        .toLowerCase();
+
+    if (environment !== "test") {
+      return {
+        error: "forbidden"
+      };
+    }
+
+    const admin =
+      await Auth.requireAdmin(ctx);
+
+    if (!admin) {
+      return {
+        error: "forbidden"
+      };
+    }
+
+    const body =
+      await ctx.request
+        .json()
+        .catch(() => ({}));
+
+    const confirmation =
+      String(
+        body?.confirmation ||
+        ""
+      ).trim();
+
+    if (
+      confirmation !==
+        TEST_ENVIRONMENT_RESET_CONFIRMATION
+    ) {
+      await SecurityAudit.recordSafe(
+        ctx,
+        {
+          actorUserId:
+            admin.user_id,
+          action:
+            "admin.test_environment_reset",
+          targetType:
+            "test_environment",
+          targetId:
+            "test",
+          result:
+            "failure",
+          details: {
+            failure_type:
+              "confirmation_incorrect",
+          },
+        }
+      );
+
+      return {
+        error:
+          "test_environment_reset_confirmation_incorrect",
+        required_confirmation:
+          TEST_ENVIRONMENT_RESET_CONFIRMATION,
+      };
+    }
+
+    const resetLimit =
+      await SecurityRateLimit.consume({
+        env: ctx.env,
+        scope:
+          "admin-test-environment-reset",
+        key:
+          `user:${admin.user_id}`,
+        ...ADMIN_TEST_ENVIRONMENT_RESET_LIMIT,
+      });
+
+    if (!resetLimit.allowed) {
+      await SecurityAudit.recordSafe(
+        ctx,
+        {
+          actorUserId:
+            admin.user_id,
+          action:
+            "admin.test_environment_reset",
+          targetType:
+            "test_environment",
+          targetId:
+            "test",
+          result:
+            "failure",
+          details: {
+            failure_type:
+              "rate_limited",
+          },
+        }
+      );
+
+      return SecurityRateLimit.response(
+        resetLimit
+      );
+    }
+
+    const github =
+      getGitHubTestResetConfiguration(
+        ctx.env
+      );
+
+    if (!github.ok) {
+      await SecurityAudit.recordSafe(
+        ctx,
+        {
+          actorUserId:
+            admin.user_id,
+          action:
+            "admin.test_environment_reset",
+          targetType:
+            "test_environment",
+          targetId:
+            "test",
+          result:
+            "failure",
+          details: {
+            failure_type:
+              github.error,
+          },
+        }
+      );
+
+      return {
+        error: github.error
+      };
+    }
+
+    const dispatchUrl =
+      `https://api.github.com/repos/${encodeURIComponent(
+        github.owner
+      )}/${encodeURIComponent(
+        github.repo
+      )}/actions/workflows/${encodeURIComponent(
+        github.workflow
+      )}/dispatches`;
+
+    let dispatchResponse;
+
+    try {
+      dispatchResponse =
+        await fetch(
+          dispatchUrl,
+          {
+            method: "POST",
+            headers: {
+              "Accept":
+                "application/vnd.github+json",
+              "Authorization":
+                `Bearer ${github.token}`,
+              "Content-Type":
+                "application/json",
+              "X-GitHub-Api-Version":
+                "2022-11-28",
+              "User-Agent":
+                "MVX-Housing-System",
+            },
+            body:
+              JSON.stringify({
+                ref: "main",
+                inputs: {
+                  confirmation:
+                    TEST_ENVIRONMENT_RESET_CONFIRMATION,
+                  requested_by_user_id:
+                    String(
+                      admin.user_id
+                    ),
+                },
+              }),
+          }
+        );
+    } catch (error) {
+      App.logError(
+        "test_environment_reset_dispatch_error",
+        error,
+        {
+          requested_by_user_id:
+            admin.user_id,
+        }
+      );
+
+      await SecurityAudit.recordSafe(
+        ctx,
+        {
+          actorUserId:
+            admin.user_id,
+          action:
+            "admin.test_environment_reset",
+          targetType:
+            "test_environment",
+          targetId:
+            "test",
+          result:
+            "failure",
+          details: {
+            failure_type:
+              "dispatch_error",
+          },
+        }
+      );
+
+      return {
+        error:
+          "test_environment_reset_dispatch_failed"
+      };
+    }
+
+    if (
+      dispatchResponse.status !== 204
+    ) {
+      const githubStatus =
+        Number(
+          dispatchResponse.status
+        );
+
+      App.logError(
+        "test_environment_reset_dispatch_rejected",
+        new Error(
+          "github_dispatch_rejected"
+        ),
+        {
+          requested_by_user_id:
+            admin.user_id,
+          github_status:
+            githubStatus,
+        }
+      );
+
+      await SecurityAudit.recordSafe(
+        ctx,
+        {
+          actorUserId:
+            admin.user_id,
+          action:
+            "admin.test_environment_reset",
+          targetType:
+            "test_environment",
+          targetId:
+            "test",
+          result:
+            "failure",
+          details: {
+            failure_type:
+              "dispatch_rejected",
+            github_status:
+              githubStatus,
+          },
+        }
+      );
+
+      return {
+        error:
+          "test_environment_reset_dispatch_failed",
+        github_status:
+          githubStatus,
+      };
+    }
+
+    await SecurityAudit.recordSafe(
+      ctx,
+      {
+        actorUserId:
+          admin.user_id,
+        action:
+          "admin.test_environment_reset",
+        targetType:
+          "test_environment",
+        targetId:
+          "test",
+        details: {
+          dispatch_accepted:
+            true,
+          workflow:
+            github.workflow,
+          ref:
+            "main",
+        },
+      }
+    );
+
+    return {
+      ok: true,
+      dispatch_accepted: true,
+      reset_environment:
+        "test",
+    };
+  }
+);
 
 
 // =========================
