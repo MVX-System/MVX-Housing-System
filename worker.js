@@ -23030,7 +23030,7 @@ Router.register(
 
         ORDER BY
           CASE
-            WHEN status = 'closed'
+            WHEN status = 'scheduled'
               THEN 0
             ELSE 1
           END,
@@ -23046,9 +23046,9 @@ Router.register(
         period: unfinishedPeriod,
         selection_reason:
           unfinishedPeriod.status ===
-            "closed"
-            ? "latest_closed"
-            : "latest_scheduled"
+            "scheduled"
+            ? "latest_scheduled"
+            : "latest_closed"
       };
     }
 
