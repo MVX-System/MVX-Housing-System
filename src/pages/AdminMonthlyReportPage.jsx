@@ -1,11 +1,659 @@
 import {
   useEffect,
+  useMemo,
   useState,
 } from "react";
 
 import useWater from "../hooks/useWater";
 
+import {
+  useTranslation,
+} from "../i18n";
+
+const LOCALE_MAP = {
+  lv: "lv-LV",
+  en: "en-GB",
+  ru: "ru-RU",
+};
+
+const TEXT = {
+  en: {
+    unknown: "Unknown",
+    scheduled: "Scheduled",
+    open: "Open",
+    closed: "Closed",
+    finalized: "Finalized",
+
+    coldWater: "Cold Water",
+    hotWater: "Hot Water",
+    water: "Water",
+
+    complete: "Complete",
+    missingCurrent:
+      "Missing current",
+    missingPrevious:
+      "Missing previous",
+    negativeConsumption:
+      "Negative consumption",
+
+    title:
+      "Monthly Report",
+    subtitle:
+      "Water meter collection status and monthly consumption summary.",
+    downloadXlsx:
+      "Download XLSX",
+    loadingMonthlyReport:
+      "Loading monthly report...",
+    reportingPeriod:
+      "Reporting period",
+    collectionOpens:
+      "Collection opens",
+    collectionCloses:
+      "Collection closes",
+
+    apartments:
+      "Apartments",
+    submitted:
+      "Submitted",
+    missing:
+      "Missing",
+    meters:
+      "Meters",
+    waterConsumption:
+      "Water consumption",
+    total:
+      "Total",
+
+    attentionTitle:
+      "Apartments requiring attention",
+    attentionSubtitle:
+      "Apartments with one or more missing meter readings.",
+    allApartmentsSubmitted:
+      "All apartments have submitted readings for every active meter.",
+
+    apartmentNumberPrefix:
+      "Apartment #",
+    missingReadings:
+      "Missing readings",
+    meterCount:
+      (count) =>
+        `${count} ${count === 1 ? "meter" : "meters"}`,
+
+    noDetailedMeterData:
+      "No detailed meter data available.",
+    locationNotAssigned:
+      "Location not assigned",
+    serialNumber:
+      "Serial number",
+    riser:
+      "Riser",
+    receiveReadings:
+      "Receive readings",
+
+    meterDetails:
+      "Meter details",
+    meterDetailsSubtitle:
+      "Previous and current readings for every active water meter.",
+    noActiveWaterMeters:
+      "No active water meters found for this report.",
+
+    apartment:
+      "Apartment",
+    totalWater:
+      "Total Water",
+    activeMeterCount:
+      (count) =>
+        `Active meters: ${count}`,
+
+    receiveReadingsForApartment:
+      (number) =>
+        `Receive readings for Apartment #${number}`,
+    noSerial:
+      "No serial number",
+    previous:
+      "Previous",
+    current:
+      "Current",
+    consumption:
+      "Consumption",
+    status:
+      "Status",
+    enterReading:
+      "Enter reading",
+    readingDate:
+      "Reading date",
+    closedLateEntryConfirmation:
+      "This reporting period is closed. I confirm this late administrative entry.",
+    source:
+      "Source",
+    paperNote:
+      "Paper note",
+    email:
+      "Email",
+    phone:
+      "Phone",
+    adminManual:
+      "Admin manual",
+    sourceNote:
+      "Source note",
+    sourceNotePlaceholder:
+      "Example: Paper note received in mailbox",
+    cancel:
+      "Cancel",
+    saving:
+      "Saving...",
+    saveReadings:
+      "Save readings",
+
+    typeLocation:
+      "Type / Location",
+    kitchen:
+      "Kitchen",
+    bathroom:
+      "Bathroom",
+
+    xlsxReportTitle:
+      "Water Monthly Report",
+    generatedAt:
+      "Generated at",
+    apartmentsTotal:
+      "Apartments total",
+    apartmentsSubmitted:
+      "Apartments submitted",
+    apartmentsMissing:
+      "Apartments missing",
+    metersTotal:
+      "Meters total",
+    metersSubmitted:
+      "Meters submitted",
+    metersMissing:
+      "Meters missing",
+    requiresAttention:
+      "Requires attention",
+    type:
+      "Type",
+    location:
+      "Location",
+    previousReading:
+      "Previous Reading",
+    currentReading:
+      "Current Reading",
+    problem:
+      "Problem",
+
+    xlsxSheetSummary:
+      "Summary",
+    xlsxSheetApartments:
+      "Apartments",
+    xlsxSheetMeterDetails:
+      "Meter Details",
+    xlsxSheetMissingData:
+      "Missing Data",
+    xlsxFilePrefix:
+      "MVX_Water_Monthly_Report",
+
+    xlsxUnavailable:
+      "XLSX library is not available.",
+    monthlyReportUnavailable:
+      "Monthly report data is not available.",
+
+    enterAtLeastOneReading:
+      "Enter at least one reading",
+    enterSourceNote:
+      "Enter a source note",
+    selectReadingDate:
+      "Select reading date",
+    selectReportingPeriod:
+      "Select reporting period",
+    confirmLateClosed:
+      "Confirm the late entry for the closed reporting period",
+
+    readingReceived:
+      "Reading received",
+    readingsReceived:
+      (count) =>
+        `${count} readings received`,
+  },
+
+  lv: {
+    unknown: "Nezināms",
+    scheduled: "Plānots",
+    open: "Atvērts",
+    closed: "Slēgts",
+    finalized: "Pabeigts",
+
+    coldWater: "Aukstais ūdens",
+    hotWater: "Karstais ūdens",
+    water: "Ūdens",
+
+    complete: "Pilnīgi dati",
+    missingCurrent:
+      "Trūkst pašreizējā rādījuma",
+    missingPrevious:
+      "Trūkst iepriekšējā rādījuma",
+    negativeConsumption:
+      "Negatīvs patēriņš",
+
+    title:
+      "Mēneša pārskats",
+    subtitle:
+      "Ūdens skaitītāju rādījumu apkopošanas statuss un mēneša patēriņa kopsavilkums.",
+    downloadXlsx:
+      "Lejupielādēt XLSX",
+    loadingMonthlyReport:
+      "Notiek mēneša pārskata ielāde...",
+    reportingPeriod:
+      "Pārskata periods",
+    collectionOpens:
+      "Rādījumu iesniegšana sākas",
+    collectionCloses:
+      "Rādījumu iesniegšana beidzas",
+
+    apartments:
+      "Dzīvokļi",
+    submitted:
+      "Iesniegts",
+    missing:
+      "Trūkst",
+    meters:
+      "Skaitītāji",
+    waterConsumption:
+      "Ūdens patēriņš",
+    total:
+      "Kopā",
+
+    attentionTitle:
+      "Dzīvokļi, kuriem jāpievērš uzmanība",
+    attentionSubtitle:
+      "Dzīvokļi, kuros trūkst viena vai vairāku skaitītāju rādījumu.",
+    allApartmentsSubmitted:
+      "Visiem aktīvajiem skaitītājiem visos dzīvokļos rādījumi ir iesniegti.",
+
+    apartmentNumberPrefix:
+      "Dzīvoklis Nr. ",
+    missingReadings:
+      "Trūkst rādījumu",
+    meterCount:
+      (count) =>
+        `${count} ${count === 1 ? "skaitītājs" : "skaitītāji"}`,
+
+    noDetailedMeterData:
+      "Detalizēti skaitītāju dati nav pieejami.",
+    locationNotAssigned:
+      "Atrašanās vieta nav norādīta",
+    serialNumber:
+      "Sērijas numurs",
+    riser:
+      "Stāvvads",
+    receiveReadings:
+      "Saņemt rādījumus",
+
+    meterDetails:
+      "Skaitītāju dati",
+    meterDetailsSubtitle:
+      "Iepriekšējie un pašreizējie visu aktīvo ūdens skaitītāju rādījumi.",
+    noActiveWaterMeters:
+      "Šim pārskatam nav atrasti aktīvi ūdens skaitītāji.",
+
+    apartment:
+      "Dzīvoklis",
+    totalWater:
+      "Ūdens kopā",
+    activeMeterCount:
+      (count) =>
+        `Aktīvo skaitītāju skaits: ${count}`,
+
+    receiveReadingsForApartment:
+      (number) =>
+        `Saņemt rādījumus dzīvoklim Nr. ${number}`,
+    noSerial:
+      "Sērijas numurs nav norādīts",
+    previous:
+      "Iepriekšējais",
+    current:
+      "Pašreizējais",
+    consumption:
+      "Patēriņš",
+    status:
+      "Statuss",
+    enterReading:
+      "Ievadiet rādījumu",
+    readingDate:
+      "Rādījuma datums",
+    closedLateEntryConfirmation:
+      "Šis pārskata periods ir slēgts. Es apstiprinu šo novēloto administratīvo ievadi.",
+    source:
+      "Avots",
+    paperNote:
+      "Papīra piezīme",
+    email:
+      "E-pasts",
+    phone:
+      "Tālrunis",
+    adminManual:
+      "Administratora manuāla ievade",
+    sourceNote:
+      "Piezīme par avotu",
+    sourceNotePlaceholder:
+      "Piemērs: papīra piezīme saņemta pastkastē",
+    cancel:
+      "Atcelt",
+    saving:
+      "Saglabā...",
+    saveReadings:
+      "Saglabāt rādījumus",
+
+    typeLocation:
+      "Tips / atrašanās vieta",
+    kitchen:
+      "Virtuve",
+    bathroom:
+      "Vannas istaba",
+
+    xlsxReportTitle:
+      "Ūdens mēneša pārskats",
+    generatedAt:
+      "Izveidots",
+    apartmentsTotal:
+      "Dzīvokļi kopā",
+    apartmentsSubmitted:
+      "Dzīvokļi ar iesniegtiem rādījumiem",
+    apartmentsMissing:
+      "Dzīvokļi ar trūkstošiem rādījumiem",
+    metersTotal:
+      "Skaitītāji kopā",
+    metersSubmitted:
+      "Skaitītāji ar iesniegtiem rādījumiem",
+    metersMissing:
+      "Skaitītāji ar trūkstošiem rādījumiem",
+    requiresAttention:
+      "Jāpievērš uzmanība",
+    type:
+      "Tips",
+    location:
+      "Atrašanās vieta",
+    previousReading:
+      "Iepriekšējais rādījums",
+    currentReading:
+      "Pašreizējais rādījums",
+    problem:
+      "Problēma",
+
+    xlsxSheetSummary:
+      "Kopsavilkums",
+    xlsxSheetApartments:
+      "Dzīvokļi",
+    xlsxSheetMeterDetails:
+      "Skaitītāju dati",
+    xlsxSheetMissingData:
+      "Trūkstošie dati",
+    xlsxFilePrefix:
+      "MVX_Ūdens_mēneša_pārskats",
+
+    xlsxUnavailable:
+      "XLSX bibliotēka nav pieejama.",
+    monthlyReportUnavailable:
+      "Mēneša pārskata dati nav pieejami.",
+
+    enterAtLeastOneReading:
+      "Ievadiet vismaz vienu rādījumu",
+    enterSourceNote:
+      "Ievadiet piezīmi par avotu",
+    selectReadingDate:
+      "Izvēlieties rādījuma datumu",
+    selectReportingPeriod:
+      "Izvēlieties pārskata periodu",
+    confirmLateClosed:
+      "Apstipriniet novēloto ievadi slēgtajam pārskata periodam",
+
+    readingReceived:
+      "Rādījums saņemts",
+    readingsReceived:
+      (count) =>
+        `Saņemto rādījumu skaits: ${count}`,
+  },
+
+  ru: {
+    unknown: "Неизвестно",
+    scheduled: "Запланирован",
+    open: "Открыт",
+    closed: "Закрыт",
+    finalized: "Завершён",
+
+    coldWater: "Холодная вода",
+    hotWater: "Горячая вода",
+    water: "Вода",
+
+    complete: "Полные данные",
+    missingCurrent:
+      "Отсутствует текущее показание",
+    missingPrevious:
+      "Отсутствует предыдущее показание",
+    negativeConsumption:
+      "Отрицательный расход",
+
+    title:
+      "Ежемесячный отчёт",
+    subtitle:
+      "Статус сбора показаний водомеров и сводка месячного потребления.",
+    downloadXlsx:
+      "Скачать XLSX",
+    loadingMonthlyReport:
+      "Загрузка ежемесячного отчёта...",
+    reportingPeriod:
+      "Отчётный период",
+    collectionOpens:
+      "Начало сбора показаний",
+    collectionCloses:
+      "Окончание сбора показаний",
+
+    apartments:
+      "Квартиры",
+    submitted:
+      "Сданы",
+    missing:
+      "Отсутствуют",
+    meters:
+      "Счётчики",
+    waterConsumption:
+      "Потребление воды",
+    total:
+      "Всего",
+
+    attentionTitle:
+      "Квартиры, требующие внимания",
+    attentionSubtitle:
+      "Квартиры, в которых отсутствуют показания одного или нескольких счётчиков.",
+    allApartmentsSubmitted:
+      "По всем активным счётчикам всех квартир показания получены.",
+
+    apartmentNumberPrefix:
+      "Квартира № ",
+    missingReadings:
+      "Отсутствуют показания",
+    meterCount:
+      (count) => {
+        const value =
+          Math.abs(Number(count));
+
+        const mod10 =
+          value % 10;
+
+        const mod100 =
+          value % 100;
+
+        const word =
+          mod10 === 1 &&
+          mod100 !== 11
+            ? "счётчик"
+            : (
+                mod10 >= 2 &&
+                mod10 <= 4 &&
+                !(
+                  mod100 >= 12 &&
+                  mod100 <= 14
+                )
+                  ? "счётчика"
+                  : "счётчиков"
+              );
+
+        return `${count} ${word}`;
+      },
+
+    noDetailedMeterData:
+      "Подробные данные счётчиков недоступны.",
+    locationNotAssigned:
+      "Расположение не указано",
+    serialNumber:
+      "Серийный номер",
+    riser:
+      "Стояк",
+    receiveReadings:
+      "Принять показания",
+
+    meterDetails:
+      "Данные счётчиков",
+    meterDetailsSubtitle:
+      "Предыдущие и текущие показания всех активных водомеров.",
+    noActiveWaterMeters:
+      "Для этого отчёта активные водомеры не найдены.",
+
+    apartment:
+      "Квартира",
+    totalWater:
+      "Вода всего",
+    activeMeterCount:
+      (count) =>
+        `Активных счётчиков: ${count}`,
+
+    receiveReadingsForApartment:
+      (number) =>
+        `Принять показания для квартиры № ${number}`,
+    noSerial:
+      "Серийный номер не указан",
+    previous:
+      "Предыдущее",
+    current:
+      "Текущее",
+    consumption:
+      "Расход",
+    status:
+      "Статус",
+    enterReading:
+      "Введите показание",
+    readingDate:
+      "Дата показания",
+    closedLateEntryConfirmation:
+      "Этот отчётный период закрыт. Я подтверждаю поздний административный ввод.",
+    source:
+      "Источник",
+    paperNote:
+      "Бумажная записка",
+    email:
+      "Электронная почта",
+    phone:
+      "Телефон",
+    adminManual:
+      "Ручной ввод администратором",
+    sourceNote:
+      "Примечание об источнике",
+    sourceNotePlaceholder:
+      "Например: бумажная записка получена в почтовом ящике",
+    cancel:
+      "Отмена",
+    saving:
+      "Сохранение...",
+    saveReadings:
+      "Сохранить показания",
+
+    typeLocation:
+      "Тип / расположение",
+    kitchen:
+      "Кухня",
+    bathroom:
+      "Ванная",
+
+    xlsxReportTitle:
+      "Ежемесячный отчёт по воде",
+    generatedAt:
+      "Сформирован",
+    apartmentsTotal:
+      "Квартир всего",
+    apartmentsSubmitted:
+      "Квартиры с полученными показаниями",
+    apartmentsMissing:
+      "Квартиры с отсутствующими показаниями",
+    metersTotal:
+      "Счётчиков всего",
+    metersSubmitted:
+      "Счётчики с полученными показаниями",
+    metersMissing:
+      "Счётчики с отсутствующими показаниями",
+    requiresAttention:
+      "Требует внимания",
+    type:
+      "Тип",
+    location:
+      "Расположение",
+    previousReading:
+      "Предыдущее показание",
+    currentReading:
+      "Текущее показание",
+    problem:
+      "Проблема",
+
+    xlsxSheetSummary:
+      "Сводка",
+    xlsxSheetApartments:
+      "Квартиры",
+    xlsxSheetMeterDetails:
+      "Данные счётчиков",
+    xlsxSheetMissingData:
+      "Отсутствующие данные",
+    xlsxFilePrefix:
+      "MVX_Ежемесячный_отчёт_по_воде",
+
+    xlsxUnavailable:
+      "Библиотека XLSX недоступна.",
+    monthlyReportUnavailable:
+      "Данные ежемесячного отчёта недоступны.",
+
+    enterAtLeastOneReading:
+      "Введите хотя бы одно показание",
+    enterSourceNote:
+      "Введите примечание об источнике",
+    selectReadingDate:
+      "Выберите дату показания",
+    selectReportingPeriod:
+      "Выберите отчётный период",
+    confirmLateClosed:
+      "Подтвердите поздний ввод для закрытого отчётного периода",
+
+    readingReceived:
+      "Показание принято",
+    readingsReceived:
+      (count) =>
+        `Получено показаний: ${count}`,
+  },
+};
+
 export default function AdminMonthlyReportPage() {
+
+  const {
+    language,
+  } = useTranslation();
+
+  const text =
+    useMemo(
+      () =>
+        TEXT[language] ||
+        TEXT.en,
+      [language]
+    );
+
+  const locale =
+    LOCALE_MAP[language] ||
+    "en-GB";
 
   const [
     isMobile,
@@ -281,10 +929,11 @@ export default function AdminMonthlyReportPage() {
     );
 
     return date.toLocaleDateString(
-      "en-GB",
+      locale,
       {
         month: "long",
         year: "numeric",
+        timeZone: "UTC",
       }
     );
   };
@@ -309,13 +958,14 @@ export default function AdminMonthlyReportPage() {
     }
 
     return date.toLocaleString(
-      "en-GB",
+      locale,
       {
         day: "2-digit",
         month: "short",
         year: "numeric",
         hour: "2-digit",
         minute: "2-digit",
+        timeZone: "Europe/Riga",
       }
     );
   };
@@ -347,13 +997,30 @@ export default function AdminMonthlyReportPage() {
     value
   ) => {
 
-    if (!value) {
-      return "Unknown";
+    const normalizedValue =
+      String(value || "")
+        .trim()
+        .toLowerCase();
+
+    if (!normalizedValue) {
+      return text.unknown;
     }
 
+    const labels = {
+      scheduled: text.scheduled,
+      open: text.open,
+      closed: text.closed,
+      finalized: text.finalized,
+    };
+
     return (
-      value.charAt(0).toUpperCase() +
-      value.slice(1)
+      labels[normalizedValue] ||
+      (
+        normalizedValue
+          .charAt(0)
+          .toUpperCase() +
+        normalizedValue.slice(1)
+      )
     );
   };
 
@@ -409,14 +1076,40 @@ export default function AdminMonthlyReportPage() {
         .toLowerCase();
 
     if (normalizedValue === "cold") {
-      return "Cold Water";
+      return text.coldWater;
     }
 
     if (normalizedValue === "hot") {
-      return "Hot Water";
+      return text.hotWater;
     }
 
-    return value || "Water";
+    return value || text.water;
+  };
+
+  const formatLocation = (
+    value
+  ) => {
+
+    const normalizedValue =
+      String(value || "")
+        .trim()
+        .toLowerCase();
+
+    if (
+      normalizedValue === "kitchen" ||
+      normalizedValue === "k"
+    ) {
+      return text.kitchen;
+    }
+
+    if (
+      normalizedValue === "bathroom" ||
+      normalizedValue === "b"
+    ) {
+      return text.bathroom;
+    }
+
+    return value || "";
   };
 
   const formatRowStatus = (
@@ -424,13 +1117,14 @@ export default function AdminMonthlyReportPage() {
   ) => {
 
     const labels = {
-      complete: "Complete",
+      complete:
+        text.complete,
       missing_current:
-        "Missing current",
+        text.missingCurrent,
       missing_previous:
-        "Missing previous",
+        text.missingPrevious,
       negative_consumption:
-        "Negative consumption",
+        text.negativeConsumption,
     };
 
     return (
@@ -598,7 +1292,7 @@ export default function AdminMonthlyReportPage() {
     if (!XLSX) {
 
       alert(
-        "XLSX library is not available."
+        text.xlsxUnavailable
       );
 
       return;
@@ -611,7 +1305,7 @@ export default function AdminMonthlyReportPage() {
     ) {
 
       alert(
-        "Monthly report data is not available."
+        text.monthlyReportUnavailable
       );
 
       return;
@@ -652,54 +1346,57 @@ export default function AdminMonthlyReportPage() {
     const summaryData = [
       [
         "MVX System",
-        "Water Monthly Report",
+        text.xlsxReportTitle,
       ],
       [],
       [
-        "Reporting period",
+        text.reportingPeriod,
         periodName,
       ],
       [
-        "Status",
+        text.status,
         formatStatus(
           period.status
         ),
       ],
       [
-        "Collection opens",
+        text.collectionOpens,
         formatDateTime(
           period.collection_opens_at
         ),
       ],
       [
-        "Collection closes",
+        text.collectionCloses,
         formatDateTime(
           period.collection_closes_at
         ),
       ],
       [
-        "Generated at",
+        text.generatedAt,
         generatedAt.toLocaleString(
-          "en-GB"
+          locale,
+          {
+            timeZone: "Europe/Riga",
+          }
         ),
       ],
       [],
       [
-        "Apartments total",
+        text.apartmentsTotal,
         Number(
           summary.apartments_total ||
           0
         ),
       ],
       [
-        "Apartments submitted",
+        text.apartmentsSubmitted,
         Number(
           summary.apartments_submitted ||
           0
         ),
       ],
       [
-        "Apartments missing",
+        text.apartmentsMissing,
         Number(
           summary.apartments_missing ||
           0
@@ -707,21 +1404,21 @@ export default function AdminMonthlyReportPage() {
       ],
       [],
       [
-        "Meters total",
+        text.metersTotal,
         Number(
           summary.meters_total ||
           0
         ),
       ],
       [
-        "Meters submitted",
+        text.metersSubmitted,
         Number(
           summary.meters_submitted ||
           0
         ),
       ],
       [
-        "Meters missing",
+        text.metersMissing,
         Number(
           summary.meters_missing ||
           0
@@ -729,19 +1426,19 @@ export default function AdminMonthlyReportPage() {
       ],
       [],
       [
-        "Cold Water, m³",
+        `${text.coldWater}, m³`,
         toCubicMeters(
           coldTotal
         ),
       ],
       [
-        "Hot Water, m³",
+        `${text.hotWater}, m³`,
         toCubicMeters(
           hotTotal
         ),
       ],
       [
-        "Total Water, m³",
+        `${text.totalWater}, m³`,
         toCubicMeters(
           totalWater
         ),
@@ -768,7 +1465,7 @@ export default function AdminMonthlyReportPage() {
     XLSX.utils.book_append_sheet(
       workbook,
       summarySheet,
-      "Summary"
+      text.xlsxSheetSummary
     );
 
     // =====================================
@@ -802,33 +1499,33 @@ export default function AdminMonthlyReportPage() {
             );
 
           return {
-            Apartment:
+            [text.apartment]:
               String(
                 group.apartment_number
               ),
 
-            "Cold Water, m³":
+            [`${text.coldWater}, m³`]:
               toCubicMeters(
                 cold
               ),
 
-            "Hot Water, m³":
+            [`${text.hotWater}, m³`]:
               toCubicMeters(
                 hot
               ),
 
-            "Total Water, m³":
+            [`${text.totalWater}, m³`]:
               toCubicMeters(
                 cold + hot
               ),
 
-            Meters:
+            [text.meters]:
               rows.length,
 
-            Status:
+            [text.status]:
               hasProblems
-                ? "Requires attention"
-                : "Complete",
+                ? text.requiresAttention
+                : text.complete,
           };
         }
       );
@@ -865,7 +1562,7 @@ export default function AdminMonthlyReportPage() {
     XLSX.utils.book_append_sheet(
       workbook,
       apartmentsSheet,
-      "Apartments"
+      text.xlsxSheetApartments
     );
 
     // =====================================
@@ -876,47 +1573,49 @@ export default function AdminMonthlyReportPage() {
       reportRows.map(
         (row) => ({
 
-          Apartment:
+          [text.apartment]:
             String(
               row.apartment_number
             ),
 
-          Type:
+          [text.type]:
             formatMeterType(
               row.type
             ),
 
-          Location:
-            row.local_label || "",
+          [text.location]:
+            formatLocation(
+              row.local_label
+            ),
 
-          "Serial Number":
+          [text.serialNumber]:
             String(
               row.serial_number ||
               ""
             ),
 
-          Riser:
+          [text.riser]:
             String(
               row.riser_code ||
               ""
             ),
 
-          "Previous Reading, m³":
+          [`${text.previousReading}, m³`]:
             toCubicMeters(
               row.previous_reading
             ),
 
-          "Current Reading, m³":
+          [`${text.currentReading}, m³`]:
             toCubicMeters(
               row.current_reading
             ),
 
-          "Consumption, m³":
+          [`${text.consumption}, m³`]:
             toCubicMeters(
               row.consumption
             ),
 
-          Status:
+          [text.status]:
             formatRowStatus(
               row.status
             ),
@@ -963,7 +1662,7 @@ export default function AdminMonthlyReportPage() {
     XLSX.utils.book_append_sheet(
       workbook,
       meterDetailsSheet,
-      "Meter Details"
+      text.xlsxSheetMeterDetails
     );
 
     // =====================================
@@ -980,32 +1679,34 @@ export default function AdminMonthlyReportPage() {
         .map(
           (row) => ({
 
-            Apartment:
+            [text.apartment]:
               String(
                 row.apartment_number
               ),
 
-            Type:
+            [text.type]:
               formatMeterType(
                 row.type
               ),
 
-            Location:
-              row.local_label || "",
+            [text.location]:
+              formatLocation(
+                row.local_label
+              ),
 
-            "Serial Number":
+            [text.serialNumber]:
               String(
                 row.serial_number ||
                 ""
               ),
 
-            Riser:
+            [text.riser]:
               String(
                 row.riser_code ||
                 ""
               ),
 
-            Problem:
+            [text.problem]:
               formatRowStatus(
                 row.status
               ),
@@ -1037,7 +1738,7 @@ export default function AdminMonthlyReportPage() {
     XLSX.utils.book_append_sheet(
       workbook,
       missingDataSheet,
-      "Missing Data"
+      text.xlsxSheetMissingData
     );
 
     const safeMonth =
@@ -1046,7 +1747,7 @@ export default function AdminMonthlyReportPage() {
       ).padStart(2, "0");
 
     const fileName =
-      `MVX_Water_Monthly_Report_${period.period_year}-${safeMonth}.xlsx`;
+      `${text.xlsxFilePrefix}_${period.period_year}-${safeMonth}.xlsx`;
 
     XLSX.writeFileXLSX(
       workbook,
@@ -1255,7 +1956,7 @@ export default function AdminMonthlyReportPage() {
       ) {
 
         alert(
-          "Enter at least one reading"
+          text.enterAtLeastOneReading
         );
 
         return;
@@ -1268,7 +1969,7 @@ export default function AdminMonthlyReportPage() {
       ) {
 
         alert(
-          "Enter a source note"
+          text.enterSourceNote
         );
 
         return;
@@ -1276,7 +1977,7 @@ export default function AdminMonthlyReportPage() {
 
       if (!receiveReadingDate) {
         alert(
-          "Select reading date"
+          text.selectReadingDate
         );
         return;
       }
@@ -1285,7 +1986,7 @@ export default function AdminMonthlyReportPage() {
         !selectedEntryPeriod?.id
       ) {
         alert(
-          "Select reporting period"
+          text.selectReportingPeriod
         );
         return;
       }
@@ -1295,7 +1996,7 @@ export default function AdminMonthlyReportPage() {
         !confirmClosedPeriodEntry
       ) {
         alert(
-          "Confirm the late entry for the closed reporting period"
+          text.confirmLateClosed
         );
         return;
       }
@@ -1378,8 +2079,10 @@ export default function AdminMonthlyReportPage() {
 
           alert(
             successfulCount === 1
-              ? "Reading received"
-              : `${successfulCount} readings received`
+              ? text.readingReceived
+              : text.readingsReceived(
+                  successfulCount
+                )
           );
         }
 
@@ -1427,7 +2130,7 @@ export default function AdminMonthlyReportPage() {
               margin: 0,
             }}
           >
-            Monthly Report
+            {text.title}
           </h1>
 
           <p
@@ -1438,9 +2141,7 @@ export default function AdminMonthlyReportPage() {
               lineHeight: 1.5,
             }}
           >
-            Water meter collection
-            status and monthly
-            consumption summary.
+            {text.subtitle}
           </p>
 
         </div>
@@ -1489,7 +2190,7 @@ export default function AdminMonthlyReportPage() {
               "nowrap",
           }}
         >
-          Download XLSX
+          {text.downloadXlsx}
         </button>
 
       </div>
@@ -1506,7 +2207,7 @@ export default function AdminMonthlyReportPage() {
             color: "#6b7280",
           }}
         >
-          Loading monthly report...
+          {text.loadingMonthlyReport}
         </div>
 
       )}
@@ -1576,7 +2277,7 @@ export default function AdminMonthlyReportPage() {
                     marginBottom: 5,
                   }}
                 >
-                  Reporting period
+                  {text.reportingPeriod}
                 </div>
 
                 {reportingPeriods.length > 1 ? (
@@ -1676,14 +2377,14 @@ export default function AdminMonthlyReportPage() {
             >
 
               <InfoItem
-                label="Collection opens"
+                label={text.collectionOpens}
                 value={formatDateTime(
                   period.collection_opens_at
                 )}
               />
 
               <InfoItem
-                label="Collection closes"
+                label={text.collectionCloses}
                 value={formatDateTime(
                   period.collection_closes_at
                 )}
@@ -1704,18 +2405,19 @@ export default function AdminMonthlyReportPage() {
           >
 
             <SummaryGroupCard
-              title="Apartments"
+              title={text.apartments}
+              primaryLabel={text.total}
               primaryValue={
                 summary.apartments_total
               }
               items={[
                 {
-                  label: "Submitted",
+                  label: text.submitted,
                   value:
                     summary.apartments_submitted,
                 },
                 {
-                  label: "Missing",
+                  label: text.missing,
                   value:
                     summary.apartments_missing,
                   warning:
@@ -1726,18 +2428,19 @@ export default function AdminMonthlyReportPage() {
             />
 
             <SummaryGroupCard
-              title="Meters"
+              title={text.meters}
+              primaryLabel={text.total}
               primaryValue={
                 summary.meters_total
               }
               items={[
                 {
-                  label: "Submitted",
+                  label: text.submitted,
                   value:
                     summary.meters_submitted,
                 },
                 {
-                  label: "Missing",
+                  label: text.missing,
                   value:
                     summary.meters_missing,
                   warning:
@@ -1748,8 +2451,8 @@ export default function AdminMonthlyReportPage() {
             />
 
             <SummaryGroupCard
-              title="Water consumption"
-              primaryLabel="Total"
+              title={text.waterConsumption}
+              primaryLabel={text.total}
               primaryValue={
                 formatConsumption(
                   Number(
@@ -1764,14 +2467,14 @@ export default function AdminMonthlyReportPage() {
               }
               items={[
                 {
-                  label: "Cold Water",
+                  label: text.coldWater,
                   value:
                     formatConsumption(
                       summary.cold_consumption
                     ),
                 },
                 {
-                  label: "Hot Water",
+                  label: text.hotWater,
                   value:
                     formatConsumption(
                       summary.hot_consumption
@@ -1816,8 +2519,7 @@ export default function AdminMonthlyReportPage() {
                     fontSize: 18,
                   }}
                 >
-                  Apartments requiring
-                  attention
+                  {text.attentionTitle}
                 </h2>
 
                 <p
@@ -1829,9 +2531,7 @@ export default function AdminMonthlyReportPage() {
                     lineHeight: 1.4,
                   }}
                 >
-                  Apartments with one or
-                  more missing meter
-                  readings.
+                  {text.attentionSubtitle}
                 </p>
 
               </div>
@@ -1874,9 +2574,7 @@ export default function AdminMonthlyReportPage() {
                   fontWeight: 600,
                 }}
               >
-                All apartments have
-                submitted readings for
-                every active meter.
+                {text.allApartmentsSubmitted}
               </div>
 
             ) : (
@@ -1995,7 +2693,10 @@ export default function AdminMonthlyReportPage() {
                                   fontWeight: 700,
                                 }}
                               >
-                                Apartment #
+                                {
+                                  text
+                                    .apartmentNumberPrefix
+                                }
                                 {
                                   apartment
                                     .apartment_number
@@ -2010,7 +2711,7 @@ export default function AdminMonthlyReportPage() {
                                   fontSize: 12,
                                 }}
                               >
-                                Missing readings
+                                {text.missingReadings}
                               </div>
 
                             </div>
@@ -2036,16 +2737,10 @@ export default function AdminMonthlyReportPage() {
                             }}
                           >
                             {
-                              apartment
-                                .missing_meter_count
-                            }
-                            {" "}
-                            {
-                              apartment
-                                .missing_meter_count ===
-                              1
-                                ? "meter"
-                                : "meters"
+                              text.meterCount(
+                                apartment
+                                  .missing_meter_count
+                              )
                             }
                           </span>
 
@@ -2075,8 +2770,10 @@ export default function AdminMonthlyReportPage() {
                                   fontSize: 12,
                                 }}
                               >
-                                No detailed meter
-                                data available.
+                                {
+                                  text
+                                    .noDetailedMeterData
+                                }
                               </div>
 
                             ) : (
@@ -2136,8 +2833,10 @@ export default function AdminMonthlyReportPage() {
                                             fontSize: 11,
                                           }}
                                         >
-                                          {row.local_label ||
-                                            "Location not assigned"}
+                                          {formatLocation(
+                                            row.local_label
+                                          ) ||
+                                            text.locationNotAssigned}
                                         </div>
 
                                       </div>
@@ -2183,7 +2882,7 @@ export default function AdminMonthlyReportPage() {
                                             "#6b7280",
                                         }}
                                       >
-                                        Serial number
+                                        {text.serialNumber}
                                       </span>
 
                                       <span
@@ -2207,7 +2906,7 @@ export default function AdminMonthlyReportPage() {
                                             "#6b7280",
                                         }}
                                       >
-                                        Riser
+                                        {text.riser}
                                       </span>
 
                                       <span
@@ -2284,7 +2983,7 @@ export default function AdminMonthlyReportPage() {
                                         : "not-allowed",
                                   }}
                                 >
-                                  Receive readings
+                                  {text.receiveReadings}
                                 </button>
 
                               ) : (
@@ -2310,11 +3009,11 @@ export default function AdminMonthlyReportPage() {
                                       fontWeight: 700,
                                     }}
                                   >
-                                    Receive readings for
-                                    Apartment #
                                     {
-                                      apartment
-                                        .apartment_number
+                                      text.receiveReadingsForApartment(
+                                        apartment
+                                          .apartment_number
+                                      )
                                     }
                                   </div>
 
@@ -2344,11 +3043,13 @@ export default function AdminMonthlyReportPage() {
                                             row.type
                                           )}
                                           {row.local_label
-                                            ? ` · ${row.local_label}`
+                                            ? ` · ${formatLocation(
+                                                row.local_label
+                                              )}`
                                             : ""}
                                           {" — "}
                                           {row.serial_number ||
-                                            "No serial"}
+                                            text.noSerial}
                                         </span>
 
                                         <span
@@ -2359,7 +3060,7 @@ export default function AdminMonthlyReportPage() {
                                             lineHeight: 1.35,
                                           }}
                                         >
-                                          Previous:{" "}
+                                          {text.previous}:{" "}
                                           {row.previous_reading ===
                                             null ||
                                           row.previous_reading ===
@@ -2378,7 +3079,7 @@ export default function AdminMonthlyReportPage() {
                                               null ||
                                             row.previous_reading ===
                                               undefined
-                                              ? "Enter reading"
+                                              ? text.enterReading
                                               : formatConsumption(
                                                   row.previous_reading
                                                 ).replace(
@@ -2440,7 +3141,7 @@ export default function AdminMonthlyReportPage() {
                                         fontWeight: 600,
                                       }}
                                     >
-                                      Reading date
+                                      {text.readingDate}
                                     </span>
 
                                     <input
@@ -2523,7 +3224,7 @@ export default function AdminMonthlyReportPage() {
                                       />
 
                                       <span>
-                                        This reporting period is closed. I confirm this late administrative entry.
+                                        {text.closedLateEntryConfirmation}
                                       </span>
                                     </label>
 
@@ -2544,7 +3245,7 @@ export default function AdminMonthlyReportPage() {
                                         fontWeight: 600,
                                       }}
                                     >
-                                      Source
+                                      {text.source}
                                     </span>
 
                                     <select
@@ -2578,22 +3279,22 @@ export default function AdminMonthlyReportPage() {
                                       <option
                                         value="paper_note"
                                       >
-                                        Paper note
+                                        {text.paperNote}
                                       </option>
                                       <option
                                         value="email"
                                       >
-                                        Email
+                                        {text.email}
                                       </option>
                                       <option
                                         value="phone"
                                       >
-                                        Phone
+                                        {text.phone}
                                       </option>
                                       <option
                                         value="admin_manual"
                                       >
-                                        Admin manual
+                                        {text.adminManual}
                                       </option>
                                     </select>
 
@@ -2614,7 +3315,7 @@ export default function AdminMonthlyReportPage() {
                                         fontWeight: 600,
                                       }}
                                     >
-                                      Source note
+                                      {text.sourceNote}
                                     </span>
 
                                     <textarea
@@ -2632,7 +3333,9 @@ export default function AdminMonthlyReportPage() {
                                           event.target.value
                                         )
                                       }
-                                      placeholder="Example: Paper note received in mailbox"
+                                      placeholder={
+                                        text.sourceNotePlaceholder
+                                      }
                                       style={{
                                         width: "100%",
                                         boxSizing:
@@ -2691,7 +3394,7 @@ export default function AdminMonthlyReportPage() {
                                             : "pointer",
                                       }}
                                     >
-                                      Cancel
+                                      {text.cancel}
                                     </button>
 
                                     <button
@@ -2727,8 +3430,8 @@ export default function AdminMonthlyReportPage() {
                                       }}
                                     >
                                       {receiveReadingsSubmitting
-                                        ? "Saving..."
-                                        : "Save readings"}
+                                        ? text.saving
+                                        : text.saveReadings}
                                     </button>
 
                                   </div>
@@ -2788,7 +3491,7 @@ export default function AdminMonthlyReportPage() {
                     fontSize: 18,
                   }}
                 >
-                  Meter details
+                  {text.meterDetails}
                 </h2>
 
                 <p
@@ -2799,9 +3502,7 @@ export default function AdminMonthlyReportPage() {
                     fontSize: 13,
                   }}
                 >
-                  Previous and current
-                  readings for every
-                  active water meter.
+                  {text.meterDetailsSubtitle}
                 </p>
               </div>
 
@@ -2829,8 +3530,7 @@ export default function AdminMonthlyReportPage() {
                   fontSize: 14,
                 }}
               >
-                No active water meters
-                found for this report.
+                {text.noActiveWaterMeters}
               </div>
 
             ) : (
@@ -2858,8 +3558,12 @@ export default function AdminMonthlyReportPage() {
                       isMobile={
                         isMobile
                       }
+                      text={text}
                       formatMeterType={
                         formatMeterType
+                      }
+                      formatLocation={
+                        formatLocation
                       }
                       formatConsumption={
                         formatConsumption
@@ -3078,7 +3782,9 @@ function SummaryGroupCard({
 function ApartmentMeterGroup({
   apartmentGroup,
   isMobile,
+  text,
   formatMeterType,
+  formatLocation,
   formatConsumption,
   formatRowStatus,
   getRowStatusStyle,
@@ -3176,7 +3882,9 @@ function ApartmentMeterGroup({
               fontWeight: 700,
             }}
           >
-            Apartment #
+            {
+              text.apartmentNumberPrefix
+            }
             {
               apartmentGroup
                 .apartment_number
@@ -3190,11 +3898,11 @@ function ApartmentMeterGroup({
               fontSize: 12,
             }}
           >
-            {rows.length}
-            {" "}
-            {rows.length === 1
-              ? "active meter"
-              : "active meters"}
+            {
+              text.activeMeterCount(
+                rows.length
+              )
+            }
           </div>
 
         </div>
@@ -3219,7 +3927,7 @@ function ApartmentMeterGroup({
         >
 
           <ApartmentTotal
-            label="Cold Water"
+            label={text.coldWater}
             value={
               formatConsumption(
                 coldConsumption
@@ -3228,7 +3936,7 @@ function ApartmentMeterGroup({
           />
 
           <ApartmentTotal
-            label="Hot Water"
+            label={text.hotWater}
             value={
               formatConsumption(
                 hotConsumption
@@ -3237,7 +3945,7 @@ function ApartmentMeterGroup({
           />
 
           <ApartmentTotal
-            label="Total Water"
+            label={text.totalWater}
             value={
               formatConsumption(
                 totalConsumption
@@ -3273,8 +3981,12 @@ function ApartmentMeterGroup({
                     row.meter_id
                   }
                   row={row}
+                  text={text}
                   formatMeterType={
                     formatMeterType
+                  }
+                  formatLocation={
+                    formatLocation
                   }
                   formatConsumption={
                     formatConsumption
@@ -3296,8 +4008,12 @@ function ApartmentMeterGroup({
 
           <MeterDetailsTable
             rows={rows}
+            text={text}
             formatMeterType={
               formatMeterType
+            }
+            formatLocation={
+              formatLocation
             }
             formatConsumption={
               formatConsumption
@@ -3375,7 +4091,9 @@ function ApartmentTotal({
 
 function MeterDetailsTable({
   rows,
+  text,
   formatMeterType,
+  formatLocation,
   formatConsumption,
   formatRowStatus,
   getRowStatusStyle,
@@ -3385,14 +4103,14 @@ function MeterDetailsTable({
   const headings = [
     ...(hideApartmentColumn
       ? []
-      : ["Apartment"]),
-    "Type / Location",
-    "Serial Number",
-    "Riser",
-    "Previous",
-    "Current",
-    "Consumption",
-    "Status",
+      : [text.apartment]),
+    text.typeLocation,
+    text.serialNumber,
+    text.riser,
+    text.previous,
+    text.current,
+    text.consumption,
+    text.status,
   ];
 
   return (
@@ -3518,8 +4236,9 @@ function MeterDetailsTable({
                         fontSize: 11,
                       }}
                     >
-                      {row.local_label ||
-                        "—"}
+                      {formatLocation(
+                        row.local_label
+                      ) || "—"}
                     </div>
                   </td>
 
@@ -3642,7 +4361,9 @@ function MeterDetailsTable({
 
 function MeterDetailCard({
   row,
+  text,
   formatMeterType,
+  formatLocation,
   formatConsumption,
   formatRowStatus,
   getRowStatusStyle,
@@ -3650,15 +4371,17 @@ function MeterDetailCard({
 
   const values = [
     [
-      "Serial number",
+      text.serialNumber,
       row.serial_number || "—",
+      false,
     ],
     [
-      "Riser",
+      text.riser,
       row.riser_code || "—",
+      false,
     ],
     [
-      "Previous",
+      text.previous,
       row.previous_reading ===
         null ||
       row.previous_reading ===
@@ -3667,9 +4390,10 @@ function MeterDetailCard({
         : formatConsumption(
             row.previous_reading
           ),
+      false,
     ],
     [
-      "Current",
+      text.current,
       row.current_reading ===
         null ||
       row.current_reading ===
@@ -3678,9 +4402,10 @@ function MeterDetailCard({
         : formatConsumption(
             row.current_reading
           ),
+      false,
     ],
     [
-      "Consumption",
+      text.consumption,
       row.consumption === null ||
       row.consumption ===
         undefined
@@ -3688,6 +4413,7 @@ function MeterDetailCard({
         : formatConsumption(
             row.consumption
           ),
+      true,
     ],
   ];
 
@@ -3738,7 +4464,9 @@ function MeterDetailCard({
                 fontWeight: 600,
               }}
             >
-              {row.local_label}
+              {formatLocation(
+                row.local_label
+              )}
             </div>
           )}
         </div>
@@ -3772,7 +4500,11 @@ function MeterDetailCard({
         }}
       >
         {values.map(
-          ([label, value]) => (
+          ([
+            label,
+            value,
+            isConsumption,
+          ]) => (
             <>
               <span
                 key={`${label}-label`}
@@ -3788,13 +4520,11 @@ function MeterDetailCard({
                 style={{
                   textAlign: "right",
                   fontWeight:
-                    label ===
-                    "Consumption"
+                    isConsumption
                       ? 700
                       : 600,
                   color:
-                    label ===
-                      "Consumption" &&
+                    isConsumption &&
                     Number(
                       row.consumption
                     ) < 0
