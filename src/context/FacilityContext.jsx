@@ -27,6 +27,11 @@ export function FacilityProvider({
   ] = useState(true);
 
   const [
+    environment,
+    setEnvironment,
+  ] = useState("unknown");
+
+  const [
     error,
     setError,
   ] = useState(null);
@@ -41,6 +46,21 @@ export function FacilityProvider({
           await api(
             "/api/public/facility-profile"
           );
+
+        const nextEnvironment =
+          [
+            "production",
+            "test",
+            "demo",
+          ].includes(
+            result?.environment
+          )
+            ? result.environment
+            : "unknown";
+
+        setEnvironment(
+          nextEnvironment
+        );
 
         if (
           !result ||
@@ -68,6 +88,11 @@ export function FacilityProvider({
         );
 
         setFacility(null);
+
+        setEnvironment(
+          "unknown"
+        );
+
         setError(
           "facility_profile_load_failed"
         );
@@ -86,6 +111,7 @@ export function FacilityProvider({
     <FacilityContext.Provider
       value={{
         facility,
+        environment,
         loading,
         error,
         refreshFacility:
