@@ -1,7 +1,18 @@
-import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import {
+  useEffect,
+  useState,
+} from "react";
 
-import { useAuth } from "../context/AuthContext";
+import {
+  useNavigate,
+} from "react-router-dom";
+
+import LanguageSelector
+  from "../components/LanguageSelector";
+
+import {
+  useAuth,
+} from "../context/AuthContext";
 
 import {
   useFacility,
@@ -11,28 +22,49 @@ import {
   usePublicContact,
 } from "../context/PublicContactContext";
 
-import { useTranslation } from "../i18n";
+import {
+  useTranslation,
+} from "../i18n";
 
 import {
   buttonStyle,
   inputStyle,
+  loginCard,
 } from "../styles/theme";
 
 export default function LoginPage() {
-  const { login } = useAuth();
+  const {
+    login,
+  } = useAuth();
 
   const {
     facility,
+    environment,
     loading: facilityLoading,
   } = useFacility();
 
-  const { t } = useTranslation();
+  const {
+    t,
+  } = useTranslation();
 
-  const navigate = useNavigate();
+  const navigate =
+    useNavigate();
 
-  const [nick, setNick] = useState("");
-  const [password, setPassword] = useState("");
-  const [recoveryHelpOpen, setRecoveryHelpOpen] = useState(false);
+  const [
+    nick,
+    setNick,
+  ] = useState("");
+
+  const [
+    password,
+    setPassword,
+  ] = useState("");
+
+  const [
+    recoveryHelpOpen,
+    setRecoveryHelpOpen,
+  ] = useState(false);
+
   const {
     publicContact,
     refreshPublicContact,
@@ -42,132 +74,335 @@ export default function LoginPage() {
     refreshPublicContact();
   }, [refreshPublicContact]);
 
-  const submit = async () => {
-    const ok = await login(nick, password);
+  const submit =
+    async () => {
+      const ok =
+        await login(
+          nick,
+          password
+        );
 
-    if (!ok) {
-      return;
-    }
+      if (!ok) {
+        return;
+      }
 
-    navigate("/");
-  };
+      navigate("/");
+    };
 
-  const supportEmail = publicContact.support_email;
-  const supportPhone = publicContact.support_phone;
-  const supportPhoneHref = supportPhone.replace(
-    /[^\d+]/g,
-    ""
-  );
+  const facilityDisplayName =
+    facilityLoading
+      ? "..."
+      : facility?.display_name ||
+        t(
+          "login.facilityFallback"
+        );
+
+  const facilityAddress =
+    [
+      facility?.address_line,
+      facility?.city,
+      facility?.postal_code,
+      facility?.country,
+    ]
+      .map(
+        (value) =>
+          typeof value === "string"
+            ? value.trim()
+            : ""
+      )
+      .filter(Boolean)
+      .join(", ");
+
+  const supportEmail =
+    publicContact.support_email;
+
+  const supportPhone =
+    publicContact.support_phone;
+
+  const supportPhoneHref =
+    supportPhone.replace(
+      /[^\d+]/g,
+      ""
+    );
+
+  const environmentLabel =
+    environment === "test"
+      ? "TEST"
+      : environment === "demo"
+        ? "DEMO"
+        : "";
 
   return (
     <div
-      style={{
-        minHeight: "100vh",
-        display: "flex",
-        justifyContent: "center",
-        alignItems: "center",
-      }}
+      className="public-login-page"
     >
       <div
-        style={{
-          width: 400,
-          padding: 30,
-          border: "1px solid #ccc",
-          borderRadius: 10,
-        }}
+        className="public-login-shell"
       >
-        <h1
-          style={{
-            lineHeight: 1.2,
-            textAlign: "center",
-          }}
+        <header
+          className="public-login-topbar"
         >
-          <div style={{ fontSize: "0.8em" }}>
-            MVX System
+          <div
+            className="public-login-brand-row"
+          >
+            <div
+              className="public-login-brand"
+            >
+              MVX System
+            </div>
+
+            {environmentLabel && (
+              <span
+                className="public-login-environment"
+                aria-label={
+                  `${environmentLabel} environment`
+                }
+              >
+                {environmentLabel}
+              </span>
+            )}
           </div>
 
-          <div>
-            {facilityLoading
-              ? "..."
-              : facility?.display_name ||
-                "Facility"}
-          </div>
-        </h1>
+          <LanguageSelector
+            variant="compact"
+          />
+        </header>
 
-        <input
-          placeholder="Nick"
-          value={nick}
-          onChange={(e) => setNick(e.target.value)}
-          style={inputStyle}
-          autoComplete="username"
-        />
-
-        <input
-          type="password"
-          placeholder={t("login.placeholders.password")}
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          style={inputStyle}
-          autoComplete="current-password"
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              submit();
-            }
-          }}
-        />
-
-        <button
-          onClick={submit}
-          style={buttonStyle}
+        <main
+          className="public-login-grid"
         >
-          {t("login.login")}
-        </button>
+          <section
+            className="public-login-intro"
+            aria-labelledby=
+              "public-login-facility-title"
+          >
+            <div
+              className="public-login-kicker"
+            >
+              MVX System
+            </div>
 
-        <button
-          type="button"
-          onClick={() =>
-            setRecoveryHelpOpen(true)
-          }
-          style={{
-            width: "100%",
-            marginTop: 10,
-            padding: "8px 12px",
-            border: "none",
-            background: "none",
-            color: "#2563eb",
-            fontWeight: 700,
-            cursor: "pointer",
-          }}
-        >
-          {t("login.forgotCredentials")}
-        </button>
+            <h1
+              id="public-login-facility-title"
+            >
+              {facilityDisplayName}
+            </h1>
 
-        <button
-          type="button"
-          onClick={() =>
-            navigate(
-              "/account-recovery"
-            )
-          }
-          style={{
-            width: "100%",
-            padding: "6px 12px 8px",
-            border: "none",
-            background: "none",
-            color: "#2563eb",
-            fontWeight: 600,
-            cursor: "pointer",
-          }}
-        >
-          {t("login.haveRecoveryCode")}
-        </button>
+            <p
+              className="public-login-description"
+            >
+              {t(
+                "login.landing.description"
+              )}
+            </p>
+
+            {facilityAddress && (
+              <div
+                className="public-login-info-block"
+              >
+                <div
+                  className="public-login-info-label"
+                >
+                  {t(
+                    "login.landing.address"
+                  )}
+                </div>
+
+                <div
+                  className="public-login-info-value"
+                >
+                  {facilityAddress}
+                </div>
+              </div>
+            )}
+
+            {(supportEmail ||
+              supportPhone) && (
+              <div
+                className="public-login-info-block"
+              >
+                <div
+                  className="public-login-info-label"
+                >
+                  {t(
+                    "login.landing.contacts"
+                  )}
+                </div>
+
+                <div
+                  className="public-login-contact-list"
+                >
+                  {supportEmail && (
+                    <div>
+                      <span>
+                        {t(
+                          "login.landing.email"
+                        )}:
+                      </span>{" "}
+
+                      <a
+                        href={
+                          `mailto:${supportEmail}`
+                        }
+                      >
+                        {supportEmail}
+                      </a>
+                    </div>
+                  )}
+
+                  {supportPhone && (
+                    <div>
+                      <span>
+                        {t(
+                          "login.landing.phone"
+                        )}:
+                      </span>{" "}
+
+                      <a
+                        href={
+                          `tel:${supportPhoneHref}`
+                        }
+                      >
+                        {supportPhone}
+                      </a>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </section>
+
+          <section
+            className="public-login-card"
+            style={{
+              ...loginCard,
+              maxWidth: "none",
+              boxSizing:
+                "border-box",
+            }}
+            aria-labelledby=
+              "public-login-form-title"
+          >
+            <h2
+              id="public-login-form-title"
+              className="public-login-form-title"
+            >
+              {t(
+                "login.form.title"
+              )}
+            </h2>
+
+            <label
+              className="public-login-field"
+            >
+              <span>
+                {t("login.nick")}
+              </span>
+
+              <input
+                type="text"
+                placeholder={
+                  t("login.nick")
+                }
+                value={nick}
+                onChange={
+                  (event) =>
+                    setNick(
+                      event.target.value
+                    )
+                }
+                style={inputStyle}
+                autoComplete="username"
+                autoCapitalize="none"
+                spellCheck={false}
+              />
+            </label>
+
+            <label
+              className="public-login-field"
+            >
+              <span>
+                {t("login.password")}
+              </span>
+
+              <input
+                type="password"
+                placeholder={
+                  t(
+                    "login.placeholders.password"
+                  )
+                }
+                value={password}
+                onChange={
+                  (event) =>
+                    setPassword(
+                      event.target.value
+                    )
+                }
+                style={inputStyle}
+                autoComplete=
+                  "current-password"
+                onKeyDown={
+                  (event) => {
+                    if (
+                      event.key ===
+                      "Enter"
+                    ) {
+                      submit();
+                    }
+                  }
+                }
+              />
+            </label>
+
+            <button
+              type="button"
+              onClick={submit}
+              style={buttonStyle}
+            >
+              {t("login.login")}
+            </button>
+
+            <button
+              type="button"
+              onClick={() =>
+                setRecoveryHelpOpen(
+                  true
+                )
+              }
+              className=
+                "public-login-link-button public-login-link-button-primary"
+            >
+              {t(
+                "login.forgotCredentials"
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() =>
+                navigate(
+                  "/account-recovery"
+                )
+              }
+              className=
+                "public-login-link-button"
+            >
+              {t(
+                "login.haveRecoveryCode"
+              )}
+            </button>
+          </section>
+        </main>
       </div>
 
       {recoveryHelpOpen && (
         <div
           role="presentation"
           onClick={() =>
-            setRecoveryHelpOpen(false)
+            setRecoveryHelpOpen(
+              false
+            )
           }
           style={{
             position: "fixed",
@@ -175,24 +410,29 @@ export default function LoginPage() {
             zIndex: 1000,
             display: "flex",
             alignItems: "center",
-            justifyContent: "center",
+            justifyContent:
+              "center",
             padding: 20,
-            background: "rgba(15, 23, 42, 0.45)",
+            background:
+              "rgba(15, 23, 42, 0.45)",
           }}
         >
           <div
             role="dialog"
             aria-modal="true"
-            aria-labelledby="recovery-help-title"
-            onClick={(e) =>
-              e.stopPropagation()
+            aria-labelledby=
+              "recovery-help-title"
+            onClick={
+              (event) =>
+                event.stopPropagation()
             }
             style={{
               width: "100%",
               maxWidth: 420,
               padding: 24,
               borderRadius: 12,
-              background: "var(--surface, #fff)",
+              background:
+                "var(--surface, #fff)",
               border:
                 "1px solid var(--border, #d1d5db)",
               boxShadow:
@@ -203,24 +443,32 @@ export default function LoginPage() {
               id="recovery-help-title"
               style={{
                 margin: 0,
-                color: "var(--text-h, #111827)",
+                color:
+                  "var(--text-h, #111827)",
                 fontSize: 20,
               }}
             >
-              {t("login.help.title")}
+              {t(
+                "login.help.title"
+              )}
             </h2>
 
             <p
               style={{
-                margin: "12px 0 18px",
-                color: "var(--text, #4b5563)",
+                margin:
+                  "12px 0 18px",
+                color:
+                  "var(--text, #4b5563)",
                 lineHeight: 1.5,
               }}
             >
-              {t("login.help.message")}
+              {t(
+                "login.help.message"
+              )}
             </p>
 
-            {(supportEmail || supportPhone) && (
+            {(supportEmail ||
+              supportPhone) && (
               <div
                 style={{
                   display: "grid",
@@ -234,14 +482,21 @@ export default function LoginPage() {
                 {supportEmail && (
                   <div>
                     <strong>
-                      {t("login.help.email")}:
+                      {t(
+                        "login.help.email"
+                      )}:
                     </strong>{" "}
+
                     <a
-                      href={`mailto:${supportEmail}`}
+                      href={
+                        `mailto:${supportEmail}`
+                      }
                       style={{
-                        color: "#2563eb",
+                        color:
+                          "var(--accent, #2563eb)",
                         fontWeight: 700,
-                        textDecoration: "none",
+                        textDecoration:
+                          "none",
                       }}
                     >
                       {supportEmail}
@@ -252,14 +507,21 @@ export default function LoginPage() {
                 {supportPhone && (
                   <div>
                     <strong>
-                      {t("login.help.phone")}:
+                      {t(
+                        "login.help.phone"
+                      )}:
                     </strong>{" "}
+
                     <a
-                      href={`tel:${supportPhoneHref}`}
+                      href={
+                        `tel:${supportPhoneHref}`
+                      }
                       style={{
-                        color: "#2563eb",
+                        color:
+                          "var(--accent, #2563eb)",
                         fontWeight: 700,
-                        textDecoration: "none",
+                        textDecoration:
+                          "none",
                       }}
                     >
                       {supportPhone}
@@ -272,14 +534,18 @@ export default function LoginPage() {
             <button
               type="button"
               onClick={() =>
-                setRecoveryHelpOpen(false)
+                setRecoveryHelpOpen(
+                  false
+                )
               }
               style={{
                 ...buttonStyle,
                 marginTop: 18,
               }}
             >
-              {t("login.help.close")}
+              {t(
+                "login.help.close"
+              )}
             </button>
           </div>
         </div>

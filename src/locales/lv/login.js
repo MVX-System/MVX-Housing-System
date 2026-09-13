@@ -1,13 +1,25 @@
 const login = {
   title: "MVX System",
-
+  nick: "Nick",
+  facilityFallback: "Objekts",
   email: "E-pasts",
   password: "Parole",
-
   login: "Pieslēgties",
   recoverAccess: "Atjaunot piekļuvi",
   forgotCredentials: "Aizmirsāt Nick vai paroli?",
   haveRecoveryCode: "Man ir Recovery Code",
+
+  landing: {
+    description: "Dzīvojamās mājas pārvaldības un iedzīvotāju pašapkalpošanās sistēma.",
+    address: "Adrese",
+    contacts: "Kontakti",
+    email: "E-pasts",
+    phone: "Tālrunis",
+  },
+
+  form: {
+    title: "Pieslēgšanās",
+  },
 
   help: {
     title: "Aizmirsāt Nick vai paroli?",
