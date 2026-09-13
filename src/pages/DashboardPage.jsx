@@ -24,6 +24,10 @@ import {
 } from "../context/FacilityContext";
 
 import {
+  usePublicContact,
+} from "../context/PublicContactContext";
+
+import {
   useTranslation,
 } from "../i18n";
 
@@ -115,13 +119,10 @@ export default function DashboardPage() {
     setAnnouncementRows
   ] = useState([]);
 
-  const [
+  const {
     publicContact,
-    setPublicContact
-  ] = useState({
-    support_email: "",
-    support_phone: "",
-  });
+    refreshPublicContact,
+  } = usePublicContact();
 
   const [
     residentLoading,
@@ -149,62 +150,15 @@ export default function DashboardPage() {
   }, [mode]);
 
   useEffect(() => {
-
     if (mode !== "resident") {
       return;
     }
 
-    let cancelled = false;
-
-    const loadPublicContact =
-      async () => {
-
-        try {
-
-          const result =
-            await api(
-              "/api/public/contact-settings"
-            );
-
-          if (
-            cancelled ||
-            !result ||
-            result.error ||
-            result.ok === false
-          ) {
-            return;
-          }
-
-          setPublicContact({
-            support_email:
-              String(
-                result.support_email ||
-                ""
-              ).trim(),
-
-            support_phone:
-              String(
-                result.support_phone ||
-                ""
-              ).trim(),
-          });
-
-        } catch (error) {
-
-          console.error(
-            "LOAD PUBLIC CONTACT SETTINGS ERROR:",
-            error
-          );
-        }
-      };
-
-    loadPublicContact();
-
-    return () => {
-      cancelled = true;
-    };
-
-  }, [mode]);
+    refreshPublicContact();
+  }, [
+    mode,
+    refreshPublicContact,
+  ]);
 
   useEffect(() => {
 

@@ -7,8 +7,11 @@ import {
   useFacility,
 } from "../context/FacilityContext";
 
+import {
+  usePublicContact,
+} from "../context/PublicContactContext";
+
 import { useTranslation } from "../i18n";
-import { api } from "../services/api";
 
 import {
   buttonStyle,
@@ -30,51 +33,14 @@ export default function LoginPage() {
   const [nick, setNick] = useState("");
   const [password, setPassword] = useState("");
   const [recoveryHelpOpen, setRecoveryHelpOpen] = useState(false);
-  const [publicContact, setPublicContact] = useState({
-    support_email: "",
-    support_phone: "",
-  });
+  const {
+    publicContact,
+    refreshPublicContact,
+  } = usePublicContact();
 
   useEffect(() => {
-    let cancelled = false;
-
-    const loadPublicContact = async () => {
-      try {
-        const result = await api(
-          "/api/public/contact-settings"
-        );
-
-        if (
-          cancelled ||
-          !result ||
-          result.error ||
-          result.ok === false
-        ) {
-          return;
-        }
-
-        setPublicContact({
-          support_email: String(
-            result.support_email || ""
-          ).trim(),
-          support_phone: String(
-            result.support_phone || ""
-          ).trim(),
-        });
-      } catch (error) {
-        console.error(
-          "LOAD PUBLIC CONTACT SETTINGS ERROR:",
-          error
-        );
-      }
-    };
-
-    loadPublicContact();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    refreshPublicContact();
+  }, [refreshPublicContact]);
 
   const submit = async () => {
     const ok = await login(nick, password);
