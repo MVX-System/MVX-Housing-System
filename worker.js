@@ -4769,15 +4769,39 @@ Router.register(
         ctx.env
       );
 
+    const environment =
+      String(
+        ctx.env
+          ?.MVX_ENVIRONMENT ||
+          ""
+      )
+        .trim()
+        .toLowerCase();
+
+    const publicEnvironment =
+      [
+        "production",
+        "test",
+        "demo",
+      ].includes(
+        environment
+      )
+        ? environment
+        : "unknown";
+
     if (!facility) {
       return {
         ok: true,
+        environment:
+          publicEnvironment,
         facility: null,
       };
     }
 
     return {
       ok: true,
+      environment:
+        publicEnvironment,
       facility: {
         id:
           facility.id,
@@ -4785,6 +4809,15 @@ Router.register(
           facility.display_name,
         legal_name:
           facility.legal_name ||
+          null,
+        registration_number:
+          facility.registration_number ||
+          null,
+        legal_address:
+          facility.legal_address ||
+          null,
+        document_set_key:
+          facility.document_set_key ||
           null,
         address_line:
           facility.address_line ||
@@ -4927,6 +4960,9 @@ async function getFacilityProfile(env) {
       city,
       postal_code,
       country,
+      registration_number,
+      legal_address,
+      document_set_key,
       updated_by,
       created_at,
       updated_at
