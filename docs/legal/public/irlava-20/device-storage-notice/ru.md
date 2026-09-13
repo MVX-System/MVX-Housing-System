@@ -6,14 +6,14 @@ translation_of: lv
 status: approved-for-v0.0
 effective_from: TBD
 last_reviewed: "2026-09-13"
-controller: 'DzĪKS "Irlava 20"'
+controller: '{{controller_name}}'
 public: true
 requires_acceptance: false
 ---
 
 # УВЕДОМЛЕНИЕ О ХРАНЕНИИ ДАННЫХ НА УСТРОЙСТВЕ И ИСПОЛЬЗОВАНИИ ФАЙЛОВ COOKIE
 
-**Система MVX — DzĪKS “Irlava 20”**
+**Система MVX — {{controller_name}}**
 
 *Настоящий документ является переводом основной версии на латышском языке. В случае расхождений преимущественную силу имеет версия на латышском языке.*
 
@@ -159,6 +159,6 @@ PWA cache может оставаться на устройстве до его 
 
 Вопросы о технических механизмах хранения, используемых MVX, можно направлять:
 
-**DzĪKS “Irlava 20”**  
-Электронная почта: **[e-mail]**  
-Телефон: **[телефон]**
+**{{controller_name}}**  
+Электронная почта: **{{support_email}}**  
+Телефон: **{{support_phone}}**

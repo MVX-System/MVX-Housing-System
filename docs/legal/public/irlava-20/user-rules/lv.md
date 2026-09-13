@@ -6,18 +6,18 @@ translation_of: null
 status: approved-for-v0.0
 effective_from: TBD
 last_reviewed: "2026-09-13"
-controller: 'DzĪKS "Irlava 20"'
+controller: '{{controller_name}}'
 public: true
 requires_acceptance: false
 ---
 
 # MVX LIETOŠANAS NOTEIKUMI
 
-**MVX sistēma — DzĪKS “Irlava 20”**
+**MVX sistēma — {{controller_name}}**
 
 ## 1. Noteikumu mērķis
 
-Šie MVX lietošanas noteikumi nosaka pamatprincipus, kas jāievēro, izmantojot MVX sistēmu objektā **Irlavas iela 20, Rīga**.
+Šie MVX lietošanas noteikumi nosaka pamatprincipus, kas jāievēro, izmantojot MVX sistēmu objektā **{{property_address}}**.
 
 MVX ir tīmekļa un PWA informācijas sistēma, kas paredzēta dzīvojamās mājas pārvaldīšanas procesu atbalstam, tostarp:
 
@@ -37,10 +37,10 @@ Lietotājam ir pienākums:
 - izmantot tikai savu lietotāja kontu;
 - neizpaust savu paroli vai citus autentifikācijas datus citām personām;
 - neveidot apstākļus, kuros cita persona var izmantot lietotāja kontu bez atļaujas;
-- nekavējoties informēt DzĪKS “Irlava 20”, ja pastāv aizdomas par neatļautu piekļuvi kontam;
+- nekavējoties informēt {{controller_name}}, ja pastāv aizdomas par neatļautu piekļuvi kontam;
 - nepieciešamības gadījumā izmantot MVX paredzēto konta piekļuves atjaunošanas kārtību.
 
-Lietotāja kontu nedrīkst nodot citai personai, izņemot gadījumus, kad to tieši paredz DzĪKS “Irlava 20” noteiktā piekļuves kārtība.
+Lietotāja kontu nedrīkst nodot citai personai, izņemot gadījumus, kad to tieši paredz {{controller_name}} noteiktā piekļuves kārtība.
 
 ## 3. Piekļuves tiesības un lietotāju lomas
 
@@ -55,7 +55,7 @@ Aizliegts:
 - apiet vai mēģināt apiet MVX piekļuves vai drošības mehānismus;
 - izmantot tehniskus līdzekļus, lai mākslīgi paplašinātu savas piekļuves tiesības.
 
-DzĪKS “Irlava 20” var mainīt vai atcelt lietotāja piekļuves tiesības, ja mainās lietotāja saistība ar objektu, darba pienākumi, lietotāja loma vai citi piekļuves pamatojošie apstākļi.
+{{controller_name}} var mainīt vai atcelt lietotāja piekļuves tiesības, ja mainās lietotāja saistība ar objektu, darba pienākumi, lietotāja loma vai citi piekļuves pamatojošie apstākļi.
 
 ## 4. Lietotāja ievadītās informācijas pareizība
 
@@ -68,7 +68,7 @@ Ievadot MVX informāciju, lietotājam jācenšas nodrošināt, ka tā ir:
 - pietiekami precīza;
 - atbilstoša konkrētās MVX funkcijas mērķim.
 
-Ja lietotājs konstatē kļūdu savā iesniegtajā informācijā, viņam pēc iespējas drīzāk jāizmanto MVX paredzētā labošanas iespēja vai jāsazinās ar DzĪKS “Irlava 20”.
+Ja lietotājs konstatē kļūdu savā iesniegtajā informācijā, viņam pēc iespējas drīzāk jāizmanto MVX paredzētā labošanas iespēja vai jāsazinās ar {{controller_name}}.
 
 ## 5. Ūdens skaitītāju rādījumi
 
@@ -81,7 +81,7 @@ Lietotājs nedrīkst apzināti:
 - mainīt vai sagrozīt informāciju ar mērķi ietekmēt patēriņa uzskaiti;
 - izmantot MVX funkcijas neatbilstoši to paredzētajam mērķim.
 
-Ja rādījums iesniegts kļūdaini, lietotājam par to jāinformē DzĪKS “Irlava 20” vai jāizmanto pieejamā labošanas kārtība.
+Ja rādījums iesniegts kļūdaini, lietotājam par to jāinformē {{controller_name}} vai jāizmanto pieejamā labošanas kārtība.
 
 ## 6. Paziņojumi
 
@@ -129,7 +129,7 @@ Aizliegts, tostarp:
 - izmantot sistēmas kļūdas vai ievainojamības savā vai citas personas labā;
 - neatļauti kopēt, iegūt vai izplatīt sistēmā pieejamu informāciju.
 
-Ja lietotājs konstatē iespējamu drošības problēmu vai tehnisku ievainojamību, viņam par to jāinformē DzĪKS “Irlava 20” vai MVX tehniskais atbalsts, neizmantojot konstatēto problēmu ļaunprātīgi.
+Ja lietotājs konstatē iespējamu drošības problēmu vai tehnisku ievainojamību, viņam par to jāinformē {{controller_name}} vai MVX tehniskais atbalsts, neizmantojot konstatēto problēmu ļaunprātīgi.
 
 ## 9. Administratīvās funkcijas
 
@@ -155,9 +155,9 @@ Tomēr īslaicīgi darbības pārtraukumi var rasties:
 - avārijas vai drošības incidenta gadījumā;
 - citu tehniski pamatotu iemeslu dēļ.
 
-Šāds īslaicīgs tehnisks pārtraukums pats par sevi nenozīmē, ka DzĪKS “Irlava 20” vai MVX tehniskais pakalpojuma sniedzējs atsakās pildīt savus pienākumus.
+Šāds īslaicīgs tehnisks pārtraukums pats par sevi nenozīmē, ka {{controller_name}} vai MVX tehniskais pakalpojuma sniedzējs atsakās pildīt savus pienākumus.
 
-Ja konkrēta darbība jāveic noteiktā termiņā un MVX tehniski nav pieejams, lietotājam jāsazinās ar DzĪKS “Irlava 20”, izmantojot pieejamos alternatīvos saziņas līdzekļus.
+Ja konkrēta darbība jāveic noteiktā termiņā un MVX tehniski nav pieejams, lietotājam jāsazinās ar {{controller_name}}, izmantojot pieejamos alternatīvos saziņas līdzekļus.
 
 ## 11. Neatļauta vai neatbilstoša sistēmas izmantošana
 
@@ -169,7 +169,7 @@ Ja ir pamatotas aizdomas par:
 - apzināti nepatiesas informācijas ievadīšanu;
 - MVX izmantošanu neatbilstoši šiem noteikumiem;
 
-DzĪKS “Irlava 20” var uz laiku ierobežot attiecīgā konta vai funkcijas izmantošanu, ciktāl tas nepieciešams situācijas pārbaudei un sistēmas vai citu lietotāju aizsardzībai.
+{{controller_name}} var uz laiku ierobežot attiecīgā konta vai funkcijas izmantošanu, ciktāl tas nepieciešams situācijas pārbaudei un sistēmas vai citu lietotāju aizsardzībai.
 
 Šādi ierobežojumi tiek piemēroti samērīgi un tikai pamatota iemesla gadījumā.
 
@@ -192,7 +192,7 @@ Lietotājs ir atbildīgs par saprātīgiem drošības pasākumiem savā ierīcē
 - paroles vai citas piekļuves informācijas neatklāšanu;
 - izrakstīšanos no MVX, ja tiek izmantota koplietojama vai citai personai pieejama ierīce.
 
-DzĪKS “Irlava 20” un MVX tehniskais pakalpojuma sniedzējs nevar kontrolēt lietotāja personīgās ierīces drošības stāvokli.
+{{controller_name}} un MVX tehniskais pakalpojuma sniedzējs nevar kontrolēt lietotāja personīgās ierīces drošības stāvokli.
 
 ## 14. Intelektuālais īpašums
 
@@ -211,7 +211,7 @@ izņemot gadījumus, kad šādas tiesības tieši izriet no piemērojamiem norma
 
 ## 15. Pilotprojekta statuss
 
-MVX V0.0 objektā **Irlavas iela 20, Rīga** tiek izmantots kā pilotprojekts.
+MVX V0.0 objektā **{{property_address}}** tiek izmantots kā pilotprojekts.
 
 Pilotprojekta laikā var tikt pilnveidota MVX funkcionalitāte, lietotāja saskarne un tehniskie risinājumi.
 
@@ -231,14 +231,14 @@ Par būtiskām izmaiņām, kas ietekmē lietotāju tiesības vai lietošanas kā
 
 Katrai publicētajai noteikumu redakcijai tiek norādīts versijas numurs un spēkā stāšanās datums.
 
-Ja izmaiņas būtiski ietekmē lietotāja tiesības vai pienākumus, lietotāji par tām tiek informēti MVX vai ar citu DzĪKS “Irlava 20” izmantotu saziņas līdzekli.
+Ja izmaiņas būtiski ietekmē lietotāja tiesības vai pienākumus, lietotāji par tām tiek informēti MVX vai ar citu {{controller_name}} izmantotu saziņas līdzekli.
 
 ## 17. Kontaktinformācija
 
 Jautājumus par MVX izmantošanu, piekļuves tiesībām vai šiem noteikumiem lietotājs var adresēt:
 
-**DzĪKS “Irlava 20”**  
-E-pasts: **[e-pasts]**  
-Tālrunis: **[tālrunis]**
+**{{controller_name}}**  
+E-pasts: **{{support_email}}**  
+Tālrunis: **{{support_phone}}**
 
 Tehniski jautājumi nepieciešamības gadījumā tiek nodoti MVX tehniskajam pakalpojuma sniedzējam.

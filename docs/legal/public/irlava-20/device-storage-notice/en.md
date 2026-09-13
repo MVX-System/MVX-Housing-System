@@ -6,14 +6,14 @@ translation_of: lv
 status: approved-for-v0.0
 effective_from: TBD
 last_reviewed: "2026-09-13"
-controller: 'DzĪKS "Irlava 20"'
+controller: '{{controller_name}}'
 public: true
 requires_acceptance: false
 ---
 
 # DEVICE STORAGE AND COOKIE NOTICE
 
-**MVX System — DzĪKS “Irlava 20”**
+**MVX System — {{controller_name}}**
 
 *This document is a translation of the Latvian master version. In the event of any discrepancy, the Latvian version shall prevail.*
 
@@ -159,6 +159,6 @@ Additional information is available in:
 
 Questions concerning technical storage mechanisms used by MVX may be addressed to:
 
-**DzĪKS “Irlava 20”**  
-E-mail: **[e-mail]**  
-Telephone: **[telephone]**
+**{{controller_name}}**  
+E-mail: **{{support_email}}**  
+Telephone: **{{support_phone}}**
