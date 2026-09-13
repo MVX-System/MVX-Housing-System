@@ -987,6 +987,9 @@ INSERT INTO facility_profile (
   id,
   display_name,
   legal_name,
+  registration_number,
+  legal_address,
+  document_set_key,
   address_line,
   city,
   postal_code,
@@ -999,6 +1002,9 @@ VALUES (
   1,
   'TEST Facility',
   'MVX TEST Facility',
+  'TEST-REG-0001',
+  'Test Legal Address 1, Riga, LV-0000, Latvia',
+  'irlava-20',
   'Test Street 1',
   'Riga',
   'LV-0000',
@@ -1465,6 +1471,9 @@ POST_MAIN_JSON="$(
         WHERE id = 1
           AND display_name = 'TEST Facility'
           AND legal_name = 'MVX TEST Facility'
+          AND registration_number = 'TEST-REG-0001'
+          AND legal_address = 'Test Legal Address 1, Riga, LV-0000, Latvia'
+          AND document_set_key = 'irlava-20'
           AND address_line = 'Test Street 1'
           AND city = 'Riga'
           AND postal_code = 'LV-0000'
