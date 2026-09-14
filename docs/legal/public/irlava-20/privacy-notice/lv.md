@@ -6,18 +6,18 @@ translation_of: null
 status: approved-for-v0.0
 effective_from: TBD
 last_reviewed: "2026-09-13"
-controller: 'DzĪKS "Irlava 20"'
+controller: '{{controller_name}}'
 public: true
 requires_acceptance: false
 ---
 
 # PERSONAS DATU APSTRĀDES PAZIŅOJUMS
 
-**MVX sistēma — DzĪKS “Irlava 20”**
+**MVX sistēma — {{controller_name}}**
 
 ## 1. Paziņojuma mērķis
 
-Šis paziņojums sniedz informāciju par personas datu apstrādi, izmantojot MVX sistēmu objektā **Irlavas iela 20, Rīga**.
+Šis paziņojums sniedz informāciju par personas datu apstrādi, izmantojot MVX sistēmu objektā **{{property_address}}**.
 
 Paziņojuma mērķis ir izskaidrot:
 
@@ -34,14 +34,14 @@ Paziņojuma mērķis ir izskaidrot:
 
 Personas datu pārzinis attiecībā uz personas datiem, kas MVX tiek apstrādāti dzīvojamās mājas pārvaldīšanas vajadzībām, ir:
 
-**DzĪKS “Irlava 20”**  
-Reģistrācijas Nr.: **[reģistrācijas numurs]**  
-Juridiskā adrese: **[juridiskā adrese]**  
-Objekts: **Irlavas iela 20, Rīga**  
-E-pasts: **[e-pasts]**  
-Tālrunis: **[tālrunis]**
+**{{controller_name}}**  
+Reģistrācijas Nr.: **{{registration_number}}**  
+Juridiskā adrese: **{{legal_address}}**  
+Objekts: **{{property_address}}**  
+E-pasts: **{{support_email}}**  
+Tālrunis: **{{support_phone}}**
 
-MVX tehnisko darbību un uzturēšanu nodrošina tehniskais pakalpojuma sniedzējs, kas personas datus DzĪKS “Irlava 20” uzdevumā apstrādā kā personas datu apstrādātājs.
+MVX tehnisko darbību un uzturēšanu nodrošina tehniskais pakalpojuma sniedzējs, kas personas datus {{controller_name}} uzdevumā apstrādā kā personas datu apstrādātājs.
 
 ## 3. Datu subjektu kategorijas
 
@@ -85,7 +85,7 @@ Lietotājiem un administratīvajiem lietotājiem nav jāievada brīvā teksta la
 Personas dati var tikt iegūti:
 
 - no paša datu subjekta;
-- no DzĪKS “Irlava 20” rīcībā esošās dzīvojamās mājas pārvaldīšanas informācijas;
+- no {{controller_name}} rīcībā esošās dzīvojamās mājas pārvaldīšanas informācijas;
 - no pilnvarota MVX administratora;
 - no MVX sistēmā veiktām darbībām;
 - no tehniskās infrastruktūras tādā apjomā, kāds nepieciešams autentifikācijai, drošībai, auditam un sistēmas darbībai.
@@ -139,7 +139,7 @@ Rezerves kopijā esošie dati saglabā attiecīgās pamatapstrādes tiesisko pam
 
 ## 7. Datu minimizēšana un aizsardzība
 
-DzĪKS “Irlava 20” un MVX tehniskais pakalpojuma sniedzējs pievērš īpašu uzmanību personas datu aizsardzībai saskaņā ar GDPR un piemērojamām Latvijas un Eiropas Savienības prasībām.
+{{controller_name}} un MVX tehniskais pakalpojuma sniedzējs pievērš īpašu uzmanību personas datu aizsardzībai saskaņā ar GDPR un piemērojamām Latvijas un Eiropas Savienības prasībām.
 
 MVX tiek piemēroti **datu minimizēšanas**, **privacy by design** un **privacy by default** principi.
 
@@ -170,7 +170,7 @@ Detalizēta MVX drošības un kriptogrāfiskā arhitektūra publiski netiek izpa
 
 Personas datiem var piekļūt:
 
-- DzĪKS “Irlava 20” pilnvarotas personas atbilstoši to pienākumiem;
+- {{controller_name}} pilnvarotas personas atbilstoši to pienākumiem;
 - MVX tehniskais pakalpojuma sniedzējs tādā apjomā, kāds nepieciešams sistēmas uzturēšanai;
 - ārējie tehniskās infrastruktūras pakalpojumu sniedzēji, ja tas nepieciešams MVX darbībai;
 - citas personas vai institūcijas, ja datu izpaušanu pieprasa piemērojamie normatīvie akti.
@@ -217,7 +217,7 @@ Tiesības nav absolūtas, un to piemērošana var būt ierobežota, ja datu glab
 
 ## 12. Tiesības iesniegt sūdzību
 
-Ja datu subjekts uzskata, ka personas datu apstrāde pārkāpj piemērojamās prasības, viņš var vispirms sazināties ar DzĪKS “Irlava 20”.
+Ja datu subjekts uzskata, ka personas datu apstrāde pārkāpj piemērojamās prasības, viņš var vispirms sazināties ar {{controller_name}}.
 
 Datu subjektam ir arī tiesības iesniegt sūdzību Latvijas personas datu aizsardzības uzraudzības iestādei — **Datu valsts inspekcijai**.
 
@@ -256,6 +256,6 @@ Katrai publicētajai redakcijai tiek norādīts versijas numurs un spēkā stā�
 
 Jautājumus par personas datu apstrādi un datu subjekta tiesību īstenošanu var adresēt:
 
-**DzĪKS “Irlava 20”**  
-E-pasts: **[e-pasts]**  
-Tālrunis: **[tālrunis]**
+**{{controller_name}}**  
+E-pasts: **{{support_email}}**  
+Tālrunis: **{{support_phone}}**

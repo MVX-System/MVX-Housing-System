@@ -6,14 +6,14 @@ translation_of: null
 status: approved-for-v0.0
 effective_from: TBD
 last_reviewed: "2026-09-13"
-controller: 'DzĪKS "Irlava 20"'
+controller: '{{controller_name}}'
 public: true
 requires_acceptance: false
 ---
 
 # IERĪCES DATU GLABĀŠANAS UN SĪKDATŅU PAZIŅOJUMS
 
-**MVX sistēma — DzĪKS “Irlava 20”**
+**MVX sistēma — {{controller_name}}**
 
 ## 1. Paziņojuma mērķis
 
@@ -157,6 +157,6 @@ Papildu informācija ir pieejama:
 
 Jautājumus par MVX izmantotajiem tehniskās glabāšanas mehānismiem var adresēt:
 
-**DzĪKS “Irlava 20”**  
-E-pasts: **[e-pasts]**  
-Tālrunis: **[tālrunis]**
+**{{controller_name}}**  
+E-pasts: **{{support_email}}**  
+Tālrunis: **{{support_phone}}**

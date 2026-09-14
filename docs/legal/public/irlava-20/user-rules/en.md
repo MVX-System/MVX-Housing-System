@@ -6,20 +6,20 @@ translation_of: lv
 status: approved-for-v0.0
 effective_from: TBD
 last_reviewed: "2026-09-13"
-controller: 'DzĪKS "Irlava 20"'
+controller: '{{controller_name}}'
 public: true
 requires_acceptance: false
 ---
 
 # MVX USER RULES
 
-**MVX System — DzĪKS “Irlava 20”**
+**MVX System — {{controller_name}}**
 
 *This document is a translation of the Latvian master version. In the event of any discrepancy, the Latvian version shall prevail.*
 
 ## 1. Purpose of the Rules
 
-These MVX User Rules establish the basic principles to be followed when using the MVX system at the property **Irlavas iela 20, Rīga**.
+These MVX User Rules establish the basic principles to be followed when using the MVX system at the property **{{property_address}}**.
 
 MVX is a web and PWA information system designed to support residential property management processes, including:
 
@@ -39,10 +39,10 @@ The user must:
 - use only their own user account;
 - not disclose their password or other authentication information to other persons;
 - not create circumstances in which another person can use the account without authorisation;
-- immediately inform DzĪKS “Irlava 20” if unauthorised access to the account is suspected;
+- immediately inform {{controller_name}} if unauthorised access to the account is suspected;
 - use the MVX account recovery procedure where necessary.
 
-A user account must not be transferred to another person, except where this is expressly permitted under the access procedure established by DzĪKS “Irlava 20”.
+A user account must not be transferred to another person, except where this is expressly permitted under the access procedure established by {{controller_name}}.
 
 ## 3. Access Rights and User Roles
 
@@ -57,7 +57,7 @@ It is prohibited to:
 - bypass or attempt to bypass MVX access-control or security mechanisms;
 - use technical means to artificially extend the user’s access rights.
 
-DzĪKS “Irlava 20” may change or revoke access rights where the user’s relationship with the property, duties, role or other circumstances justifying access have changed.
+{{controller_name}} may change or revoke access rights where the user’s relationship with the property, duties, role or other circumstances justifying access have changed.
 
 ## 4. Accuracy of Information Entered by the User
 
@@ -70,7 +70,7 @@ When entering information into MVX, the user should make reasonable efforts to e
 - sufficiently accurate;
 - relevant to the purpose of the particular MVX function.
 
-If the user discovers an error in information they have submitted, they should use the available correction procedure or contact DzĪKS “Irlava 20” as soon as reasonably possible.
+If the user discovers an error in information they have submitted, they should use the available correction procedure or contact {{controller_name}} as soon as reasonably possible.
 
 ## 5. Water Meter Readings
 
@@ -83,7 +83,7 @@ The user must not knowingly:
 - alter or distort information for the purpose of affecting consumption accounting;
 - use MVX functions for purposes other than those for which they were designed.
 
-If a reading has been submitted incorrectly, the user must inform DzĪKS “Irlava 20” or use the available correction procedure.
+If a reading has been submitted incorrectly, the user must inform {{controller_name}} or use the available correction procedure.
 
 ## 6. Announcements
 
@@ -131,7 +131,7 @@ In particular, it is prohibited to:
 - exploit system errors or vulnerabilities for personal benefit or for the benefit of another person;
 - copy, obtain or distribute information available in the system without authorisation.
 
-If a user becomes aware of a possible security issue or technical vulnerability, they should notify DzĪKS “Irlava 20” or MVX technical support and must not exploit the issue.
+If a user becomes aware of a possible security issue or technical vulnerability, they should notify {{controller_name}} or MVX technical support and must not exploit the issue.
 
 ## 9. Administrative Functions
 
@@ -157,9 +157,9 @@ Temporary interruptions may nevertheless occur:
 - in the event of an emergency or security incident;
 - for other technically justified reasons.
 
-A temporary technical interruption does not in itself mean that DzĪKS “Irlava 20” or the MVX technical service provider has refused to perform its obligations.
+A temporary technical interruption does not in itself mean that {{controller_name}} or the MVX technical service provider has refused to perform its obligations.
 
-If a particular action must be completed within a specified period and MVX is technically unavailable, the user should contact DzĪKS “Irlava 20” using the available alternative communication channels.
+If a particular action must be completed within a specified period and MVX is technically unavailable, the user should contact {{controller_name}} using the available alternative communication channels.
 
 ## 11. Unauthorised or Improper Use
 
@@ -171,7 +171,7 @@ Where there are reasonable grounds to suspect:
 - intentional submission of false information;
 - use of MVX contrary to these Rules;
 
-DzĪKS “Irlava 20” may temporarily restrict use of the relevant account or function to the extent necessary to investigate the situation and protect the system or other users.
+{{controller_name}} may temporarily restrict use of the relevant account or function to the extent necessary to investigate the situation and protect the system or other users.
 
 Such restrictions are applied proportionately and only where justified.
 
@@ -194,7 +194,7 @@ Users are responsible for taking reasonable security measures on their own devic
 - not disclosing passwords or other access information;
 - signing out of MVX when using a shared device or a device accessible to another person.
 
-DzĪKS “Irlava 20” and the MVX technical service provider cannot control the security condition of a user’s personal device.
+{{controller_name}} and the MVX technical service provider cannot control the security condition of a user’s personal device.
 
 ## 14. Intellectual Property
 
@@ -213,7 +213,7 @@ except where such rights arise directly from applicable law or a separate writte
 
 ## 15. Pilot Project Status
 
-MVX V0.0 is used at **Irlavas iela 20, Rīga** as a pilot project.
+MVX V0.0 is used at **{{property_address}}** as a pilot project.
 
 During the pilot project, MVX functionality, the user interface and technical solutions may be improved or changed.
 
@@ -233,14 +233,14 @@ These Rules may be updated if there are changes to:
 
 Each published version of the Rules is identified by a version number and effective date.
 
-Where changes materially affect user rights or obligations, users will be informed through MVX or another communication method used by DzĪKS “Irlava 20”.
+Where changes materially affect user rights or obligations, users will be informed through MVX or another communication method used by {{controller_name}}.
 
 ## 17. Contact Information
 
 Questions concerning use of MVX, access rights or these Rules may be addressed to:
 
-**DzĪKS “Irlava 20”**  
-E-mail: **[e-mail]**  
-Telephone: **[telephone]**
+**{{controller_name}}**  
+E-mail: **{{support_email}}**  
+Telephone: **{{support_phone}}**
 
 Technical questions will, where necessary, be referred to the MVX technical service provider.

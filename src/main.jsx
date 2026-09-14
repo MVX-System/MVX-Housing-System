@@ -17,6 +17,10 @@ import {
 } from "./context/FacilityContext";
 
 import {
+  PublicContactProvider,
+} from "./context/PublicContactContext";
+
+import {
   AuthProvider,
 } from "./context/AuthContext";
 
@@ -108,13 +112,15 @@ createRoot(
   <StrictMode>
     <LanguageProvider>
       <FacilityProvider>
-        <AuthProvider>
+        <PublicContactProvider>
+          <AuthProvider>
           <ModeProvider>
             <RouterProvider
               router={router}
             />
           </ModeProvider>
-        </AuthProvider>
+          </AuthProvider>
+        </PublicContactProvider>
       </FacilityProvider>
     </LanguageProvider>
   </StrictMode>

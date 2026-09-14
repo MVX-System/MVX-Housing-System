@@ -6,20 +6,20 @@ translation_of: lv
 status: approved-for-v0.0
 effective_from: TBD
 last_reviewed: "2026-09-13"
-controller: 'DzĪKS "Irlava 20"'
+controller: '{{controller_name}}'
 public: true
 requires_acceptance: false
 ---
 
 # PERSONAL DATA PROCESSING NOTICE
 
-**MVX System — DzĪKS “Irlava 20”**
+**MVX System — {{controller_name}}**
 
 *This document is a translation of the Latvian master version. In the event of any discrepancy, the Latvian version shall prevail.*
 
 ## 1. Purpose of this Notice
 
-This Notice provides information about the processing of personal data through the MVX system at **Irlavas iela 20, Rīga**.
+This Notice provides information about the processing of personal data through the MVX system at **{{property_address}}**.
 
 It explains:
 
@@ -36,14 +36,14 @@ It explains:
 
 The Data Controller for personal data processed through MVX for residential property management purposes is:
 
-**DzĪKS “Irlava 20”**  
-Registration No.: **[registration number]**  
-Legal address: **[legal address]**  
-Property: **Irlavas iela 20, Rīga**  
-E-mail: **[e-mail]**  
-Telephone: **[telephone]**
+**{{controller_name}}**  
+Registration No.: **{{registration_number}}**  
+Legal address: **{{legal_address}}**  
+Property: **{{property_address}}**  
+E-mail: **{{support_email}}**  
+Telephone: **{{support_phone}}**
 
-The technical operation and maintenance of MVX are provided by a technical service provider which, when processing personal data on behalf of DzĪKS “Irlava 20”, acts as a Processor.
+The technical operation and maintenance of MVX are provided by a technical service provider which, when processing personal data on behalf of {{controller_name}}, acts as a Processor.
 
 ## 3. Categories of Data Subjects
 
@@ -87,7 +87,7 @@ Users and administrative users should not enter unnecessary sensitive informatio
 Personal data may be obtained:
 
 - from the data subject;
-- from residential property management information held by DzĪKS “Irlava 20”;
+- from residential property management information held by {{controller_name}};
 - from an authorised MVX administrator;
 - from activities carried out within MVX;
 - from technical infrastructure to the extent necessary for authentication, security, audit and system operation.
@@ -141,7 +141,7 @@ Data within backups retain the legal basis applicable to the underlying processi
 
 ## 7. Data Minimisation and Protection
 
-DzĪKS “Irlava 20” and the MVX technical service provider give particular attention to the protection of personal data in accordance with the GDPR and applicable Latvian and European Union requirements.
+{{controller_name}} and the MVX technical service provider give particular attention to the protection of personal data in accordance with the GDPR and applicable Latvian and European Union requirements.
 
 MVX applies the principles of **data minimisation**, **privacy by design** and **privacy by default**.
 
@@ -172,7 +172,7 @@ Detailed MVX security and cryptographic architecture is not publicly disclosed w
 
 Personal data may be accessible to:
 
-- persons authorised by DzĪKS “Irlava 20” according to their duties;
+- persons authorised by {{controller_name}} according to their duties;
 - the MVX technical service provider to the extent necessary to maintain the system;
 - external technical-infrastructure providers where necessary for MVX operation;
 - other persons or authorities where disclosure is required by applicable law.
@@ -219,7 +219,7 @@ These rights are not absolute and may be limited where retention or processing i
 
 ## 12. Right to Lodge a Complaint
 
-If a data subject considers that personal-data processing does not comply with applicable requirements, they may first contact DzĪKS “Irlava 20”.
+If a data subject considers that personal-data processing does not comply with applicable requirements, they may first contact {{controller_name}}.
 
 The data subject also has the right to lodge a complaint with the Latvian data-protection supervisory authority — **Datu valsts inspekcija**.
 
@@ -258,6 +258,6 @@ Each published version is identified by a version number and effective date.
 
 Questions concerning personal-data processing and exercise of data-subject rights may be addressed to:
 
-**DzĪKS “Irlava 20”**  
-E-mail: **[e-mail]**  
-Telephone: **[telephone]**
+**{{controller_name}}**  
+E-mail: **{{support_email}}**  
+Telephone: **{{support_phone}}**
