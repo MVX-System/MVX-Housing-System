@@ -23,6 +23,13 @@ set -euo pipefail
 
 PROFILE="${MVX_WRANGLER_PROFILE:-mvx-system}"
 
+WRANGLER_VERSION="4.130.0"
+WRANGLER_CMD=(
+  npx
+  --yes
+  "wrangler@${WRANGLER_VERSION}"
+)
+
 TEST_ENV="test"
 TEST_WORKER_NAME="mvx-housing-api-test"
 
@@ -147,6 +154,7 @@ echo "=========================================="
 echo
 echo "Mode:          $MODE"
 echo "Profile:       $PROFILE"
+echo "Wrangler:      $WRANGLER_VERSION"
 echo "Worker env:    $TEST_ENV"
 echo "Worker target: $TEST_WORKER_NAME"
 echo "Pages project: $TEST_PAGES_PROJECT"
@@ -210,7 +218,7 @@ echo "===== 2/5 TEST WORKER DRY RUN ====="
 WORKER_DRY_RUN="$TMP_DIR/worker-dry-run.txt"
 
 if ! NO_COLOR=1 \
-  npx wrangler deploy \
+  "${WRANGLER_CMD[@]}" deploy \
     --env "$TEST_ENV" \
     --profile "$PROFILE" \
     --dry-run \
@@ -264,7 +272,7 @@ PAGES_PROJECTS="$TMP_DIR/pages-projects.json"
 PAGES_PROJECTS_ERR="$TMP_DIR/pages-projects.err"
 
 if ! NO_COLOR=1 \
-  npx wrangler pages project list \
+  "${WRANGLER_CMD[@]}" pages project list \
     --json \
     --profile "$PROFILE" \
     >"$PAGES_PROJECTS" \
@@ -361,7 +369,7 @@ echo
 
 echo "===== DEPLOY TEST WORKER ====="
 
-npx wrangler deploy \
+"${WRANGLER_CMD[@]}" deploy \
   --env "$TEST_ENV" \
   --profile "$PROFILE"
 
@@ -391,7 +399,7 @@ then
   )
 fi
 
-npx wrangler "${PAGES_ARGS[@]}"
+"${WRANGLER_CMD[@]}" "${PAGES_ARGS[@]}"
 
 echo
 
@@ -402,7 +410,7 @@ PAGES_DEPLOYMENTS="$TMP_DIR/pages-deployments.json"
 PAGES_DEPLOYMENTS_ERR="$TMP_DIR/pages-deployments.err"
 
 if ! NO_COLOR=1 \
-  npx wrangler pages deployment list \
+  "${WRANGLER_CMD[@]}" pages deployment list \
     --project-name "$TEST_PAGES_PROJECT" \
     --environment production \
     --json \
