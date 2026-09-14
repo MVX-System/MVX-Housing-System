@@ -1,0 +1,156 @@
+name: MVX TEST Environment Reset
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: 'Type exactly: RESET TEST'
+        required: true
+        type: string
+
+      requested_by_user_id:
+        description: "MVX Admin user ID that requested the reset"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mvx-test-environment-reset
+  cancel-in-progress: false
+
+jobs:
+  reset-test:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      MVX_TEST_RESET_CI: "true"
+
+    steps:
+      - name: Validate dispatch request
+        shell: bash
+        env:
+          RESET_CONFIRMATION: ${{ inputs.confirmation }}
+          REQUESTED_BY_USER_ID: ${{ inputs.requested_by_user_id }}
+        run: |
+          set -euo pipefail
+
+          if [[ "$GITHUB_REPOSITORY" != "MVX-System/MVX-Housing-System" ]]; then
+            echo "ERROR: unexpected repository: $GITHUB_REPOSITORY" >&2
+            exit 1
+          fi
+
+          if [[ "$RESET_CONFIRMATION" != "RESET TEST" ]]; then
+            echo "ERROR: explicit RESET TEST confirmation is required." >&2
+            exit 1
+          fi
+
+          if [[ -n "$REQUESTED_BY_USER_ID" ]] && \
+             [[ ! "$REQUESTED_BY_USER_ID" =~ ^[1-9][0-9]*$ ]]; then
+            echo "ERROR: requested_by_user_id must be a positive integer." >&2
+            exit 1
+          fi
+
+          echo "PASS: dispatch request validated"
+
+      - name: Check out immutable TEST reset source
+        uses: actions/checkout@v4
+        with:
+          ref: 8973d5221aad6509fda69908a751907e4676799b
+          fetch-depth: 1
+
+      - name: Verify immutable TEST reset source
+        shell: bash
+        env:
+          EXPECTED_RESET_COMMIT: 8973d5221aad6509fda69908a751907e4676799b
+        run: |
+          set -euo pipefail
+
+          LOCAL_HEAD="$(git rev-parse HEAD)"
+
+          echo "Expected TEST reset commit: $EXPECTED_RESET_COMMIT"
+          echo "Checked-out commit:         $LOCAL_HEAD"
+
+          if [[ "$LOCAL_HEAD" != "$EXPECTED_RESET_COMMIT" ]]; then
+            echo "ERROR: immutable TEST reset source mismatch." >&2
+            exit 1
+          fi
+
+          echo "PASS: immutable TEST reset source verified"
+
+      - name: Validate CI credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          [[ -n "${CLOUDFLARE_API_TOKEN:-}" ]] || {
+            echo "ERROR: CLOUDFLARE_API_TOKEN is unavailable." >&2
+            exit 1
+          }
+
+          [[ -n "${CLOUDFLARE_ACCOUNT_ID:-}" ]] || {
+            echo "ERROR: CLOUDFLARE_ACCOUNT_ID is unavailable." >&2
+            exit 1
+          }
+
+          echo "PASS: required Cloudflare credentials are available"
+
+      - name: Validate TEST reset script
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          [[ -x scripts/reset-test.sh ]] || {
+            echo "ERROR: scripts/reset-test.sh is missing or not executable." >&2
+            exit 1
+          }
+
+          bash -n scripts/reset-test.sh
+
+          grep -Fq 'MAIN_DB="housing-test-db"' \
+            scripts/reset-test.sh
+
+          grep -Fq 'PII_DB="housing-test-pii-db"' \
+            scripts/reset-test.sh
+
+          grep -Fq 'OPS_DB="housing-test-ops-db"' \
+            scripts/reset-test.sh
+
+          grep -Fq 'R2_BUCKET="mvx-water-meter-certificates-test"' \
+            scripts/reset-test.sh
+
+          echo "PASS: TEST reset script validated"
+
+      - name: TEST reset preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ./scripts/reset-test.sh --check
+
+      - name: Reset TEST environment
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ./scripts/reset-test.sh \
+            --reset \
+            --confirm-test-reset
+
+      - name: Reset completion
+        if: success()
+        shell: bash
+        env:
+          REQUESTED_BY_USER_ID: ${{ inputs.requested_by_user_id }}
+        run: |
+          set -euo pipefail
+
+          echo "PASS: MVX TEST environment reset completed."
+
+          if [[ -n "$REQUESTED_BY_USER_ID" ]]; then
+            echo "Requested by MVX user ID: $REQUESTED_BY_USER_ID"
+          fi

@@ -12,6 +12,7 @@ const sidebar = {
   waterReadingHistory:
     "Ūdens rādījumu vēsture",
   monthlyReport: "Mēneša pārskats",
+  documents: "Dokumenti",
   logout: "Iziet",
 };
 

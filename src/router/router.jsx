@@ -10,6 +10,12 @@ import LoginPage
 import AccountRecoveryPage
   from "../pages/AccountRecoveryPage";
 
+import PublicLegalDocumentPage
+  from "../pages/PublicLegalDocumentPage";
+
+import DocumentsPage
+  from "../pages/DocumentsPage";
+
 import DashboardPage
   from "../pages/DashboardPage";
 
@@ -58,6 +64,11 @@ export const router =
       path: "/account-recovery",
       element:
         <AccountRecoveryPage />,
+    },
+    {
+      path: "/documents/:documentSlug",
+      element:
+        <PublicLegalDocumentPage />,
     },
 
     {
@@ -131,6 +142,11 @@ export const router =
             <AdminMonthlyReportPage />,
         },
 
+        {
+          path: "documents",
+          element:
+            <DocumentsPage />,
+        },
         {
           path: "settings",
           element:

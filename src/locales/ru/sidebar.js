@@ -12,6 +12,7 @@ const sidebar = {
   waterReadingHistory:
     "История показаний воды",
   monthlyReport: "Ежемесячный отчёт",
+  documents: "Документы",
   logout: "Выйти",
 };
 

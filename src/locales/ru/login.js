@@ -1,13 +1,25 @@
 const login = {
   title: "MVX System",
-
+  nick: "Nick",
+  facilityFallback: "Объект",
   email: "Электронная почта",
   password: "Пароль",
-
   login: "Войти",
   recoverAccess: "Восстановить доступ",
   forgotCredentials: "Забыли Ник или пароль?",
   haveRecoveryCode: "У меня есть Recovery Code",
+
+  landing: {
+    description: "Система управления жилым домом и самообслуживания жильцов.",
+    address: "Адрес",
+    contacts: "Контакты",
+    email: "Электронная почта",
+    phone: "Телефон",
+  },
+
+  form: {
+    title: "Вход",
+  },
 
   help: {
     title: "Забыли Ник или пароль?",
