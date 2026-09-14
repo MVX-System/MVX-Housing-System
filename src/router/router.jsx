@@ -13,6 +13,9 @@ import AccountRecoveryPage
 import PublicLegalDocumentPage
   from "../pages/PublicLegalDocumentPage";
 
+import DocumentsPage
+  from "../pages/DocumentsPage";
+
 import DashboardPage
   from "../pages/DashboardPage";
 
@@ -139,6 +142,11 @@ export const router =
             <AdminMonthlyReportPage />,
         },
 
+        {
+          path: "documents",
+          element:
+            <DocumentsPage />,
+        },
         {
           path: "settings",
           element:

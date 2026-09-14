@@ -3,6 +3,7 @@ import common from "./common";
 import dashboard from "./dashboard";
 import login from "./login";
 import legal from "./legal";
+import documents from "./documents";
 import sidebar from "./sidebar";
 import water from "./water";
 
@@ -12,6 +13,7 @@ const en = {
   dashboard,
   login,
   legal,
+  documents,
   sidebar,
   water,
 };

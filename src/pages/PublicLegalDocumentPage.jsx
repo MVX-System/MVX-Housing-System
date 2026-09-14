@@ -7,6 +7,10 @@ import LanguageSelector
   from "../components/LanguageSelector";
 
 import {
+  useAuth,
+} from "../context/AuthContext";
+
+import {
   useFacility,
 } from "../context/FacilityContext";
 
@@ -34,6 +38,31 @@ export default function PublicLegalDocumentPage() {
   const {
     t,
   } = useTranslation();
+
+  const {
+    token,
+    me,
+  } = useAuth();
+
+  const authenticated =
+    Boolean(
+      token &&
+      me?.user
+    );
+
+  const backTarget =
+    authenticated
+      ? "/documents"
+      : "/login";
+
+  const backLabel =
+    authenticated
+      ? t(
+          "documents.backToDocuments"
+        )
+      : t(
+          "legal.backToLogin"
+        );
 
   const {
     document,
@@ -101,12 +130,10 @@ export default function PublicLegalDocumentPage() {
           className="public-legal-toolbar"
         >
           <Link
-            to="/login"
+            to={backTarget}
             className="public-legal-back"
           >
-            {t(
-              "legal.backToLogin"
-            )}
+            {backLabel}
           </Link>
         </div>
 

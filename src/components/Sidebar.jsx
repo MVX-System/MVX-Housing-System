@@ -53,6 +53,7 @@ const RESIDENT_PATHS = new Set([
   "/",
   "/water",
   "/announcements",
+  "/documents",
   "/settings",
 ]);
 
@@ -64,6 +65,7 @@ const ADMIN_PATHS = new Set([
   "/water-readings",
   "/monthly-report",
   "/admin-announcements",
+  "/documents",
   "/settings",
 ]);
 
@@ -560,6 +562,24 @@ export default function Sidebar({
               }
             />
           </>
+        )}
+
+        {!mustChangePassword && (
+          <MenuButton
+            title={t(
+              "sidebar.documents"
+            )}
+            active={
+              isActivePath(
+                "/documents"
+              )
+            }
+            onClick={() =>
+              go(
+                "/documents"
+              )
+            }
+          />
         )}
 
         <hr style={divider} />
