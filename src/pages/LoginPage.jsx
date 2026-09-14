@@ -1,9 +1,5 @@
 import {
-  useEffect,
-  useState,
-} from "react";
-
-import {
+  Link,
   useNavigate,
 } from "react-router-dom";
 
@@ -270,7 +266,60 @@ export default function LoginPage() {
                 </div>
               </div>
             )}
-          </section>
+                      <nav
+              className="public-login-legal"
+              aria-label={
+                t(
+                  "legal.links.title"
+                )
+              }
+            >
+              <div
+                className="public-login-info-label"
+              >
+                {t(
+                  "legal.links.title"
+                )}
+              </div>
+
+              <div
+                className="public-login-legal-links"
+              >
+                <Link
+                  to="/documents/privacy-notice"
+                >
+                  {t(
+                    "legal.links.privacyNotice"
+                  )}
+                </Link>
+
+                <Link
+                  to="/documents/device-storage-notice"
+                >
+                  {t(
+                    "legal.links.deviceStorageNotice"
+                  )}
+                </Link>
+
+                <Link
+                  to="/documents/operator-information"
+                >
+                  {t(
+                    "legal.links.operatorInformation"
+                  )}
+                </Link>
+
+                <Link
+                  to="/documents/user-rules"
+                >
+                  {t(
+                    "legal.links.userRules"
+                  )}
+                </Link>
+              </div>
+            </nav>
+
+</section>
 
           <section
             className="public-login-card"

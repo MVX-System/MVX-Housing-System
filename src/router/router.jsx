@@ -10,6 +10,9 @@ import LoginPage
 import AccountRecoveryPage
   from "../pages/AccountRecoveryPage";
 
+import PublicLegalDocumentPage
+  from "../pages/PublicLegalDocumentPage";
+
 import DashboardPage
   from "../pages/DashboardPage";
 
@@ -58,6 +61,11 @@ export const router =
       path: "/account-recovery",
       element:
         <AccountRecoveryPage />,
+    },
+    {
+      path: "/documents/:documentSlug",
+      element:
+        <PublicLegalDocumentPage />,
     },
 
     {
