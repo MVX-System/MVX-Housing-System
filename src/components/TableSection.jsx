@@ -5,9 +5,9 @@ export default function TableSection({ children }) {
     <div
       style={{
 
-        background: "#ffffff",
+        background: "var(--surface)",
 
-        border: "1px solid #e5e7eb",
+        border: "1px solid var(--border)",
 
         borderRadius: 18,
 

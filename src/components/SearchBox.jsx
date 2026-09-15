@@ -17,7 +17,7 @@ export default function SearchBox({
         width: "100%",
         maxWidth: 420,
         padding: "12px 16px",
-        border: "1px solid #d1d5db",
+        border: "1px solid var(--input-border)",
         borderRadius: 10,
         fontSize: 15,
         marginBottom: 20,

@@ -13,7 +13,7 @@ export default function InfoRow({
         display:"flex",
         justifyContent:"space-between",
         padding:"12px 0",
-        borderBottom:"1px solid #e5e7eb",
+        borderBottom:"1px solid var(--border)",
       }}
     >
 

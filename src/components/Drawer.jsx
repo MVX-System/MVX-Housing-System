@@ -54,7 +54,7 @@ export default function Drawer({
 
           height: "100vh",
 
-          background: "#fff",
+          background: "var(--surface)",
 
           boxShadow:
 
@@ -78,7 +78,7 @@ export default function Drawer({
 
             borderBottom:
 
-              "1px solid #e5e7eb",
+              "1px solid var(--border)",
 
             display: "flex",
 

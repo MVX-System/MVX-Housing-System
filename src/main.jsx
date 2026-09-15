@@ -20,6 +20,9 @@ import {
   PublicContactProvider,
 } from "./context/PublicContactContext";
 
+import EnvironmentThemeBridge
+  from "./context/EnvironmentThemeBridge";
+
 import {
   AuthProvider,
 } from "./context/AuthContext";
@@ -112,15 +115,17 @@ createRoot(
   <StrictMode>
     <LanguageProvider>
       <FacilityProvider>
-        <PublicContactProvider>
-          <AuthProvider>
-          <ModeProvider>
-            <RouterProvider
-              router={router}
-            />
-          </ModeProvider>
-          </AuthProvider>
-        </PublicContactProvider>
+        <EnvironmentThemeBridge>
+          <PublicContactProvider>
+            <AuthProvider>
+            <ModeProvider>
+              <RouterProvider
+                router={router}
+              />
+            </ModeProvider>
+            </AuthProvider>
+          </PublicContactProvider>
+        </EnvironmentThemeBridge>
       </FacilityProvider>
     </LanguageProvider>
   </StrictMode>
