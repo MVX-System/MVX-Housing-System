@@ -392,9 +392,9 @@ code {
 
 .public-login-dot {
   --dot-size: 5px;
-  --dot-x: 18px;
-  --dot-y: -20px;
-  --dot-duration: 30s;
+  --dot-x: 42px;
+  --dot-y: -48px;
+  --dot-duration: 16s;
   --dot-delay: 0s;
 
   position: absolute;
@@ -403,8 +403,8 @@ code {
   border-radius: 999px;
   background: var(--accent);
   box-shadow:
-    0 0 10px var(--accent-bg);
-  opacity: 0.08;
+    0 0 12px var(--accent-bg);
+  opacity: 0.12;
   animation:
     public-login-dot-drift
     var(--dot-duration)
@@ -418,9 +418,9 @@ code {
   left: 3%;
   top: 12%;
   --dot-size: 5px;
-  --dot-x: 24px;
-  --dot-y: 18px;
-  --dot-duration: 29s;
+  --dot-x: 48px;
+  --dot-y: 38px;
+  --dot-duration: 15s;
   --dot-delay: -7s;
 }
 
@@ -428,9 +428,9 @@ code {
   left: 7%;
   top: 69%;
   --dot-size: 7px;
-  --dot-x: 18px;
-  --dot-y: -26px;
-  --dot-duration: 37s;
+  --dot-x: 42px;
+  --dot-y: -56px;
+  --dot-duration: 19s;
   --dot-delay: -15s;
 }
 
@@ -438,9 +438,9 @@ code {
   left: 14%;
   top: 34%;
   --dot-size: 4px;
-  --dot-x: -14px;
-  --dot-y: 22px;
-  --dot-duration: 26s;
+  --dot-x: -38px;
+  --dot-y: 50px;
+  --dot-duration: 14s;
   --dot-delay: -11s;
 }
 
@@ -448,9 +448,9 @@ code {
   left: 23%;
   top: 6%;
   --dot-size: 6px;
-  --dot-x: 22px;
-  --dot-y: 16px;
-  --dot-duration: 34s;
+  --dot-x: 52px;
+  --dot-y: 36px;
+  --dot-duration: 18s;
   --dot-delay: -19s;
 }
 
@@ -458,9 +458,9 @@ code {
   left: 28%;
   top: 91%;
   --dot-size: 5px;
-  --dot-x: -18px;
-  --dot-y: -24px;
-  --dot-duration: 31s;
+  --dot-x: -44px;
+  --dot-y: -58px;
+  --dot-duration: 17s;
   --dot-delay: -9s;
 }
 
@@ -468,9 +468,9 @@ code {
   left: 41%;
   top: 11%;
   --dot-size: 3px;
-  --dot-x: 16px;
-  --dot-y: 28px;
-  --dot-duration: 24s;
+  --dot-x: 40px;
+  --dot-y: 62px;
+  --dot-duration: 13s;
   --dot-delay: -13s;
 }
 
@@ -478,9 +478,9 @@ code {
   left: 46%;
   top: 95%;
   --dot-size: 6px;
-  --dot-x: 26px;
-  --dot-y: -18px;
-  --dot-duration: 39s;
+  --dot-x: 60px;
+  --dot-y: -42px;
+  --dot-duration: 20s;
   --dot-delay: -23s;
 }
 
@@ -488,9 +488,9 @@ code {
   left: 59%;
   top: 5%;
   --dot-size: 4px;
-  --dot-x: -22px;
-  --dot-y: 22px;
-  --dot-duration: 33s;
+  --dot-x: -50px;
+  --dot-y: 54px;
+  --dot-duration: 17s;
   --dot-delay: -17s;
 }
 
@@ -498,9 +498,9 @@ code {
   left: 64%;
   top: 88%;
   --dot-size: 7px;
-  --dot-x: 16px;
-  --dot-y: -30px;
-  --dot-duration: 36s;
+  --dot-x: 38px;
+  --dot-y: -68px;
+  --dot-duration: 19s;
   --dot-delay: -5s;
 }
 
@@ -508,9 +508,9 @@ code {
   left: 75%;
   top: 17%;
   --dot-size: 5px;
-  --dot-x: -24px;
-  --dot-y: 18px;
-  --dot-duration: 28s;
+  --dot-x: -58px;
+  --dot-y: 42px;
+  --dot-duration: 15s;
   --dot-delay: -21s;
 }
 
@@ -518,9 +518,9 @@ code {
   left: 81%;
   top: 94%;
   --dot-size: 4px;
-  --dot-x: 20px;
-  --dot-y: -25px;
-  --dot-duration: 32s;
+  --dot-x: 46px;
+  --dot-y: -60px;
+  --dot-duration: 17s;
   --dot-delay: -12s;
 }
 
@@ -528,9 +528,9 @@ code {
   left: 91%;
   top: 9%;
   --dot-size: 7px;
-  --dot-x: -18px;
-  --dot-y: 24px;
-  --dot-duration: 38s;
+  --dot-x: -44px;
+  --dot-y: 58px;
+  --dot-duration: 20s;
   --dot-delay: -26s;
 }
 
@@ -538,9 +538,9 @@ code {
   left: 96%;
   top: 43%;
   --dot-size: 5px;
-  --dot-x: -28px;
-  --dot-y: -16px;
-  --dot-duration: 30s;
+  --dot-x: -66px;
+  --dot-y: -38px;
+  --dot-duration: 16s;
   --dot-delay: -8s;
 }
 
@@ -548,9 +548,9 @@ code {
   left: 90%;
   top: 67%;
   --dot-size: 3px;
-  --dot-x: -20px;
-  --dot-y: 28px;
-  --dot-duration: 25s;
+  --dot-x: -46px;
+  --dot-y: 64px;
+  --dot-duration: 13s;
   --dot-delay: -16s;
 }
 
@@ -558,9 +558,9 @@ code {
   left: 72%;
   top: 4%;
   --dot-size: 3px;
-  --dot-x: 18px;
-  --dot-y: 20px;
-  --dot-duration: 27s;
+  --dot-x: 44px;
+  --dot-y: 46px;
+  --dot-duration: 14s;
   --dot-delay: -10s;
 }
 
@@ -568,9 +568,9 @@ code {
   left: 17%;
   top: 96%;
   --dot-size: 4px;
-  --dot-x: 24px;
-  --dot-y: -20px;
-  --dot-duration: 35s;
+  --dot-x: 58px;
+  --dot-y: -48px;
+  --dot-duration: 18s;
   --dot-delay: -20s;
 }
 
@@ -578,12 +578,12 @@ code {
   0% {
     transform:
       translate3d(0, 0, 0)
-      scale(0.88);
-    opacity: 0.05;
+      scale(0.85);
+    opacity: 0.10;
   }
 
   45% {
-    opacity: 0.16;
+    opacity: 0.28;
   }
 
   100% {
@@ -593,8 +593,8 @@ code {
         var(--dot-y),
         0
       )
-      scale(1.08);
-    opacity: 0.09;
+      scale(1.15);
+    opacity: 0.14;
   }
 }
 
@@ -982,7 +982,7 @@ code {
 
   .public-login-dot {
     animation: none;
-    opacity: 0.08;
+    opacity: 0.12;
   }
 }
 
