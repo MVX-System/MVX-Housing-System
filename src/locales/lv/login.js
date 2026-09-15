@@ -11,6 +11,7 @@ const login = {
 
   landing: {
     description: "Dzīvojamās mājas pārvaldības un iedzīvotāju pašapkalpošanās sistēma.",
+    addressAndContacts: "Adrese un kontakti",
     address: "Adrese",
     contacts: "Kontakti",
     email: "E-pasts",

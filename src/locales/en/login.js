@@ -11,6 +11,7 @@ const login = {
 
   landing: {
     description: "Residential property management and resident self-service system.",
+    addressAndContacts: "Address and Contacts",
     address: "Address",
     contacts: "Contacts",
     email: "Email",
