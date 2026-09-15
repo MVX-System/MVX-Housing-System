@@ -171,6 +171,28 @@ export default function LoginPage() {
       data-environment={environment}
     >
       <div
+        className="public-login-particles"
+        aria-hidden="true"
+      >
+        <span className="public-login-dot public-login-dot-01" />
+        <span className="public-login-dot public-login-dot-02" />
+        <span className="public-login-dot public-login-dot-03" />
+        <span className="public-login-dot public-login-dot-04" />
+        <span className="public-login-dot public-login-dot-05" />
+        <span className="public-login-dot public-login-dot-06" />
+        <span className="public-login-dot public-login-dot-07" />
+        <span className="public-login-dot public-login-dot-08" />
+        <span className="public-login-dot public-login-dot-09" />
+        <span className="public-login-dot public-login-dot-10" />
+        <span className="public-login-dot public-login-dot-11" />
+        <span className="public-login-dot public-login-dot-12" />
+        <span className="public-login-dot public-login-dot-13" />
+        <span className="public-login-dot public-login-dot-14" />
+        <span className="public-login-dot public-login-dot-15" />
+        <span className="public-login-dot public-login-dot-16" />
+      </div>
+
+      <div
         className="public-login-shell"
       >
         <header
