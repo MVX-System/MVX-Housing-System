@@ -30,7 +30,7 @@ export default function PropertyGrid({
 
           style={{
 
-            border: "1px solid #e5e7eb",
+            border: "1px solid var(--border)",
 
             borderRadius: 12,
 
@@ -48,7 +48,7 @@ export default function PropertyGrid({
 
               fontSize: 12,
 
-              color: "#64748b",
+              color: "var(--text)",
 
               marginBottom: 6,
 
@@ -66,7 +66,7 @@ export default function PropertyGrid({
 
               fontWeight: 600,
 
-              color: "#334155",
+              color: "var(--text-h)",
 
               wordBreak: "break-word",
 

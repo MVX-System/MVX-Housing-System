@@ -12,9 +12,9 @@ export default function SectionCard({
 
       style={{
 
-        background: "#ffffff",
+        background: "var(--surface)",
 
-        border: "1px solid #e5e7eb",
+        border: "1px solid var(--border)",
 
         borderRadius: 16,
 
@@ -36,7 +36,7 @@ export default function SectionCard({
 
             fontWeight: 700,
 
-            color: "#334155",
+            color: "var(--text-h)",
 
             marginBottom: 18,
 

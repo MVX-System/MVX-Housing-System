@@ -57,7 +57,7 @@ export default function ApartmentDetails({
             style={{
               padding: 40,
               textAlign: "center",
-              color: "#64748b",
+              color: "var(--text)",
             }}
           >
             No residents data
@@ -75,7 +75,7 @@ export default function ApartmentDetails({
             style={{
               padding: 40,
               textAlign: "center",
-              color: "#64748b",
+              color: "var(--text)",
             }}
           >
             No documents
@@ -93,7 +93,7 @@ export default function ApartmentDetails({
             style={{
               padding: 40,
               textAlign: "center",
-              color: "#64748b",
+              color: "var(--text)",
             }}
           >
             No tasks
@@ -111,7 +111,7 @@ export default function ApartmentDetails({
             style={{
               padding: 40,
               textAlign: "center",
-              color: "#64748b",
+              color: "var(--text)",
             }}
           >
             No history

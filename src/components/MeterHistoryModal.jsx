@@ -698,7 +698,7 @@ export default function MeterHistoryModal({
                                   border: "none",
                                   background:
                                     "transparent",
-                                  color: "#2563eb",
+                                  color: "var(--accent)",
                                   fontSize: 10,
                                   fontWeight: 700,
                                   cursor: "pointer",
@@ -776,9 +776,9 @@ export default function MeterHistoryModal({
                 marginTop: 12,
                 padding: 12,
                 border:
-                  "1px solid #bfdbfe",
+                  "1px solid var(--accent-border)",
                 borderRadius: 10,
-                background: "#eff6ff",
+                background: "var(--accent-bg)",
               }}
             >
 
@@ -972,7 +972,7 @@ export default function MeterHistoryModal({
                     padding: "7px 11px",
                     border: "none",
                     borderRadius: 8,
-                    background: "#2563eb",
+                    background: "var(--accent)",
                     color: "#ffffff",
                     fontSize: 12,
                     fontWeight: 700,

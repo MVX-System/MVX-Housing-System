@@ -46,7 +46,7 @@ export default function MeterRow({
             style={{
               fontWeight: 600,
               fontSize: 14,
-              color: "#334155",
+              color: "var(--text-h)",
             }}
           >
 
@@ -61,7 +61,7 @@ export default function MeterRow({
           <div
             style={{
               fontSize: 13,
-              color: "#64748b",
+              color: "var(--text)",
             }}
           >
 
@@ -72,7 +72,7 @@ export default function MeterRow({
           <div
             style={{
               fontSize: 12,
-              color: "#64748b",
+              color: "var(--text)",
             }}
           >
 
@@ -95,7 +95,7 @@ export default function MeterRow({
           <div
             style={{
               fontSize: 11,
-              color: "#94a3b8",
+              color: "var(--text)",
             }}
           >
 
