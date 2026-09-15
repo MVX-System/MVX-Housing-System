@@ -231,7 +231,7 @@ export default function LoginPage() {
             </p>
           </section>
 
-          <section
+          <form
             className="public-login-card"
             style={{
               ...loginCard,
@@ -241,6 +241,10 @@ export default function LoginPage() {
             }}
             aria-labelledby=
               "public-login-form-title"
+            onSubmit={(event) => {
+              event.preventDefault();
+              submit();
+            }}
           >
             <h2
               id="public-login-form-title"
@@ -301,22 +305,12 @@ export default function LoginPage() {
                 style={inputStyle}
                 autoComplete=
                   "current-password"
-                onKeyDown={
-                  (event) => {
-                    if (
-                      event.key ===
-                      "Enter"
-                    ) {
-                      submit();
-                    }
-                  }
-                }
               />
             </label>
 
             <button
-              type="button"
-              onClick={submit}
+              type="submit"
+              tabIndex={0}
               style={buttonStyle}
             >
               {t("login.login")}
@@ -351,7 +345,7 @@ export default function LoginPage() {
                 "login.haveRecoveryCode"
               )}
             </button>
-          </section>
+          </form>
 
           <section
             className="public-login-details"
