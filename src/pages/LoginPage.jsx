@@ -66,6 +66,36 @@ export default function LoginPage() {
     setRecoveryHelpOpen,
   ] = useState(false);
 
+  const [
+    contactDetailsOpen,
+    setContactDetailsOpen,
+  ] = useState(
+    () =>
+      typeof window === "undefined" ||
+      typeof window.matchMedia !==
+        "function" ||
+      !window
+        .matchMedia(
+          "(max-width: 800px)"
+        )
+        .matches
+  );
+
+  const [
+    legalDetailsOpen,
+    setLegalDetailsOpen,
+  ] = useState(
+    () =>
+      typeof window === "undefined" ||
+      typeof window.matchMedia !==
+        "function" ||
+      !window
+        .matchMedia(
+          "(max-width: 800px)"
+        )
+        .matches
+  );
+
   const {
     publicContact,
     refreshPublicContact,
@@ -323,134 +353,253 @@ export default function LoginPage() {
           <section
             className="public-login-details"
           >
-
-            {facilityAddress && (
-              <div
-                className="public-login-info-block"
-              >
-                <div
-                  className="public-login-info-label"
-                >
-                  {t(
-                    "login.landing.address"
-                  )}
-                </div>
-
-                <div
-                  className="public-login-info-value"
-                >
-                  {facilityAddress}
-                </div>
-              </div>
-            )}
-
-            {(supportEmail ||
-              supportPhone) && (
-              <div
-                className="public-login-info-block"
-              >
-                <div
-                  className="public-login-info-label"
-                >
-                  {t(
-                    "login.landing.contacts"
-                  )}
-                </div>
-
-                <div
-                  className="public-login-contact-list"
-                >
-                  {supportEmail && (
-                    <div>
-                      <span>
-                        {t(
-                          "login.landing.email"
-                        )}:
-                      </span>{" "}
-
-                      <a
-                        href={
-                          `mailto:${supportEmail}`
-                        }
-                      >
-                        {supportEmail}
-                      </a>
-                    </div>
-                  )}
-
-                  {supportPhone && (
-                    <div>
-                      <span>
-                        {t(
-                          "login.landing.phone"
-                        )}:
-                      </span>{" "}
-
-                      <a
-                        href={
-                          `tel:${supportPhoneHref}`
-                        }
-                      >
-                        {supportPhone}
-                      </a>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-            <nav
-              className="public-login-legal"
-              aria-label={
-                t(
-                  "legal.links.title"
-                )
-              }
+            <div
+              className="public-login-disclosure"
             >
-              <div
-                className="public-login-info-label"
+              <button
+                type="button"
+                className="public-login-disclosure-button"
+                aria-expanded={
+                  contactDetailsOpen
+                }
+                aria-controls=
+                  "public-login-contact-details"
+                onClick={() =>
+                  setContactDetailsOpen(
+                    (current) =>
+                      !current
+                  )
+                }
               >
-                {t(
-                  "legal.links.title"
-                )}
-              </div>
+                <span>
+                  {t(
+                    "login.landing.addressAndContacts"
+                  )}
+                </span>
+
+                <span
+                  className={
+                    `public-login-disclosure-chevron${
+                      contactDetailsOpen
+                        ? " is-open"
+                        : ""
+                    }`
+                  }
+                  aria-hidden="true"
+                >
+                  ⌄
+                </span>
+              </button>
 
               <div
-                className="public-login-legal-links"
+                id="public-login-contact-details"
+                className={
+                  `public-login-disclosure-content${
+                    contactDetailsOpen
+                      ? " is-open"
+                      : ""
+                  }`
+                }
+                aria-hidden={
+                  !contactDetailsOpen
+                }
+                inert={
+                  !contactDetailsOpen
+                }
               >
-                <Link
-                  to="/documents/privacy-notice"
+                <div
+                  className="public-login-disclosure-overflow"
                 >
-                  {t(
-                    "legal.links.privacyNotice"
-                  )}
-                </Link>
+                  <div
+                    className="public-login-disclosure-body"
+                  >
+                    {facilityAddress && (
+                      <div
+                        className="public-login-info-block"
+                      >
+                        <div
+                          className="public-login-info-label"
+                        >
+                          {t(
+                            "login.landing.address"
+                          )}
+                        </div>
 
-                <Link
-                  to="/documents/device-storage-notice"
-                >
-                  {t(
-                    "legal.links.deviceStorageNotice"
-                  )}
-                </Link>
+                        <div
+                          className="public-login-info-value"
+                        >
+                          {facilityAddress}
+                        </div>
+                      </div>
+                    )}
 
-                <Link
-                  to="/documents/operator-information"
-                >
-                  {t(
-                    "legal.links.operatorInformation"
-                  )}
-                </Link>
+                    {(supportEmail ||
+                      supportPhone) && (
+                      <div
+                        className="public-login-info-block"
+                      >
+                        <div
+                          className="public-login-info-label"
+                        >
+                          {t(
+                            "login.landing.contacts"
+                          )}
+                        </div>
 
-                <Link
-                  to="/documents/user-rules"
-                >
-                  {t(
-                    "legal.links.userRules"
-                  )}
-                </Link>
+                        <div
+                          className="public-login-contact-list"
+                        >
+                          {supportEmail && (
+                            <div>
+                              <span>
+                                {t(
+                                  "login.landing.email"
+                                )}:
+                              </span>{" "}
+
+                              <a
+                                href={
+                                  `mailto:${supportEmail}`
+                                }
+                              >
+                                {supportEmail}
+                              </a>
+                            </div>
+                          )}
+
+                          {supportPhone && (
+                            <div>
+                              <span>
+                                {t(
+                                  "login.landing.phone"
+                                )}:
+                              </span>{" "}
+
+                              <a
+                                href={
+                                  `tel:${supportPhoneHref}`
+                                }
+                              >
+                                {supportPhone}
+                              </a>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
-            </nav>
+            </div>
 
+            <div
+              className="public-login-disclosure"
+            >
+              <button
+                type="button"
+                className="public-login-disclosure-button"
+                aria-expanded={
+                  legalDetailsOpen
+                }
+                aria-controls=
+                  "public-login-legal-details"
+                onClick={() =>
+                  setLegalDetailsOpen(
+                    (current) =>
+                      !current
+                  )
+                }
+              >
+                <span>
+                  {t(
+                    "legal.links.title"
+                  )}
+                </span>
+
+                <span
+                  className={
+                    `public-login-disclosure-chevron${
+                      legalDetailsOpen
+                        ? " is-open"
+                        : ""
+                    }`
+                  }
+                  aria-hidden="true"
+                >
+                  ⌄
+                </span>
+              </button>
+
+              <div
+                id="public-login-legal-details"
+                className={
+                  `public-login-disclosure-content${
+                    legalDetailsOpen
+                      ? " is-open"
+                      : ""
+                  }`
+                }
+                aria-hidden={
+                  !legalDetailsOpen
+                }
+                inert={
+                  !legalDetailsOpen
+                }
+              >
+                <div
+                  className="public-login-disclosure-overflow"
+                >
+                  <div
+                    className="public-login-disclosure-body"
+                  >
+                    <nav
+                      className="public-login-legal"
+                      aria-label={
+                        t(
+                          "legal.links.title"
+                        )
+                      }
+                    >
+                      <div
+                        className="public-login-legal-links"
+                      >
+                        <Link
+                          to="/documents/privacy-notice"
+                        >
+                          {t(
+                            "legal.links.privacyNotice"
+                          )}
+                        </Link>
+
+                        <Link
+                          to="/documents/device-storage-notice"
+                        >
+                          {t(
+                            "legal.links.deviceStorageNotice"
+                          )}
+                        </Link>
+
+                        <Link
+                          to="/documents/operator-information"
+                        >
+                          {t(
+                            "legal.links.operatorInformation"
+                          )}
+                        </Link>
+
+                        <Link
+                          to="/documents/user-rules"
+                        >
+                          {t(
+                            "legal.links.userRules"
+                          )}
+                        </Link>
+                      </div>
+                    </nav>
+                  </div>
+                </div>
+              </div>
+            </div>
           </section>
         </main>
       </div>
