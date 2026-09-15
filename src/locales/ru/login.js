@@ -11,6 +11,7 @@ const login = {
 
   landing: {
     description: "Система управления жилым домом и самообслуживания жильцов.",
+    addressAndContacts: "Адрес и контакты",
     address: "Адрес",
     contacts: "Контакты",
     email: "Электронная почта",
