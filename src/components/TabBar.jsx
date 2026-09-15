@@ -42,25 +42,25 @@ export default function TabBar({
 
               value === tab
 
-                ? "2px solid #2563eb"
+                ? "2px solid var(--accent)"
 
-                : "1px solid #d1d5db",
+                : "1px solid var(--input-border)",
 
             background:
 
               value === tab
 
-                ? "#eff6ff"
+                ? "var(--accent-bg)"
 
-                : "#ffffff",
+                : "var(--surface)",
 
             color:
 
               value === tab
 
-                ? "#2563eb"
+                ? "var(--accent)"
 
-                : "#334155",
+                : "var(--text-h)",
 
             cursor: "pointer",
 

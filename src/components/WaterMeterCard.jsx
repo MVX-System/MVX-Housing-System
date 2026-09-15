@@ -9,9 +9,9 @@ export default function WaterMeterCard({
     <div
       style={{
 
-        background: "#fff",
+        background: "var(--surface)",
 
-        border: "1px solid #e5e7eb",
+        border: "1px solid var(--border)",
 
         borderRadius: 18,
 
@@ -59,7 +59,7 @@ export default function WaterMeterCard({
 
         <div
           style={{
-            color: "#64748b",
+            color: "var(--text)",
             fontSize: 13,
           }}
         >
@@ -82,7 +82,7 @@ export default function WaterMeterCard({
 
         <div
           style={{
-            color: "#64748b",
+            color: "var(--text)",
             fontSize: 13,
           }}
         >

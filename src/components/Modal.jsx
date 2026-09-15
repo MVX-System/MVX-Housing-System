@@ -147,7 +147,7 @@ export default function Modal({
               background:
                 "transparent",
 
-              color: "#374151",
+              color: "var(--text-h)",
               fontSize: 24,
               lineHeight: 1,
 

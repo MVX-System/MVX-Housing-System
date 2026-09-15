@@ -18,7 +18,7 @@ function InfoRow({
         padding: "12px 0",
 
         borderBottom:
-          "1px solid #e5e7eb",
+          "1px solid var(--border)",
 
       }}
     >

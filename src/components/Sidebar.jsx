@@ -355,11 +355,11 @@ export default function Sidebar({
                 width: 30,
                 height: 30,
                 border:
-                  "1px solid #374151",
+                  "1px solid var(--sidebar-border)",
                 borderRadius: 8,
                 background:
                   "transparent",
-                color: "#d1d5db",
+                color: "var(--sidebar-muted)",
                 cursor: "pointer",
                 fontSize: 16,
               }}

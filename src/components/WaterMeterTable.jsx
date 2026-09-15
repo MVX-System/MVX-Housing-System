@@ -68,10 +68,10 @@ export default function WaterMeterTable({
               transition: "background-color .15s ease",
             }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.background = "#f8fafc";
+              e.currentTarget.style.background = "var(--surface-soft)";
             }}
             onMouseLeave={(e) => {
-              e.currentTarget.style.background = "#ffffff";
+              e.currentTarget.style.background = "var(--surface)";
             }}
           >
 

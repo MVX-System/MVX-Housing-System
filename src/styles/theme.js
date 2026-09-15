@@ -11,8 +11,8 @@ const sidebar = {
   maxWidth: 240,
   flex: "0 0 240px",
   flexShrink: 0,
-  background: "#111827",
-  color: "white",
+  background: "var(--sidebar-bg)",
+  color: "var(--sidebar-text)",
   padding: "14px 16px",
   display: "flex",
   flexDirection: "column",
@@ -24,14 +24,14 @@ const sidebar = {
 };
 
 const sidebarTitle = {
-  color: "white",
+  color: "var(--sidebar-text)",
   margin:
     "0 0 10px",
   lineHeight: 1.25,
 };
 
 const sidebarUser = {
-  color: "#d1d5db",
+  color: "var(--sidebar-muted)",
   marginBottom: 10,
   fontSize: 12,
   lineHeight: 1.35,
@@ -40,7 +40,7 @@ const sidebarUser = {
 };
 
 const divider = {
-  borderColor: "#374151",
+  borderColor: "var(--sidebar-border)",
   width: "100%",
   margin:
     "8px 0",
@@ -133,8 +133,8 @@ const menuButton = {
 
 const activeButton = {
   ...menuButton,
-  background: "#2563eb",
-  color: "white",
+  background: "var(--accent)",
+  color: "#ffffff",
 };
 
 const cardStyle = {
@@ -257,8 +257,8 @@ export const actionButton = {
   border: "none",
   borderRadius: 10,
   cursor: "pointer",
-  background: "#2563eb",
-  color: "#fff",
+  background: "var(--accent)",
+  color: "#ffffff",
   fontWeight: 600,
   fontSize: 14,
   transition: "0.15s",

@@ -20,7 +20,7 @@ export default function ApartmentWaterTab({
             style={{
               fontSize: 16,
               fontWeight: 700,
-              color: "#334155",
+              color: "var(--text-h)",
               marginBottom: 12,
             }}
           >
@@ -41,10 +41,10 @@ export default function ApartmentWaterTab({
                 key={meter.id}
                 onClick={() => onOpenMeter?.(meter)}
                 style={{
-                  border: "1px solid #e5e7eb",
+                  border: "1px solid var(--border)",
                   borderRadius: 12,
                   padding: 14,
-                  background: "#ffffff",
+                  background: "var(--surface)",
                   cursor: "pointer",
                 }}
               >
@@ -63,7 +63,7 @@ export default function ApartmentWaterTab({
                 <div
                   style={{
                     fontSize: 14,
-                    color: "#64748b",
+                    color: "var(--text)",
                   }}
                 >
                   SN {meter.serial_number}
@@ -72,7 +72,7 @@ export default function ApartmentWaterTab({
                 <div
                   style={{
                     fontSize: 13,
-                    color: "#94a3b8",
+                    color: "var(--text)",
                     marginTop: 4,
                   }}
                 >
