@@ -157,15 +157,18 @@ export default function LoginPage() {
     );
 
   const environmentLabel =
-    environment === "test"
-      ? "TEST"
-      : environment === "demo"
-        ? "DEMO"
-        : "";
+    environment === "production"
+      ? "PROD"
+      : environment === "test"
+        ? "TEST"
+        : environment === "demo"
+          ? "DEMO"
+          : "";
 
   return (
     <div
       className="public-login-page"
+      data-environment={environment}
     >
       <div
         className="public-login-shell"
