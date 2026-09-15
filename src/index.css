@@ -278,19 +278,41 @@ code {
   grid-template-columns:
     minmax(0, 1.15fr)
     minmax(340px, 420px);
-  gap: 24px;
-  align-items: stretch;
+  grid-template-areas:
+    "identity login"
+    "details login";
+  gap: 16px 24px;
+  align-items: start;
 }
 
-.public-login-intro {
+.public-login-identity {
+  grid-area: identity;
   min-width: 0;
-  padding: 32px;
+  padding: 28px 32px;
   box-sizing: border-box;
   border: 1px solid var(--border);
   border-radius: 20px;
   background: var(--surface);
   color: var(--text);
   box-shadow: var(--shadow);
+}
+
+.public-login-details {
+  grid-area: details;
+  min-width: 0;
+  padding: 22px 32px 26px;
+  box-sizing: border-box;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow);
+}
+
+.public-login-details > :first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
 }
 
 .public-login-kicker {
@@ -303,7 +325,7 @@ code {
   text-transform: uppercase;
 }
 
-.public-login-intro h1 {
+.public-login-identity h1 {
   margin: 0;
   overflow-wrap: anywhere;
 }
@@ -316,8 +338,8 @@ code {
 }
 
 .public-login-info-block {
-  margin-top: 28px;
-  padding-top: 18px;
+  margin-top: 18px;
+  padding-top: 14px;
   border-top: 1px solid var(--border-soft);
 }
 
@@ -355,7 +377,9 @@ code {
 }
 
 .public-login-card {
-  align-self: stretch;
+  grid-area: login;
+  min-width: 0;
+  align-self: start;
 }
 
 .public-login-form-title {
@@ -417,10 +441,19 @@ code {
 
   .public-login-grid {
     grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "identity"
+      "login"
+      "details";
+    gap: 18px;
   }
 
-  .public-login-intro {
-    padding: 26px;
+  .public-login-identity {
+    padding: 24px;
+  }
+
+  .public-login-details {
+    padding: 20px 24px 22px;
   }
 }
 
@@ -438,25 +471,40 @@ code {
     flex-wrap: wrap;
   }
 
-  .public-login-intro {
-    padding: 20px;
+  .public-login-identity {
+    padding: 18px;
+    border-radius: 16px;
+  }
+
+  .public-login-identity h1 {
+    font-size: clamp(24px, 7vw, 30px);
+    line-height: 1.15;
+  }
+
+  .public-login-description {
+    margin-top: 8px;
+    line-height: 1.45;
+  }
+
+  .public-login-details {
+    padding: 16px 18px 18px;
     border-radius: 16px;
   }
 
   .public-login-grid {
-    gap: 16px;
+    gap: 14px;
   }
 
   .public-login-card {
     border-radius: 16px !important;
-    padding: 22px !important;
+    padding: 20px !important;
   }
 }
 /* PR-5E PUBLIC LEGAL DOCUMENTS */
 
 .public-login-legal {
-  margin-top: 28px;
-  padding-top: 18px;
+  margin-top: 18px;
+  padding-top: 14px;
   border-top: 1px solid var(--border-soft);
 }
 
