@@ -173,7 +173,7 @@ export default function LoginPage() {
           className="public-login-grid"
         >
           <section
-            className="public-login-intro"
+            className="public-login-identity"
             aria-labelledby=
               "public-login-facility-title"
           >
@@ -196,135 +196,7 @@ export default function LoginPage() {
                 "login.landing.description"
               )}
             </p>
-
-            {facilityAddress && (
-              <div
-                className="public-login-info-block"
-              >
-                <div
-                  className="public-login-info-label"
-                >
-                  {t(
-                    "login.landing.address"
-                  )}
-                </div>
-
-                <div
-                  className="public-login-info-value"
-                >
-                  {facilityAddress}
-                </div>
-              </div>
-            )}
-
-            {(supportEmail ||
-              supportPhone) && (
-              <div
-                className="public-login-info-block"
-              >
-                <div
-                  className="public-login-info-label"
-                >
-                  {t(
-                    "login.landing.contacts"
-                  )}
-                </div>
-
-                <div
-                  className="public-login-contact-list"
-                >
-                  {supportEmail && (
-                    <div>
-                      <span>
-                        {t(
-                          "login.landing.email"
-                        )}:
-                      </span>{" "}
-
-                      <a
-                        href={
-                          `mailto:${supportEmail}`
-                        }
-                      >
-                        {supportEmail}
-                      </a>
-                    </div>
-                  )}
-
-                  {supportPhone && (
-                    <div>
-                      <span>
-                        {t(
-                          "login.landing.phone"
-                        )}:
-                      </span>{" "}
-
-                      <a
-                        href={
-                          `tel:${supportPhoneHref}`
-                        }
-                      >
-                        {supportPhone}
-                      </a>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-                      <nav
-              className="public-login-legal"
-              aria-label={
-                t(
-                  "legal.links.title"
-                )
-              }
-            >
-              <div
-                className="public-login-info-label"
-              >
-                {t(
-                  "legal.links.title"
-                )}
-              </div>
-
-              <div
-                className="public-login-legal-links"
-              >
-                <Link
-                  to="/documents/privacy-notice"
-                >
-                  {t(
-                    "legal.links.privacyNotice"
-                  )}
-                </Link>
-
-                <Link
-                  to="/documents/device-storage-notice"
-                >
-                  {t(
-                    "legal.links.deviceStorageNotice"
-                  )}
-                </Link>
-
-                <Link
-                  to="/documents/operator-information"
-                >
-                  {t(
-                    "legal.links.operatorInformation"
-                  )}
-                </Link>
-
-                <Link
-                  to="/documents/user-rules"
-                >
-                  {t(
-                    "legal.links.userRules"
-                  )}
-                </Link>
-              </div>
-            </nav>
-
-</section>
+          </section>
 
           <section
             className="public-login-card"
@@ -446,6 +318,139 @@ export default function LoginPage() {
                 "login.haveRecoveryCode"
               )}
             </button>
+          </section>
+
+          <section
+            className="public-login-details"
+          >
+
+            {facilityAddress && (
+              <div
+                className="public-login-info-block"
+              >
+                <div
+                  className="public-login-info-label"
+                >
+                  {t(
+                    "login.landing.address"
+                  )}
+                </div>
+
+                <div
+                  className="public-login-info-value"
+                >
+                  {facilityAddress}
+                </div>
+              </div>
+            )}
+
+            {(supportEmail ||
+              supportPhone) && (
+              <div
+                className="public-login-info-block"
+              >
+                <div
+                  className="public-login-info-label"
+                >
+                  {t(
+                    "login.landing.contacts"
+                  )}
+                </div>
+
+                <div
+                  className="public-login-contact-list"
+                >
+                  {supportEmail && (
+                    <div>
+                      <span>
+                        {t(
+                          "login.landing.email"
+                        )}:
+                      </span>{" "}
+
+                      <a
+                        href={
+                          `mailto:${supportEmail}`
+                        }
+                      >
+                        {supportEmail}
+                      </a>
+                    </div>
+                  )}
+
+                  {supportPhone && (
+                    <div>
+                      <span>
+                        {t(
+                          "login.landing.phone"
+                        )}:
+                      </span>{" "}
+
+                      <a
+                        href={
+                          `tel:${supportPhoneHref}`
+                        }
+                      >
+                        {supportPhone}
+                      </a>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+            <nav
+              className="public-login-legal"
+              aria-label={
+                t(
+                  "legal.links.title"
+                )
+              }
+            >
+              <div
+                className="public-login-info-label"
+              >
+                {t(
+                  "legal.links.title"
+                )}
+              </div>
+
+              <div
+                className="public-login-legal-links"
+              >
+                <Link
+                  to="/documents/privacy-notice"
+                >
+                  {t(
+                    "legal.links.privacyNotice"
+                  )}
+                </Link>
+
+                <Link
+                  to="/documents/device-storage-notice"
+                >
+                  {t(
+                    "legal.links.deviceStorageNotice"
+                  )}
+                </Link>
+
+                <Link
+                  to="/documents/operator-information"
+                >
+                  {t(
+                    "legal.links.operatorInformation"
+                  )}
+                </Link>
+
+                <Link
+                  to="/documents/user-rules"
+                >
+                  {t(
+                    "legal.links.userRules"
+                  )}
+                </Link>
+              </div>
+            </nav>
+
           </section>
         </main>
       </div>
