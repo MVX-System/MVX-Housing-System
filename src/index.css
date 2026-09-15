@@ -219,6 +219,157 @@ code {
 }
 /* PR-5D PUBLIC LANDING */
 
+/* PR-5K PUBLIC ENVIRONMENT THEMES */
+
+.public-login-page,
+.public-legal-page {
+  --text: #526276;
+  --text-h: #10233d;
+  --bg: #eef3f8;
+  --surface: #ffffff;
+  --surface-soft: #f5f8fb;
+  --surface-muted: #e8eef5;
+  --border: #cfd9e5;
+  --border-soft: #e1e8f0;
+  --input-bg: #ffffff;
+  --input-text: #10233d;
+  --input-border: #bcc9d8;
+  --code-bg: #edf2f7;
+  --accent: #245a8d;
+  --accent-bg: rgba(36, 90, 141, 0.1);
+  --accent-border: rgba(36, 90, 141, 0.42);
+  --shadow:
+    rgba(24, 50, 78, 0.09)
+      0 10px 24px -8px,
+    rgba(24, 50, 78, 0.05)
+      0 4px 10px -4px;
+
+  background: var(--bg);
+  color: var(--text);
+}
+
+.public-login-page[data-environment="test"],
+.public-legal-page[data-environment="test"] {
+  --text: #4d696b;
+  --text-h: #153d40;
+  --bg: #edf6f6;
+  --surface: #fbfefe;
+  --surface-soft: #f2fafa;
+  --surface-muted: #e4f1f1;
+  --border: #c7dddd;
+  --border-soft: #dceaea;
+  --input-bg: #ffffff;
+  --input-text: #153d40;
+  --input-border: #b8d4d4;
+  --code-bg: #e8f3f3;
+  --accent: #147d86;
+  --accent-bg: rgba(20, 125, 134, 0.1);
+  --accent-border: rgba(20, 125, 134, 0.42);
+  --shadow:
+    rgba(20, 74, 79, 0.08)
+      0 10px 24px -8px,
+    rgba(20, 74, 79, 0.05)
+      0 4px 10px -4px;
+}
+
+.public-login-page[data-environment="demo"],
+.public-legal-page[data-environment="demo"] {
+  --text: #625f79;
+  --text-h: #292744;
+  --bg: #f2f1f8;
+  --surface: #fdfdff;
+  --surface-soft: #f7f6fb;
+  --surface-muted: #ebe9f4;
+  --border: #d8d3e6;
+  --border-soft: #e8e4f0;
+  --input-bg: #ffffff;
+  --input-text: #292744;
+  --input-border: #cbc5dc;
+  --code-bg: #eeecf6;
+  --accent: #5b57a6;
+  --accent-bg: rgba(91, 87, 166, 0.1);
+  --accent-border: rgba(91, 87, 166, 0.42);
+  --shadow:
+    rgba(52, 47, 91, 0.09)
+      0 10px 24px -8px,
+    rgba(52, 47, 91, 0.05)
+      0 4px 10px -4px;
+}
+
+@media (prefers-color-scheme: dark) {
+  .public-login-page,
+  .public-legal-page {
+    --text: #c6d2df;
+    --text-h: #f4f7fb;
+    --bg: #0e1724;
+    --surface: #162233;
+    --surface-soft: #121d2b;
+    --surface-muted: #1c2a3d;
+    --border: #2b3d52;
+    --border-soft: #223247;
+    --input-bg: #101b29;
+    --input-text: #f4f7fb;
+    --input-border: #3a4f67;
+    --code-bg: #182536;
+    --accent: #7db1e0;
+    --accent-bg: rgba(125, 177, 224, 0.14);
+    --accent-border: rgba(125, 177, 224, 0.48);
+    --shadow:
+      rgba(0, 0, 0, 0.32)
+        0 12px 28px -10px,
+      rgba(0, 0, 0, 0.22)
+        0 5px 12px -6px;
+  }
+
+  .public-login-page[data-environment="test"],
+  .public-legal-page[data-environment="test"] {
+    --text: #c3d9da;
+    --text-h: #f1fbfb;
+    --bg: #0d1d20;
+    --surface: #132a2d;
+    --surface-soft: #102326;
+    --surface-muted: #183235;
+    --border: #2a474a;
+    --border-soft: #213b3e;
+    --input-bg: #102225;
+    --input-text: #f1fbfb;
+    --input-border: #36575b;
+    --code-bg: #173033;
+    --accent: #6bc9cf;
+    --accent-bg: rgba(107, 201, 207, 0.14);
+    --accent-border: rgba(107, 201, 207, 0.48);
+    --shadow:
+      rgba(0, 0, 0, 0.3)
+        0 12px 28px -10px,
+      rgba(0, 0, 0, 0.2)
+        0 5px 12px -6px;
+  }
+
+  .public-login-page[data-environment="demo"],
+  .public-legal-page[data-environment="demo"] {
+    --text: #cecae2;
+    --text-h: #f7f6ff;
+    --bg: #151524;
+    --surface: #202039;
+    --surface-soft: #1b1b31;
+    --surface-muted: #282846;
+    --border: #3a3a5d;
+    --border-soft: #31314f;
+    --input-bg: #1a1a30;
+    --input-text: #f7f6ff;
+    --input-border: #4a496d;
+    --code-bg: #262641;
+    --accent: #a7a4ec;
+    --accent-bg: rgba(167, 164, 236, 0.14);
+    --accent-border: rgba(167, 164, 236, 0.48);
+    --shadow:
+      rgba(0, 0, 0, 0.32)
+        0 12px 28px -10px,
+      rgba(0, 0, 0, 0.22)
+        0 5px 12px -6px;
+  }
+}
+
 .public-login-page {
   min-height: 100svh;
   padding: 24px;
