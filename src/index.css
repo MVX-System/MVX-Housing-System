@@ -371,8 +371,6 @@ code {
 }
 
 .public-login-page {
-  position: relative;
-  isolation: isolate;
   min-height: 100svh;
   padding: 24px;
   box-sizing: border-box;
@@ -381,226 +379,7 @@ code {
   justify-content: center;
 }
 
-.public-login-particles {
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  overflow: hidden;
-  pointer-events: none;
-  user-select: none;
-}
-
-.public-login-dot {
-  --dot-size: 5px;
-  --dot-x: 42px;
-  --dot-y: -48px;
-  --dot-duration: 16s;
-  --dot-delay: 0s;
-
-  position: absolute;
-  width: var(--dot-size);
-  height: var(--dot-size);
-  border-radius: 999px;
-  background: var(--accent);
-  box-shadow:
-    0 0 12px var(--accent-bg);
-  opacity: 0.12;
-  animation:
-    public-login-dot-drift
-    var(--dot-duration)
-    ease-in-out
-    var(--dot-delay)
-    infinite
-    alternate;
-}
-
-.public-login-dot-01 {
-  left: 3%;
-  top: 12%;
-  --dot-size: 5px;
-  --dot-x: 48px;
-  --dot-y: 38px;
-  --dot-duration: 15s;
-  --dot-delay: -7s;
-}
-
-.public-login-dot-02 {
-  left: 7%;
-  top: 69%;
-  --dot-size: 7px;
-  --dot-x: 42px;
-  --dot-y: -56px;
-  --dot-duration: 19s;
-  --dot-delay: -15s;
-}
-
-.public-login-dot-03 {
-  left: 14%;
-  top: 34%;
-  --dot-size: 4px;
-  --dot-x: -38px;
-  --dot-y: 50px;
-  --dot-duration: 14s;
-  --dot-delay: -11s;
-}
-
-.public-login-dot-04 {
-  left: 23%;
-  top: 6%;
-  --dot-size: 6px;
-  --dot-x: 52px;
-  --dot-y: 36px;
-  --dot-duration: 18s;
-  --dot-delay: -19s;
-}
-
-.public-login-dot-05 {
-  left: 28%;
-  top: 91%;
-  --dot-size: 5px;
-  --dot-x: -44px;
-  --dot-y: -58px;
-  --dot-duration: 17s;
-  --dot-delay: -9s;
-}
-
-.public-login-dot-06 {
-  left: 41%;
-  top: 11%;
-  --dot-size: 3px;
-  --dot-x: 40px;
-  --dot-y: 62px;
-  --dot-duration: 13s;
-  --dot-delay: -13s;
-}
-
-.public-login-dot-07 {
-  left: 46%;
-  top: 95%;
-  --dot-size: 6px;
-  --dot-x: 60px;
-  --dot-y: -42px;
-  --dot-duration: 20s;
-  --dot-delay: -23s;
-}
-
-.public-login-dot-08 {
-  left: 59%;
-  top: 5%;
-  --dot-size: 4px;
-  --dot-x: -50px;
-  --dot-y: 54px;
-  --dot-duration: 17s;
-  --dot-delay: -17s;
-}
-
-.public-login-dot-09 {
-  left: 64%;
-  top: 88%;
-  --dot-size: 7px;
-  --dot-x: 38px;
-  --dot-y: -68px;
-  --dot-duration: 19s;
-  --dot-delay: -5s;
-}
-
-.public-login-dot-10 {
-  left: 75%;
-  top: 17%;
-  --dot-size: 5px;
-  --dot-x: -58px;
-  --dot-y: 42px;
-  --dot-duration: 15s;
-  --dot-delay: -21s;
-}
-
-.public-login-dot-11 {
-  left: 81%;
-  top: 94%;
-  --dot-size: 4px;
-  --dot-x: 46px;
-  --dot-y: -60px;
-  --dot-duration: 17s;
-  --dot-delay: -12s;
-}
-
-.public-login-dot-12 {
-  left: 91%;
-  top: 9%;
-  --dot-size: 7px;
-  --dot-x: -44px;
-  --dot-y: 58px;
-  --dot-duration: 20s;
-  --dot-delay: -26s;
-}
-
-.public-login-dot-13 {
-  left: 96%;
-  top: 43%;
-  --dot-size: 5px;
-  --dot-x: -66px;
-  --dot-y: -38px;
-  --dot-duration: 16s;
-  --dot-delay: -8s;
-}
-
-.public-login-dot-14 {
-  left: 90%;
-  top: 67%;
-  --dot-size: 3px;
-  --dot-x: -46px;
-  --dot-y: 64px;
-  --dot-duration: 13s;
-  --dot-delay: -16s;
-}
-
-.public-login-dot-15 {
-  left: 72%;
-  top: 4%;
-  --dot-size: 3px;
-  --dot-x: 44px;
-  --dot-y: 46px;
-  --dot-duration: 14s;
-  --dot-delay: -10s;
-}
-
-.public-login-dot-16 {
-  left: 17%;
-  top: 96%;
-  --dot-size: 4px;
-  --dot-x: 58px;
-  --dot-y: -48px;
-  --dot-duration: 18s;
-  --dot-delay: -20s;
-}
-
-@keyframes public-login-dot-drift {
-  0% {
-    transform:
-      translate3d(0, 0, 0)
-      scale(0.85);
-    opacity: 0.10;
-  }
-
-  45% {
-    opacity: 0.28;
-  }
-
-  100% {
-    transform:
-      translate3d(
-        var(--dot-x),
-        var(--dot-y),
-        0
-      )
-      scale(1.15);
-    opacity: 0.14;
-  }
-}
-
 .public-login-shell {
-  position: relative;
-  z-index: 1;
   width: 100%;
   max-width: 1040px;
 }
@@ -916,13 +695,6 @@ code {
     padding: 14px;
   }
 
-  .public-login-dot-03,
-  .public-login-dot-06,
-  .public-login-dot-10,
-  .public-login-dot-15 {
-    display: none;
-  }
-
   .public-login-topbar {
     align-items: flex-start;
     margin-bottom: 14px;
@@ -978,11 +750,6 @@ code {
   .public-login-disclosure-content,
   .public-login-disclosure-chevron {
     transition: none;
-  }
-
-  .public-login-dot {
-    animation: none;
-    opacity: 0.12;
   }
 }
 
