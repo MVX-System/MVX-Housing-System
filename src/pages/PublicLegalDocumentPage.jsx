@@ -81,15 +81,18 @@ export default function PublicLegalDocumentPage() {
         );
 
   const environmentLabel =
-    environment === "test"
-      ? "TEST"
-      : environment === "demo"
-        ? "DEMO"
-        : "";
+    environment === "production"
+      ? "PROD"
+      : environment === "test"
+        ? "TEST"
+        : environment === "demo"
+          ? "DEMO"
+          : "";
 
   return (
     <div
       className="public-legal-page"
+      data-environment={environment}
     >
       <div
         className="public-legal-shell"
@@ -109,6 +112,9 @@ export default function PublicLegalDocumentPage() {
             {environmentLabel && (
               <span
                 className="public-login-environment"
+                aria-label={
+                  `${environmentLabel} environment`
+                }
               >
                 {environmentLabel}
               </span>
