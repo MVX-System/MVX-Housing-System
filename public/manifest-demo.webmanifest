@@ -1,0 +1,32 @@
+{
+  "id": "/",
+  "name": "MVX System DEMO",
+  "short_name": "MVX DEMO",
+  "description": "MVX housing management platform for residents and administrators.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#101447",
+  "theme_color": "#302AA8",
+  "lang": "lv",
+  "icons": [
+    {
+      "src": "/icons/demo/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/demo/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/demo/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
