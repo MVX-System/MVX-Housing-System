@@ -37,7 +37,7 @@ const login = {
     notNow: "Ne tagad",
     guideTitle: "Pievienot MVX ierīcei",
     guides: {
-      ios: "Safari nospiediet Share, izvēlieties Add to Home Screen un pēc tam Add.",
+      ios: "Safari pārlūkā nospiediet “Kopīgot”, izvēlieties “Pievienot sākuma ekrānam” un pēc tam “Pievienot”. Pēc tam iPhone atgriezīsies sākuma ekrānā. Aizveriet iepriekš atvērto MVX cilni Safari un turpmāk atveriet MVX, izmantojot jauno MVX ikonu.",
       macSafari: "Safari izvēlnē File izvēlieties Add to Dock un apstipriniet pievienošanu.",
       android: "Atveriet pārlūka izvēlni un izvēlieties Install app vai Add to Home screen.",
       desktop: "Atveriet pārlūka izvēlni un izvēlieties Install MVX vai Install app.",
