@@ -319,6 +319,7 @@ echo
 
 echo "===== 4/5 TEST FRONTEND BUILD ====="
 
+VITE_MVX_ENV="test" \
 VITE_API_BASE_URL="$TEST_API_URL" \
   npm run build
 
@@ -339,6 +340,29 @@ if grep -Rqs \
 then
   fail "PROD Worker URL was found in TEST dist."
 fi
+
+if ! grep -Fqs \
+  "/manifest-test.webmanifest" \
+  dist/index.html
+then
+  fail "TEST manifest is missing from dist/index.html."
+fi
+
+if ! grep -Fqs \
+  "/icons/test/apple-touch-icon.png" \
+  dist/index.html
+then
+  fail "TEST apple-touch-icon is missing from dist/index.html."
+fi
+
+if grep -Eqs \
+  'manifest-(production|demo)\\.webmanifest|/icons/(production|demo)/(apple-touch-icon|favicon-32)\\.png' \
+  dist/index.html
+then
+  fail "Non-TEST PWA metadata was found in TEST dist/index.html."
+fi
+
+echo "PASS: TEST PWA manifest and icon metadata verified."
 
 echo
 echo "PASS: TEST Worker URL found in dist"
