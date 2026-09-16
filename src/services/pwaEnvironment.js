@@ -8,7 +8,7 @@ const PWA_ENVIRONMENTS = Object.freeze({
     iconBase:
       "/icons/production",
     themeColor:
-      "#07515B",
+      "#245A8D",
   },
   test: {
     key: "test",
@@ -19,7 +19,7 @@ const PWA_ENVIRONMENTS = Object.freeze({
     iconBase:
       "/icons/test",
     themeColor:
-      "#0B55D8",
+      "#147D86",
   },
   demo: {
     key: "demo",
@@ -30,7 +30,7 @@ const PWA_ENVIRONMENTS = Object.freeze({
     iconBase:
       "/icons/demo",
     themeColor:
-      "#302AA8",
+      "#5B57A6",
   },
 });
 

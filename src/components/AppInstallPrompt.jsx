@@ -403,11 +403,7 @@ export default function AppInstallPrompt() {
               <button
                 type="button"
                 className="mvx-install-prompt__button mvx-install-prompt__button--secondary"
-                onClick={() =>
-                  setGuideOpen(
-                    false
-                  )
-                }
+                onClick={dismissForSession}
               >
                 {t(
                   "login.install.back"
