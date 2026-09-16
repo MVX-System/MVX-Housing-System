@@ -18,7 +18,7 @@ const PWA_ENVIRONMENTS = {
     favicon:
       "/icons/production/favicon-32.png",
     themeColor:
-      "#07515B",
+      "#245A8D",
     appTitle:
       "MVX",
   },
@@ -30,7 +30,7 @@ const PWA_ENVIRONMENTS = {
     favicon:
       "/icons/test/favicon-32.png",
     themeColor:
-      "#0B55D8",
+      "#147D86",
     appTitle:
       "MVX TEST",
   },
@@ -42,7 +42,7 @@ const PWA_ENVIRONMENTS = {
     favicon:
       "/icons/demo/favicon-32.png",
     themeColor:
-      "#302AA8",
+      "#5B57A6",
     appTitle:
       "MVX DEMO",
   },
