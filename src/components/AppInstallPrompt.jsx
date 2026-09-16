@@ -62,6 +62,39 @@ function safeGet(
   }
 }
 
+function restoreApplicationFocus() {
+  window.requestAnimationFrame(
+    () => {
+      const root =
+        document.getElementById(
+          "root"
+        );
+
+      if (!root) {
+        window.focus();
+        return;
+      }
+
+      if (
+        !root.hasAttribute(
+          "tabindex"
+        )
+      ) {
+        root.setAttribute(
+          "tabindex",
+          "-1"
+        );
+      }
+
+      window.focus();
+
+      root.focus({
+        preventScroll: true,
+      });
+    }
+  );
+}
+
 function safeSet(
   storage,
   key,
@@ -239,6 +272,8 @@ export default function AppInstallPrompt() {
       );
       setVisible(false);
       setGuideOpen(false);
+
+      restoreApplicationFocus();
     };
 
   const install =
