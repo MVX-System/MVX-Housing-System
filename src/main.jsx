@@ -23,6 +23,12 @@ import {
 import EnvironmentThemeBridge
   from "./context/EnvironmentThemeBridge";
 
+import EnvironmentPwaBridge
+  from "./context/EnvironmentPwaBridge";
+
+import AppInstallPrompt
+  from "./components/AppInstallPrompt";
+
 import {
   AuthProvider,
 } from "./context/AuthContext";
@@ -34,32 +40,6 @@ import {
 import {
   LanguageProvider,
 } from "./i18n";
-
-function ensureWebAppManifest() {
-  const existingManifest =
-    document.querySelector(
-      'link[rel="manifest"]'
-    );
-
-  if (existingManifest) {
-    return;
-  }
-
-  const manifestLink =
-    document.createElement(
-      "link"
-    );
-
-  manifestLink.rel =
-    "manifest";
-
-  manifestLink.href =
-    "/manifest.webmanifest";
-
-  document.head.appendChild(
-    manifestLink
-  );
-}
 
 async function registerServiceWorker() {
   if (
@@ -99,9 +79,6 @@ async function registerServiceWorker() {
     return null;
   }
 }
-
-ensureWebAppManifest();
-
 window.addEventListener(
   "load",
   () => {
@@ -116,7 +93,9 @@ createRoot(
     <LanguageProvider>
       <FacilityProvider>
         <EnvironmentThemeBridge>
-          <PublicContactProvider>
+          <EnvironmentPwaBridge>
+            <AppInstallPrompt />
+            <PublicContactProvider>
             <AuthProvider>
             <ModeProvider>
               <RouterProvider
@@ -125,6 +104,7 @@ createRoot(
             </ModeProvider>
             </AuthProvider>
           </PublicContactProvider>
+          </EnvironmentPwaBridge>
         </EnvironmentThemeBridge>
       </FacilityProvider>
     </LanguageProvider>

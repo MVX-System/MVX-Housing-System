@@ -30,6 +30,21 @@ const login = {
     close: "Aizvērt",
   },
 
+  install: {
+    title: "Instalēt MVX šajā ierīcē?",
+    message: "Pievienojiet MVX šai ierīcei ātrai piekļuvei.",
+    install: "Instalēt",
+    notNow: "Ne tagad",
+    guideTitle: "Pievienot MVX ierīcei",
+    guides: {
+      ios: "Safari nospiediet Share, izvēlieties Add to Home Screen un pēc tam Add.",
+      macSafari: "Safari izvēlnē File izvēlieties Add to Dock un apstipriniet pievienošanu.",
+      android: "Atveriet pārlūka izvēlni un izvēlieties Install app vai Add to Home screen.",
+      desktop: "Atveriet pārlūka izvēlni un izvēlieties Install MVX vai Install app.",
+    },
+    back: "Atpakaļ",
+    done: "Gatavs — pievienots",
+  },
   recovery: {
     title: "Piekļuves atjaunošana",
     description: "Ievadiet savu Nick, administratora izsniegto Recovery Code un jauno paroli.",

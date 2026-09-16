@@ -30,6 +30,21 @@ const login = {
     close: "Close",
   },
 
+  install: {
+    title: "Install MVX on this device?",
+    message: "Add MVX to this device for quick access.",
+    install: "Install",
+    notNow: "Not now",
+    guideTitle: "Add MVX to this device",
+    guides: {
+      ios: "In Safari, tap Share, choose Add to Home Screen, then tap Add.",
+      macSafari: "In Safari, choose File → Add to Dock and confirm.",
+      android: "Open the browser menu and choose Install app or Add to Home screen.",
+      desktop: "Open the browser menu and choose Install MVX or Install app.",
+    },
+    back: "Back",
+    done: "Done — added",
+  },
   recovery: {
     title: "Account recovery",
     description: "Enter your Nick, the Recovery Code provided by the administrator, and a new password.",

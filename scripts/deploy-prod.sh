@@ -421,12 +421,44 @@ PYVERIFY
 echo
 echo "===== 4/5 PROD FRONTEND BUILD ====="
 
+VITE_MVX_ENV="production" \
 VITE_API_BASE_URL="$PROD_API_URL" \
   npm run build
 
 [ -f dist/index.html ] || {
   fail "dist/index.html was not created."
 }
+
+if ! grep -Fq \
+  '/manifest-production.webmanifest' \
+  dist/index.html
+then
+  fail "PROD manifest metadata is missing from dist/index.html."
+fi
+
+if ! grep -Fq \
+  '/icons/production/apple-touch-icon.png' \
+  dist/index.html
+then
+  fail "PROD Apple touch icon metadata is missing from dist/index.html."
+fi
+
+if ! grep -Fq \
+  '/icons/production/favicon-32.png' \
+  dist/index.html
+then
+  fail "PROD favicon metadata is missing from dist/index.html."
+fi
+
+if grep -Eq \
+  'manifest-(test|demo)\.webmanifest|/icons/(test|demo)/(apple-touch-icon|favicon-32)\.png' \
+  dist/index.html
+then
+  fail "Foreign environment PWA metadata was found in PROD dist/index.html."
+fi
+
+echo
+echo "PASS: PROD PWA manifest and icon metadata verified."
 
 if ! grep -Rqs \
   "$PROD_API_URL" \
