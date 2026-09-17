@@ -221,7 +221,7 @@ Before `approved-for-v0.0`, the package must pass all of the following:
 - no contradiction with public legal documents;
 - authenticated route, mode, and password-gate verification after UI integration.
 
-## 15. Baseline audit finding
+## 15. Baseline audit finding and resolution
 
 The PR-6B audit baseline is:
 
@@ -231,4 +231,11 @@ e5ea2f14dd6d2453726adfc82a809a8f8c9887bd
 
 At this baseline, `src/pages/WaterMetersPage.jsx` and `src/pages/WaterReadingsPage.jsx` are active Admin Mode pages but do not use the LV/EN/RU translation system. Their page content is English-only, while the corresponding Sidebar labels are localized.
 
-This mismatch must be resolved or explicitly dispositioned before the Latvian Admin Mode Manual is frozen. The manuals must not conceal the mismatch by presenting non-existent translated UI labels as though they were already displayed by the application.
+PR-6C resolves this mismatch by adding active page-local LV, EN, and RU dictionaries to both pages. The completed localization audit confirms:
+
+- complete LV/EN/RU key parity on both pages;
+- no untranslated LV/RU values or residual user-facing strings outside the dictionaries;
+- preserved API paths, `useWater` contracts, and form machine values;
+- a successful production build.
+
+The approved Admin water terminology is recorded in `terminology.md` and may be used in the Admin Mode Manual. Functional walkthrough verification is still required before the manual content advances from `draft` to `reviewed`.
