@@ -72,6 +72,7 @@ const TEXT = {
     installation: "Uzstādīšana",
     installedDate: "Uzstādīšanas datums",
     initialReading: "Sākotnējais rādījums, m³",
+    initialReadingPlaceholder: "0,000",
     readingAtInstallation: "Rādījums uzstādīšanas brīdī kubikmetros.",
     certificateAvailable: "Vai kalibrēšanas sertifikāts ir pieejams?",
     yes: "Jā",
@@ -190,6 +191,7 @@ const TEXT = {
     installation: "Installation",
     installedDate: "Installed Date",
     initialReading: "Initial Reading, m³",
+    initialReadingPlaceholder: "0.000",
     readingAtInstallation: "Reading at installation, in cubic metres.",
     certificateAvailable: "Calibration Certificate Available?",
     yes: "Yes",
@@ -308,6 +310,7 @@ const TEXT = {
     installation: "Установка",
     installedDate: "Дата установки",
     initialReading: "Начальное показание, м³",
+    initialReadingPlaceholder: "0,000",
     readingAtInstallation: "Показание в момент установки в кубических метрах.",
     certificateAvailable: "Сертификат калибровки доступен?",
     yes: "Да",
@@ -940,7 +943,12 @@ export default function WaterMetersPage() {
                 ) / 1000
               )
                 .toFixed(3)
-                .replace(".", ","),
+                .replace(
+                  ".",
+                  text.initialReadingPlaceholder.includes(",")
+                    ? ","
+                    : "."
+                ),
         initialReadingDate:
           meter.initial_reading_date
             ? String(
@@ -2721,7 +2729,7 @@ export default function WaterMetersPage() {
             <input
               type="text"
               inputMode="decimal"
-              placeholder="0,000"
+              placeholder={text.initialReadingPlaceholder}
               value={
                 addForm.initialReading
               }
@@ -3277,7 +3285,7 @@ export default function WaterMetersPage() {
           </FormField>
 
           <FormField label={text.initialReading}>
-            <input type="text" inputMode="decimal" placeholder="0,000" value={editForm.initialReading} disabled={editSubmitting} onChange={(event) => setEditForm((current) => ({...current, initialReading: event.target.value}))} style={fieldStyle} />
+            <input type="text" inputMode="decimal" placeholder={text.initialReadingPlaceholder} value={editForm.initialReading} disabled={editSubmitting} onChange={(event) => setEditForm((current) => ({...current, initialReading: event.target.value}))} style={fieldStyle} />
           </FormField>
 
           <FormField label={text.initialReadingDate}>
