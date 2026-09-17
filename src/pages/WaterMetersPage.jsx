@@ -13,7 +13,386 @@ import { api }
 import useWater
   from "../hooks/useWater";
 
+import {
+  useTranslation,
+} from "../i18n";
+
+const LOCALE_MAP = {
+  lv: "lv-LV",
+  en: "en-GB",
+  ru: "ru-RU",
+};
+
+const TEXT = {
+  lv: {
+    title: "Ūdens skaitītāju pārvaldība",
+    subtitle: "Pārvaldiet dzīvokļu aktīvos un neaktīvos ūdens skaitītājus.",
+    refresh: "Atjaunot",
+    addMeter: "Pievienot skaitītāju",
+    deactivate: "Deaktivizēt",
+    valid: "Derīga",
+    expiresSoon: "Drīz beigsies",
+    expired: "Termiņš beidzies",
+    noCalibration: "Nav kalibrēšanas",
+    searchPlaceholder: "Meklēt pēc dzīvokļa, sērijas numura vai stāvvada...",
+    allTypes: "Visi veidi",
+    coldWater: "Aukstais ūdens",
+    hotWater: "Karstais ūdens",
+    allStatuses: "Visi statusi",
+    active: "Aktīvs",
+    inactive: "Neaktīvs",
+    allCalibrationStatuses: "Visi kalibrēšanas statusi",
+    loadingWaterMeters: "Ielādē ūdens skaitītājus...",
+    noMetersMatch: "Neviens ūdens skaitītājs neatbilst atlasītajiem filtriem.",
+    apartment: "Dzīvoklis",
+    apartmentPrefix: "Dzīvoklis Nr.",
+    typeLocation: "Veids / atrašanās vieta",
+    serialNumber: "Sērijas numurs",
+    riser: "Stāvvads",
+    installed: "Uzstādīts",
+    calibration: "Kalibrēšana",
+    expires: "Derīga līdz",
+    calibrationStatus: "Kalibrēšanas statuss",
+    document: "Dokuments",
+    lastReading: "Pēdējais rādījums",
+    lastDate: "Pēdējais datums",
+    status: "Statuss",
+    actions: "Darbības",
+    view: "Skatīt",
+    numberAbbreviation: "Nr.",
+    edit: "Rediģēt",
+    addWaterMeter: "Pievienot ūdens skaitītāju",
+    general: "Vispārīgi",
+    selectApartment: "Izvēlieties dzīvokli",
+    loadingRisers: "Ielādē stāvvadus...",
+    selectRiser: "Izvēlieties stāvvadu",
+    type: "Veids",
+    manufacturer: "Ražotājs",
+    model: "Modelis",
+    installation: "Uzstādīšana",
+    installedDate: "Uzstādīšanas datums",
+    initialReading: "Sākotnējais rādījums, m³",
+    readingAtInstallation: "Rādījums uzstādīšanas brīdī kubikmetros.",
+    certificateAvailable: "Vai kalibrēšanas sertifikāts ir pieejams?",
+    yes: "Jā",
+    noUnavailable: "Nē / nav pieejams",
+    certificateUnavailableWarning: "Skaitītāju var reģistrēt bez kalibrēšanas dokumenta. Pirms saglabāšanas būs nepieciešams atsevišķs apstiprinājums.",
+    calibrationOnInstallationDate: "Kalibrēšana veikta uzstādīšanas datumā",
+    calibrationDate: "Kalibrēšanas datums",
+    validityPeriod: "Derīguma termiņš",
+    months12: "12 mēneši",
+    months24: "24 mēneši",
+    months48: "48 mēneši",
+    months60: "60 mēneši",
+    months72: "72 mēneši",
+    custom: "Cits...",
+    months: "Mēneši",
+    expiresAt: "Derīga līdz",
+    calculatedAutomatically: "Aprēķina automātiski",
+    certificateNumber: "Sertifikāta numurs",
+    calibrationLaboratory: "Kalibrēšanas laboratorija",
+    calibrationDocument: "Kalibrēšanas dokuments",
+    supportedFormats: "Atbalstītie formāti: PDF, eDoc, ASiC-E. Maksimālais izmērs: 10 MB.",
+    calibrationNotes: "Kalibrēšanas piezīmes",
+    cancel: "Atcelt",
+    adding: "Pievieno...",
+    editWaterMeter: "Rediģēt ūdens skaitītāju",
+    notAssigned: "Nav piešķirts",
+    installedDateOptional: "Uzstādīšanas datums (nav obligāts)",
+    initialReadingDate: "Sākotnējā rādījuma datums",
+    correctionReason: "Labošanas iemesls",
+    correctionReasonHint: "Obligāts, ja tiek mainīts sākotnējais rādījums vai tā datums.",
+    saving: "Saglabā...",
+    saveChanges: "Saglabāt izmaiņas",
+    meter: "Skaitītājs",
+    calibrationHistory: "Kalibrēšanas vēsture",
+    addCalibration: "Pievienot kalibrēšanu",
+    validityPeriodMonths: "Derīguma termiņš, mēneši",
+    notes: "Piezīmes",
+    history: "Vēsture",
+    loading: "Ielādē...",
+    noCalibrationHistory: "Kalibrēšanas vēstures nav.",
+    certificate: "Sertifikāts",
+    laboratory: "Laboratorija",
+    viewDocument: "Skatīt dokumentu",
+    editMeter: "Rediģēt skaitītāju",
+    viewCalibrationDocument: "Skatīt kalibrēšanas dokumentu",
+    deactivateWaterMeters: "Deaktivizēt ūdens skaitītājus",
+    deactivateDescription: "Izvēlieties vienu vai vairākus aktīvus ūdens skaitītājus. Vēsturiskie rādījumi tiks saglabāti.",
+    serial: "Sērijas numurs",
+    reason: "Iemesls",
+    replacement: "Nomaiņa",
+    fault: "Bojājums",
+    removed: "Noņemts",
+    other: "Cits",
+    deactivating: "Deaktivizē...",
+    dataLoadFailed: "Neizdevās ielādēt ūdens skaitītāju datus.",
+    invalidInitialReading: "Ievadiet sākotnējo rādījumu m³ ar ne vairāk kā 3 zīmēm aiz komata.",
+    meterUpdated: "Ūdens skaitītājs atjaunināts.",
+    selectRiserAlert: "Izvēlieties stāvvadu.",
+    selectCalibrationDate: "Izvēlieties kalibrēšanas datumu.",
+    selectCalibrationDocument: "Izvēlieties kalibrēšanas dokumentu.",
+    confirmWithoutCertificate: "Kalibrēšanas sertifikāts nav pieejams. Vai pievienot šo ūdens skaitītāju bez kalibrēšanas dokumenta?",
+    meterAndCalibrationAdded: "Ūdens skaitītājs un kalibrēšanas dokuments pievienoti.",
+    meterAddedWithoutCalibration: "Ūdens skaitītājs pievienots bez kalibrēšanas dokumenta.",
+    calibrationSaveFailed: "Ūdens skaitītājs tika izveidots, bet kalibrēšanas dokuments netika saglabāts.",
+    calibrationAdded: "Kalibrēšana pievienota.",
+    selectActiveMeter: "Izvēlieties vismaz vienu aktīvu ūdens skaitītāju.",
+    meterDeactivated: "Ūdens skaitītājs deaktivizēts.",
+    metersDeactivated: "Deaktivizēti {count} ūdens skaitītāji.",
+    expiresInDays: "Beidzas pēc {days} d.",
+  },
+  en: {
+    title: "Water Meter Management",
+    subtitle: "Manage active and inactive apartment water meters.",
+    refresh: "Refresh",
+    addMeter: "Add Meter",
+    deactivate: "Deactivate",
+    valid: "Valid",
+    expiresSoon: "Expires soon",
+    expired: "Expired",
+    noCalibration: "No calibration",
+    searchPlaceholder: "Search apartment, serial, riser...",
+    allTypes: "All types",
+    coldWater: "Cold Water",
+    hotWater: "Hot Water",
+    allStatuses: "All statuses",
+    active: "Active",
+    inactive: "Inactive",
+    allCalibrationStatuses: "All calibration statuses",
+    loadingWaterMeters: "Loading water meters...",
+    noMetersMatch: "No water meters match the selected filters.",
+    apartment: "Apartment",
+    apartmentPrefix: "Apartment #",
+    typeLocation: "Type / Location",
+    serialNumber: "Serial Number",
+    riser: "Riser",
+    installed: "Installed",
+    calibration: "Calibration",
+    expires: "Expires",
+    calibrationStatus: "Calibration Status",
+    document: "Document",
+    lastReading: "Last Reading",
+    lastDate: "Last Date",
+    status: "Status",
+    actions: "Actions",
+    view: "View",
+    numberAbbreviation: "No.",
+    edit: "Edit",
+    addWaterMeter: "Add Water Meter",
+    general: "General",
+    selectApartment: "Select apartment",
+    loadingRisers: "Loading risers...",
+    selectRiser: "Select riser",
+    type: "Type",
+    manufacturer: "Manufacturer",
+    model: "Model",
+    installation: "Installation",
+    installedDate: "Installed Date",
+    initialReading: "Initial Reading, m³",
+    readingAtInstallation: "Reading at installation, in cubic metres.",
+    certificateAvailable: "Calibration Certificate Available?",
+    yes: "Yes",
+    noUnavailable: "No / unavailable",
+    certificateUnavailableWarning: "The meter can be registered without a calibration document. A separate confirmation will be requested before saving.",
+    calibrationOnInstallationDate: "Calibration performed on installation date",
+    calibrationDate: "Calibration Date",
+    validityPeriod: "Validity Period",
+    months12: "12 months",
+    months24: "24 months",
+    months48: "48 months",
+    months60: "60 months",
+    months72: "72 months",
+    custom: "Custom...",
+    months: "Months",
+    expiresAt: "Expires At",
+    calculatedAutomatically: "Calculated automatically",
+    certificateNumber: "Certificate Number",
+    calibrationLaboratory: "Calibration Laboratory",
+    calibrationDocument: "Calibration Document",
+    supportedFormats: "Supported formats: PDF, eDoc, ASiC-E. Maximum size: 10 MB.",
+    calibrationNotes: "Calibration Notes",
+    cancel: "Cancel",
+    adding: "Adding...",
+    editWaterMeter: "Edit Water Meter",
+    notAssigned: "Not assigned",
+    installedDateOptional: "Installed Date (optional)",
+    initialReadingDate: "Initial Reading Date",
+    correctionReason: "Reason for correction",
+    correctionReasonHint: "Required when the initial reading or its date is changed.",
+    saving: "Saving...",
+    saveChanges: "Save Changes",
+    meter: "Meter",
+    calibrationHistory: "Calibration History",
+    addCalibration: "Add Calibration",
+    validityPeriodMonths: "Validity Period, months",
+    notes: "Notes",
+    history: "History",
+    loading: "Loading...",
+    noCalibrationHistory: "No calibration history.",
+    certificate: "Certificate",
+    laboratory: "Laboratory",
+    viewDocument: "View Document",
+    editMeter: "Edit Meter",
+    viewCalibrationDocument: "View Calibration Document",
+    deactivateWaterMeters: "Deactivate Water Meters",
+    deactivateDescription: "Select one or more active water meters. Historical readings will be preserved.",
+    serial: "Serial",
+    reason: "Reason",
+    replacement: "Replacement",
+    fault: "Fault",
+    removed: "Removed",
+    other: "Other",
+    deactivating: "Deactivating...",
+    dataLoadFailed: "Water meter data load failed.",
+    invalidInitialReading: "Enter initial reading in m³ with up to 3 decimal places.",
+    meterUpdated: "Water meter updated.",
+    selectRiserAlert: "Select a riser.",
+    selectCalibrationDate: "Select calibration date.",
+    selectCalibrationDocument: "Select calibration document.",
+    confirmWithoutCertificate: "The calibration certificate is unavailable. Add this water meter without a calibration document?",
+    meterAndCalibrationAdded: "Water meter and calibration document added.",
+    meterAddedWithoutCalibration: "Water meter added without calibration document.",
+    calibrationSaveFailed: "Water meter was created, but the calibration document was not saved.",
+    calibrationAdded: "Calibration added.",
+    selectActiveMeter: "Select at least one active water meter.",
+    meterDeactivated: "Water meter deactivated.",
+    metersDeactivated: "{count} water meters deactivated.",
+    expiresInDays: "Expires in {days} d",
+  },
+  ru: {
+    title: "Управление счётчиками воды",
+    subtitle: "Управляйте активными и неактивными квартирными счётчиками воды.",
+    refresh: "Обновить",
+    addMeter: "Добавить счётчик",
+    deactivate: "Деактивировать",
+    valid: "Действует",
+    expiresSoon: "Скоро истекает",
+    expired: "Срок истёк",
+    noCalibration: "Нет калибровки",
+    searchPlaceholder: "Поиск по квартире, серийному номеру или стояку...",
+    allTypes: "Все типы",
+    coldWater: "Холодная вода",
+    hotWater: "Горячая вода",
+    allStatuses: "Все статусы",
+    active: "Активен",
+    inactive: "Неактивен",
+    allCalibrationStatuses: "Все статусы калибровки",
+    loadingWaterMeters: "Загрузка счётчиков воды...",
+    noMetersMatch: "Нет счётчиков воды, соответствующих выбранным фильтрам.",
+    apartment: "Квартира",
+    apartmentPrefix: "Квартира №",
+    typeLocation: "Тип / расположение",
+    serialNumber: "Серийный номер",
+    riser: "Стояк",
+    installed: "Установлен",
+    calibration: "Калибровка",
+    expires: "Действует до",
+    calibrationStatus: "Статус калибровки",
+    document: "Документ",
+    lastReading: "Последнее показание",
+    lastDate: "Последняя дата",
+    status: "Статус",
+    actions: "Действия",
+    view: "Открыть",
+    numberAbbreviation: "№",
+    edit: "Изменить",
+    addWaterMeter: "Добавить счётчик воды",
+    general: "Основные данные",
+    selectApartment: "Выберите квартиру",
+    loadingRisers: "Загрузка стояков...",
+    selectRiser: "Выберите стояк",
+    type: "Тип",
+    manufacturer: "Производитель",
+    model: "Модель",
+    installation: "Установка",
+    installedDate: "Дата установки",
+    initialReading: "Начальное показание, м³",
+    readingAtInstallation: "Показание в момент установки в кубических метрах.",
+    certificateAvailable: "Сертификат калибровки доступен?",
+    yes: "Да",
+    noUnavailable: "Нет / недоступен",
+    certificateUnavailableWarning: "Счётчик можно зарегистрировать без документа о калибровке. Перед сохранением потребуется отдельное подтверждение.",
+    calibrationOnInstallationDate: "Калибровка выполнена в дату установки",
+    calibrationDate: "Дата калибровки",
+    validityPeriod: "Срок действия",
+    months12: "12 месяцев",
+    months24: "24 месяца",
+    months48: "48 месяцев",
+    months60: "60 месяцев",
+    months72: "72 месяца",
+    custom: "Другой...",
+    months: "Месяцы",
+    expiresAt: "Действует до",
+    calculatedAutomatically: "Рассчитывается автоматически",
+    certificateNumber: "Номер сертификата",
+    calibrationLaboratory: "Калибровочная лаборатория",
+    calibrationDocument: "Документ о калибровке",
+    supportedFormats: "Поддерживаемые форматы: PDF, eDoc, ASiC-E. Максимальный размер: 10 МБ.",
+    calibrationNotes: "Примечания к калибровке",
+    cancel: "Отмена",
+    adding: "Добавление...",
+    editWaterMeter: "Изменить счётчик воды",
+    notAssigned: "Не назначен",
+    installedDateOptional: "Дата установки (необязательно)",
+    initialReadingDate: "Дата начального показания",
+    correctionReason: "Причина исправления",
+    correctionReasonHint: "Обязательно при изменении начального показания или его даты.",
+    saving: "Сохранение...",
+    saveChanges: "Сохранить изменения",
+    meter: "Счётчик",
+    calibrationHistory: "История калибровки",
+    addCalibration: "Добавить калибровку",
+    validityPeriodMonths: "Срок действия, месяцев",
+    notes: "Примечания",
+    history: "История",
+    loading: "Загрузка...",
+    noCalibrationHistory: "История калибровки отсутствует.",
+    certificate: "Сертификат",
+    laboratory: "Лаборатория",
+    viewDocument: "Открыть документ",
+    editMeter: "Изменить счётчик",
+    viewCalibrationDocument: "Открыть документ о калибровке",
+    deactivateWaterMeters: "Деактивировать счётчики воды",
+    deactivateDescription: "Выберите один или несколько активных счётчиков воды. История показаний будет сохранена.",
+    serial: "Серийный номер",
+    reason: "Причина",
+    replacement: "Замена",
+    fault: "Неисправность",
+    removed: "Снят",
+    other: "Другое",
+    deactivating: "Деактивация...",
+    dataLoadFailed: "Не удалось загрузить данные счётчиков воды.",
+    invalidInitialReading: "Введите начальное показание в м³ с точностью не более 3 знаков после запятой.",
+    meterUpdated: "Счётчик воды обновлён.",
+    selectRiserAlert: "Выберите стояк.",
+    selectCalibrationDate: "Выберите дату калибровки.",
+    selectCalibrationDocument: "Выберите документ о калибровке.",
+    confirmWithoutCertificate: "Сертификат калибровки недоступен. Добавить этот счётчик воды без документа о калибровке?",
+    meterAndCalibrationAdded: "Счётчик воды и документ о калибровке добавлены.",
+    meterAddedWithoutCalibration: "Счётчик воды добавлен без документа о калибровке.",
+    calibrationSaveFailed: "Счётчик воды создан, но документ о калибровке не сохранён.",
+    calibrationAdded: "Калибровка добавлена.",
+    selectActiveMeter: "Выберите хотя бы один активный счётчик воды.",
+    meterDeactivated: "Счётчик воды деактивирован.",
+    metersDeactivated: "Деактивировано счётчиков: {count}.",
+    expiresInDays: "Истекает через {days} дн.",
+  },
+};
+
 export default function WaterMetersPage() {
+
+  const {
+    language,
+  } = useTranslation();
+
+  const text =
+    TEXT[language] ||
+    TEXT.en;
+
+  const locale =
+    LOCALE_MAP[language] ||
+    LOCALE_MAP.en;
 
   const {
     adminWaterMeters,
@@ -234,7 +613,7 @@ export default function WaterMetersPage() {
         );
 
         alert(
-          "Water meter data load failed"
+          text.dataLoadFailed
         );
 
       } finally {
@@ -266,19 +645,23 @@ export default function WaterMetersPage() {
 
             riser:
               meter.riser_code ||
-              "Not assigned",
+              text.notAssigned,
 
             location:
               meter.local_label ||
-              "Not assigned",
+              text.notAssigned,
 
             calibration_status:
               calculateCalibrationStatus(
-                meter.calibration_expires_at
+                meter.calibration_expires_at,
+                text
               ).key,
           })
         ),
-      [adminWaterMeters]
+      [
+        adminWaterMeters,
+        text,
+      ]
     );
 
   const filteredMeters =
@@ -587,7 +970,7 @@ export default function WaterMetersPage() {
         initialReading === null
       ) {
         alert(
-          "Enter initial reading in m³ with up to 3 decimal places"
+          text.invalidInitialReading
         );
         return;
       }
@@ -624,7 +1007,7 @@ export default function WaterMetersPage() {
           setEditOpen(false);
           await loadAdminWaterMeters();
           alert(
-            "Water meter updated"
+            text.meterUpdated
           );
         }
       } finally {
@@ -754,7 +1137,7 @@ export default function WaterMetersPage() {
         ) {
 
           alert(
-            "Select a riser"
+            text.selectRiserAlert
           );
 
           return;
@@ -766,7 +1149,7 @@ export default function WaterMetersPage() {
         ) {
 
           alert(
-            "Select calibration date"
+            text.selectCalibrationDate
           );
 
           return;
@@ -778,7 +1161,7 @@ export default function WaterMetersPage() {
         ) {
 
           alert(
-            "Select calibration document"
+            text.selectCalibrationDocument
           );
 
           return;
@@ -787,7 +1170,7 @@ export default function WaterMetersPage() {
         if (
           !addForm.certificateAvailable &&
           !window.confirm(
-            "The calibration certificate is unavailable. Add this water meter without a calibration document?"
+            text.confirmWithoutCertificate
           )
         ) {
           return;
@@ -804,7 +1187,7 @@ export default function WaterMetersPage() {
         ) {
 
           alert(
-            "Enter initial reading in m³ with up to 3 decimal places"
+            text.invalidInitialReading
           );
 
           return;
@@ -911,14 +1294,14 @@ export default function WaterMetersPage() {
 
           alert(
             addForm.certificateAvailable
-              ? "Water meter and calibration document added"
-              : "Water meter added without calibration document"
+              ? text.meterAndCalibrationAdded
+              : text.meterAddedWithoutCalibration
           );
 
         } else {
 
           alert(
-            "Water meter was created, but the calibration document was not saved."
+            text.calibrationSaveFailed
           );
         }
 
@@ -1031,7 +1414,7 @@ export default function WaterMetersPage() {
           });
 
           alert(
-            "Calibration added"
+            text.calibrationAdded
           );
         }
 
@@ -1086,7 +1469,7 @@ export default function WaterMetersPage() {
       ) {
 
         alert(
-          "Select at least one active water meter"
+          text.selectActiveMeter
         );
 
         return;
@@ -1142,8 +1525,11 @@ export default function WaterMetersPage() {
 
           alert(
             successCount === 1
-              ? "Water meter deactivated"
-              : `${successCount} water meters deactivated`
+              ? text.meterDeactivated
+              : text.metersDeactivated.replace(
+                  "{count}",
+                  successCount
+                )
           );
         }
 
@@ -1159,8 +1545,8 @@ export default function WaterMetersPage() {
     type
   ) =>
     type === "hot"
-      ? "Hot Water"
-      : "Cold Water";
+      ? text.hotWater
+      : text.coldWater;
 
   const formatDate = (
     value
@@ -1170,8 +1556,30 @@ export default function WaterMetersPage() {
       return "—";
     }
 
-    return String(value)
-      .slice(0, 10);
+    const date =
+      new Date(
+        `${String(value).slice(
+          0,
+          10
+        )}T00:00:00`
+      );
+
+    if (
+      Number.isNaN(
+        date.getTime()
+      )
+    ) {
+      return String(value);
+    }
+
+    return date.toLocaleDateString(
+      locale,
+      {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }
+    );
   };
 
   const formatReading = (
@@ -1197,12 +1605,13 @@ export default function WaterMetersPage() {
       return String(value);
     }
 
-    return (
-      (storedValue / 1000)
-        .toFixed(3)
-        .replace(".", ",") +
-      " m³"
-    );
+    return `${new Intl.NumberFormat(
+      locale,
+      {
+        minimumFractionDigits: 3,
+        maximumFractionDigits: 3,
+      }
+    ).format(storedValue / 1000)} m³`;
   };
 
   const getCalibrationStatus =
@@ -1210,7 +1619,8 @@ export default function WaterMetersPage() {
       expiresAt
     ) =>
       calculateCalibrationStatus(
-        expiresAt
+        expiresAt,
+        text
       );
 
   return (
@@ -1236,7 +1646,7 @@ export default function WaterMetersPage() {
               margin: 0,
             }}
           >
-            Water Meter Management
+            {text.title}
           </h1>
 
           <p
@@ -1247,8 +1657,7 @@ export default function WaterMetersPage() {
               lineHeight: 1.5,
             }}
           >
-            Manage active and inactive
-            apartment water meters.
+            {text.subtitle}
           </p>
 
         </div>
@@ -1268,7 +1677,7 @@ export default function WaterMetersPage() {
             }
             style={secondaryButton}
           >
-            Refresh
+            {text.refresh}
           </button>
 
           <button
@@ -1278,7 +1687,7 @@ export default function WaterMetersPage() {
             }
             style={primaryButton}
           >
-            Add Meter
+            {text.addMeter}
           </button>
 
           <button
@@ -1306,7 +1715,7 @@ export default function WaterMetersPage() {
                   : "pointer",
             }}
           >
-            Deactivate
+            {text.deactivate}
           </button>
 
         </div>
@@ -1324,7 +1733,7 @@ export default function WaterMetersPage() {
       >
 
         <CalibrationSummaryCard
-          label="Valid"
+          label={text.valid}
           value={
             calibrationSummary.valid
           }
@@ -1348,7 +1757,7 @@ export default function WaterMetersPage() {
         />
 
         <CalibrationSummaryCard
-          label="Expires soon"
+          label={text.expiresSoon}
           value={
             calibrationSummary.warning
           }
@@ -1372,7 +1781,7 @@ export default function WaterMetersPage() {
         />
 
         <CalibrationSummaryCard
-          label="Expired"
+          label={text.expired}
           value={
             calibrationSummary.expired
           }
@@ -1396,7 +1805,7 @@ export default function WaterMetersPage() {
         />
 
         <CalibrationSummaryCard
-          label="No calibration"
+          label={text.noCalibration}
           value={
             calibrationSummary.missing
           }
@@ -1457,7 +1866,9 @@ export default function WaterMetersPage() {
                 })
               )
             }
-            placeholder="Search apartment, serial, riser..."
+            placeholder={
+              text.searchPlaceholder
+            }
             style={fieldStyle}
           />
 
@@ -1476,13 +1887,13 @@ export default function WaterMetersPage() {
             style={fieldStyle}
           >
             <option value="all">
-              All types
+              {text.allTypes}
             </option>
             <option value="cold">
-              Cold Water
+              {text.coldWater}
             </option>
             <option value="hot">
-              Hot Water
+              {text.hotWater}
             </option>
           </select>
 
@@ -1503,13 +1914,13 @@ export default function WaterMetersPage() {
             style={fieldStyle}
           >
             <option value="all">
-              All statuses
+              {text.allStatuses}
             </option>
             <option value="active">
-              Active
+              {text.active}
             </option>
             <option value="inactive">
-              Inactive
+              {text.inactive}
             </option>
           </select>
 
@@ -1530,19 +1941,19 @@ export default function WaterMetersPage() {
             style={fieldStyle}
           >
             <option value="all">
-              All calibration statuses
+              {text.allCalibrationStatuses}
             </option>
             <option value="valid">
-              Valid
+              {text.valid}
             </option>
             <option value="warning">
-              Expires soon
+              {text.expiresSoon}
             </option>
             <option value="expired">
-              Expired
+              {text.expired}
             </option>
             <option value="missing">
-              No calibration
+              {text.noCalibration}
             </option>
           </select>
 
@@ -1555,7 +1966,7 @@ export default function WaterMetersPage() {
         <div
           style={emptyState}
         >
-          Loading water meters...
+          {text.loadingWaterMeters}
         </div>
 
       ) : filteredMeters.length ===
@@ -1564,8 +1975,7 @@ export default function WaterMetersPage() {
         <div
           style={emptyState}
         >
-          No water meters match the
-          selected filters.
+          {text.noMetersMatch}
         </div>
 
       ) : isMobile ? (
@@ -1610,7 +2020,8 @@ export default function WaterMetersPage() {
                       fontSize: 16,
                     }}
                   >
-                    Apartment #
+                    {text.apartmentPrefix}
+                    {" "}
                     {
                       apartment
                         .apartment_number
@@ -1665,6 +2076,7 @@ export default function WaterMetersPage() {
                           onEdit={
                             openEditMeter
                           }
+                          text={text}
                         />
 
                       )
@@ -1712,19 +2124,19 @@ export default function WaterMetersPage() {
               >
 
                 {[
-                  "Apartment",
-                  "Type / Location",
-                  "Serial Number",
-                  "Riser",
-                  "Installed",
-                  "Calibration",
-                  "Expires",
-                  "Calibration Status",
-                  "Document",
-                  "Last Reading",
-                  "Last Date",
-                  "Status",
-                  "Actions",
+                  text.apartment,
+                  text.typeLocation,
+                  text.serialNumber,
+                  text.riser,
+                  text.installed,
+                  text.calibration,
+                  text.expires,
+                  text.calibrationStatus,
+                  text.document,
+                  text.lastReading,
+                  text.lastDate,
+                  text.status,
+                  text.actions,
                 ].map(
                   (heading) => (
 
@@ -1866,6 +2278,7 @@ export default function WaterMetersPage() {
                               meter.calibration_expires_at
                             )
                           }
+                          text={text}
                         />
                       </button>
                     </td>
@@ -1891,7 +2304,7 @@ export default function WaterMetersPage() {
                             }
                             style={documentButton}
                           >
-                            View
+                            {text.view}
                           </button>
 
                           {meter
@@ -1904,7 +2317,7 @@ export default function WaterMetersPage() {
                                   "var(--text)",
                               }}
                             >
-                              No.{" "}
+                              {text.numberAbbreviation}{" "}
                               {
                                 meter
                                   .calibration_certificate_number
@@ -1966,6 +2379,7 @@ export default function WaterMetersPage() {
                           meter.status ===
                           "active"
                         }
+                        text={text}
                       />
                     </td>
 
@@ -1979,7 +2393,7 @@ export default function WaterMetersPage() {
                         }
                         style={secondaryButton}
                       >
-                        Edit
+                        {text.edit}
                       </button>
                     </td>
 
@@ -1998,7 +2412,7 @@ export default function WaterMetersPage() {
 
       <Modal
         open={addOpen}
-        title="Add Water Meter"
+        title={text.addWaterMeter}
         onClose={() => {
 
           if (!addSubmitting) {
@@ -2015,11 +2429,11 @@ export default function WaterMetersPage() {
         >
 
           <SectionHeading>
-            General
+            {text.general}
           </SectionHeading>
 
           <FormField
-            label="Apartment"
+            label={text.apartment}
           >
             <select
               value={
@@ -2036,7 +2450,7 @@ export default function WaterMetersPage() {
               style={fieldStyle}
             >
               <option value="">
-                Select apartment
+                {text.selectApartment}
               </option>
 
               {apartments.map(
@@ -2050,7 +2464,7 @@ export default function WaterMetersPage() {
                       apartment.id
                     }
                   >
-                    Apartment #
+                    {text.apartmentPrefix}{" "}
                     {apartment.number}
                   </option>
 
@@ -2060,7 +2474,7 @@ export default function WaterMetersPage() {
           </FormField>
 
           <FormField
-            label="Riser"
+            label={text.riser}
           >
             <select
               value={
@@ -2085,8 +2499,8 @@ export default function WaterMetersPage() {
             >
               <option value="">
                 {risersLoading
-                  ? "Loading risers..."
-                  : "Select riser"}
+                  ? text.loadingRisers
+                  : text.selectRiser}
               </option>
 
               {apartmentRisers
@@ -2160,7 +2574,7 @@ export default function WaterMetersPage() {
           </FormField>
 
           <FormField
-            label="Type"
+            label={text.type}
           >
             <select
               value={
@@ -2185,16 +2599,16 @@ export default function WaterMetersPage() {
               style={fieldStyle}
             >
               <option value="cold">
-                Cold Water
+                {text.coldWater}
               </option>
               <option value="hot">
-                Hot Water
+                {text.hotWater}
               </option>
             </select>
           </FormField>
 
           <FormField
-            label="Serial Number"
+            label={text.serialNumber}
           >
             <input
               type="text"
@@ -2219,7 +2633,7 @@ export default function WaterMetersPage() {
           </FormField>
 
           <FormField
-            label="Manufacturer"
+            label={text.manufacturer}
           >
             <input
               type="text"
@@ -2243,7 +2657,7 @@ export default function WaterMetersPage() {
           </FormField>
 
           <FormField
-            label="Model"
+            label={text.model}
           >
             <input
               type="text"
@@ -2267,11 +2681,11 @@ export default function WaterMetersPage() {
           </FormField>
 
           <SectionHeading>
-            Installation
+            {text.installation}
           </SectionHeading>
 
           <FormField
-            label="Installed Date"
+            label={text.installedDate}
           >
             <input
               type="date"
@@ -2302,7 +2716,7 @@ export default function WaterMetersPage() {
           </FormField>
 
           <FormField
-            label="Initial Reading, m³"
+            label={text.initialReading}
           >
             <input
               type="text"
@@ -2334,8 +2748,7 @@ export default function WaterMetersPage() {
                 fontSize: 11,
               }}
             >
-              Reading at installation,
-              in cubic metres.
+              {text.readingAtInstallation}
             </span>
           </FormField>
 
@@ -2351,11 +2764,11 @@ export default function WaterMetersPage() {
             <SectionHeading
               compact
             >
-              Calibration
+              {text.calibration}
             </SectionHeading>
 
             <FormField
-              label="Calibration Certificate Available?"
+              label={text.certificateAvailable}
             >
               <select
                 value={
@@ -2379,10 +2792,10 @@ export default function WaterMetersPage() {
                 style={fieldStyle}
               >
                 <option value="yes">
-                  Yes
+                  {text.yes}
                 </option>
                 <option value="no">
-                  No / unavailable
+                  {text.noUnavailable}
                 </option>
               </select>
             </FormField>
@@ -2400,7 +2813,7 @@ export default function WaterMetersPage() {
                   lineHeight: 1.45,
                 }}
               >
-                The meter can be registered without a calibration document. A separate confirmation will be requested before saving.
+                {text.certificateUnavailableWarning}
               </div>
             )}
 
@@ -2445,8 +2858,7 @@ export default function WaterMetersPage() {
                 }
               />
 
-              Calibration performed
-              on installation date
+              {text.calibrationOnInstallationDate}
             </label>
 
             <div
@@ -2457,7 +2869,7 @@ export default function WaterMetersPage() {
             >
 
               <FormField
-                label="Calibration Date"
+                label={text.calibrationDate}
               >
                 <input
                   type="date"
@@ -2484,7 +2896,7 @@ export default function WaterMetersPage() {
               </FormField>
 
               <FormField
-                label="Validity Period"
+                label={text.validityPeriod}
               >
                 <select
                   value={
@@ -2512,22 +2924,22 @@ export default function WaterMetersPage() {
                   style={fieldStyle}
                 >
                   <option value="12">
-                    12 months
+                    {text.months12}
                   </option>
                   <option value="24">
-                    24 months
+                    {text.months24}
                   </option>
                   <option value="48">
-                    48 months
+                    {text.months48}
                   </option>
                   <option value="60">
-                    60 months
+                    {text.months60}
                   </option>
                   <option value="72">
-                    72 months
+                    {text.months72}
                   </option>
                   <option value="custom">
-                    Custom...
+                    {text.custom}
                   </option>
                 </select>
 
@@ -2554,7 +2966,7 @@ export default function WaterMetersPage() {
                         })
                       )
                     }
-                    placeholder="Months"
+                    placeholder={text.months}
                     style={fieldStyle}
                   />
 
@@ -2562,13 +2974,16 @@ export default function WaterMetersPage() {
               </FormField>
 
               <FormField
-                label="Expires At"
+                label={text.expiresAt}
               >
                 <input
                   type="text"
                   value={
-                    calculatedExpiresAt ||
-                    "Calculated automatically"
+                    calculatedExpiresAt
+                      ? formatDate(
+                          calculatedExpiresAt
+                        )
+                      : text.calculatedAutomatically
                   }
                   readOnly
                   style={{
@@ -2598,7 +3013,7 @@ export default function WaterMetersPage() {
               </FormField>
 
               <FormField
-                label="Certificate Number"
+                label={text.certificateNumber}
               >
                 <input
                   type="text"
@@ -2623,7 +3038,7 @@ export default function WaterMetersPage() {
               </FormField>
 
               <FormField
-                label="Calibration Laboratory"
+                label={text.calibrationLaboratory}
               >
                 <input
                   type="text"
@@ -2648,7 +3063,7 @@ export default function WaterMetersPage() {
               </FormField>
 
               <FormField
-                label="Calibration Document"
+                label={text.calibrationDocument}
               >
                 <input
                   type="file"
@@ -2677,14 +3092,12 @@ export default function WaterMetersPage() {
                     fontSize: 11,
                   }}
                 >
-                  Supported formats:
-                  PDF, eDoc, ASiC-E.
-                  Maximum size: 10 MB.
+                  {text.supportedFormats}
                 </span>
               </FormField>
 
               <FormField
-                label="Calibration Notes"
+                label={text.calibrationNotes}
               >
                 <textarea
                   rows={2}
@@ -2739,7 +3152,7 @@ export default function WaterMetersPage() {
               }
               style={secondaryButton}
             >
-              Cancel
+              {text.cancel}
             </button>
 
             <button
@@ -2760,8 +3173,8 @@ export default function WaterMetersPage() {
               }}
             >
               {addSubmitting
-                ? "Adding..."
-                : "Add Meter"}
+                ? text.adding
+                : text.addMeter}
             </button>
 
           </div>
@@ -2773,7 +3186,7 @@ export default function WaterMetersPage() {
 
       <Modal
         open={editOpen}
-        title="Edit Water Meter"
+        title={text.editWaterMeter}
         onClose={() => {
           if (!editSubmitting) {
             setEditOpen(false);
@@ -2786,7 +3199,7 @@ export default function WaterMetersPage() {
             gap: 12,
           }}
         >
-          <FormField label="Type">
+          <FormField label={text.type}>
             <select
               value={editForm.type}
               disabled={editSubmitting}
@@ -2799,12 +3212,12 @@ export default function WaterMetersPage() {
               }
               style={fieldStyle}
             >
-              <option value="cold">Cold Water</option>
-              <option value="hot">Hot Water</option>
+              <option value="cold">{text.coldWater}</option>
+              <option value="hot">{text.hotWater}</option>
             </select>
           </FormField>
 
-          <FormField label="Riser">
+          <FormField label={text.riser}>
             <select
               value={editForm.apartmentRiserId}
               disabled={editSubmitting}
@@ -2816,7 +3229,7 @@ export default function WaterMetersPage() {
               }
               style={fieldStyle}
             >
-              <option value="">Not assigned</option>
+              <option value="">{text.notAssigned}</option>
               {editRisers
                 .filter((riser) => {
                   const value = `${riser.system_type || ""} ${riser.riser_code || ""}`.toLowerCase();
@@ -2836,7 +3249,7 @@ export default function WaterMetersPage() {
             </select>
           </FormField>
 
-          <FormField label="Serial Number">
+          <FormField label={text.serialNumber}>
             <input
               type="text"
               value={editForm.serialNumber}
@@ -2851,35 +3264,35 @@ export default function WaterMetersPage() {
             />
           </FormField>
 
-          <FormField label="Manufacturer">
+          <FormField label={text.manufacturer}>
             <input type="text" value={editForm.manufacturer} disabled={editSubmitting} onChange={(event) => setEditForm((current) => ({...current, manufacturer: event.target.value}))} style={fieldStyle} />
           </FormField>
 
-          <FormField label="Model">
+          <FormField label={text.model}>
             <input type="text" value={editForm.model} disabled={editSubmitting} onChange={(event) => setEditForm((current) => ({...current, model: event.target.value}))} style={fieldStyle} />
           </FormField>
 
-          <FormField label="Installed Date (optional)">
+          <FormField label={text.installedDateOptional}>
             <input type="date" value={editForm.installedAt} disabled={editSubmitting} onChange={(event) => setEditForm((current) => ({...current, installedAt: event.target.value}))} style={fieldStyle} />
           </FormField>
 
-          <FormField label="Initial Reading, m³">
+          <FormField label={text.initialReading}>
             <input type="text" inputMode="decimal" placeholder="0,000" value={editForm.initialReading} disabled={editSubmitting} onChange={(event) => setEditForm((current) => ({...current, initialReading: event.target.value}))} style={fieldStyle} />
           </FormField>
 
-          <FormField label="Initial Reading Date">
+          <FormField label={text.initialReadingDate}>
             <input type="date" value={editForm.initialReadingDate} disabled={editSubmitting} onChange={(event) => setEditForm((current) => ({...current, initialReadingDate: event.target.value}))} style={fieldStyle} />
           </FormField>
 
-          <FormField label="Reason for correction">
+          <FormField label={text.correctionReason}>
             <textarea rows={3} value={editForm.correctionReason} disabled={editSubmitting} onChange={(event) => setEditForm((current) => ({...current, correctionReason: event.target.value}))} style={{...fieldStyle, resize: "vertical"}} />
-            <span style={{color: "var(--text)", fontSize: 11}}>Required when the initial reading or its date is changed.</span>
+            <span style={{color: "var(--text)", fontSize: 11}}>{text.correctionReasonHint}</span>
           </FormField>
 
           <div style={{display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8}}>
-            <button type="button" onClick={() => setEditOpen(false)} disabled={editSubmitting} style={secondaryButton}>Cancel</button>
+            <button type="button" onClick={() => setEditOpen(false)} disabled={editSubmitting} style={secondaryButton}>{text.cancel}</button>
             <button type="button" onClick={handleEditMeter} disabled={editSubmitting} style={{...primaryButton, opacity: editSubmitting ? 0.65 : 1}}>
-              {editSubmitting ? "Saving..." : "Save Changes"}
+              {editSubmitting ? text.saving : text.saveChanges}
             </button>
           </div>
         </div>
@@ -2889,8 +3302,8 @@ export default function WaterMetersPage() {
         open={calibrationOpen}
         title={
           selectedCalibrationMeter
-            ? `Calibration History · ${selectedCalibrationMeter.serial_number || "Meter"}`
-            : "Calibration History"
+            ? `${text.calibrationHistory} · ${selectedCalibrationMeter.serial_number || text.meter}`
+            : text.calibrationHistory
         }
         onClose={
           closeCalibrationHistory
@@ -2923,11 +3336,11 @@ export default function WaterMetersPage() {
                   "var(--text-h)",
               }}
             >
-              Add Calibration
+              {text.addCalibration}
             </strong>
 
             <FormField
-              label="Calibration Date"
+              label={text.calibrationDate}
             >
               <input
                 type="date"
@@ -2948,7 +3361,7 @@ export default function WaterMetersPage() {
             </FormField>
 
             <FormField
-              label="Validity Period, months"
+              label={text.validityPeriodMonths}
             >
               <input
                 type="number"
@@ -2971,7 +3384,7 @@ export default function WaterMetersPage() {
             </FormField>
 
             <FormField
-              label="Certificate Number"
+              label={text.certificateNumber}
             >
               <input
                 type="text"
@@ -2992,7 +3405,7 @@ export default function WaterMetersPage() {
             </FormField>
 
             <FormField
-              label="Calibration Laboratory"
+              label={text.calibrationLaboratory}
             >
               <input
                 type="text"
@@ -3013,7 +3426,7 @@ export default function WaterMetersPage() {
             </FormField>
 
             <FormField
-              label="Calibration Document"
+              label={text.calibrationDocument}
             >
               <input
                 type="file"
@@ -3033,7 +3446,7 @@ export default function WaterMetersPage() {
             </FormField>
 
             <FormField
-              label="Notes"
+              label={text.notes}
             >
               <textarea
                 rows={3}
@@ -3073,8 +3486,8 @@ export default function WaterMetersPage() {
               }}
             >
               {calibrationSubmitting
-                ? "Saving..."
-                : "Add Calibration"}
+                ? text.saving
+                : text.addCalibration}
             </button>
 
           </section>
@@ -3087,7 +3500,7 @@ export default function WaterMetersPage() {
                   "var(--text-h)",
               }}
             >
-              History
+              {text.history}
             </strong>
 
             <div
@@ -3101,7 +3514,7 @@ export default function WaterMetersPage() {
               {meterCalibrationsLoading ? (
 
                 <div style={emptyState}>
-                  Loading...
+                  {text.loading}
                 </div>
 
               ) : !meterCalibrations
@@ -3109,7 +3522,7 @@ export default function WaterMetersPage() {
                   ?.length ? (
 
                 <div style={emptyState}>
-                  No calibration history.
+                  {text.noCalibrationHistory}
                 </div>
 
               ) : (
@@ -3156,6 +3569,7 @@ export default function WaterMetersPage() {
                               item.expires_at
                             )
                           }
+                          text={text}
                         />
 
                       </div>
@@ -3169,20 +3583,20 @@ export default function WaterMetersPage() {
                         }}
                       >
                         <span>
-                          Expires:{" "}
+                          {text.expires}:{" "}
                           {formatDate(
                             item.expires_at
                           )}
                         </span>
 
                         <span>
-                          Certificate:{" "}
+                          {text.certificate}:{" "}
                           {item.certificate_number ||
                             "—"}
                         </span>
 
                         <span>
-                          Laboratory:{" "}
+                          {text.laboratory}:{" "}
                           {item.calibration_laboratory ||
                             "—"}
                         </span>
@@ -3201,7 +3615,7 @@ export default function WaterMetersPage() {
                           marginTop: 10,
                         }}
                       >
-                        View Document
+                        {text.viewDocument}
                       </button>
 
                     </div>
@@ -3221,7 +3635,7 @@ export default function WaterMetersPage() {
 
       <Modal
         open={deactivateOpen}
-        title="Deactivate Water Meters"
+        title={text.deactivateWaterMeters}
         onClose={() => {
 
           if (
@@ -3247,9 +3661,7 @@ export default function WaterMetersPage() {
               lineHeight: 1.45,
             }}
           >
-            Select one or more active
-            water meters. Historical
-            readings will be preserved.
+            {text.deactivateDescription}
           </p>
 
           <div
@@ -3318,7 +3730,7 @@ export default function WaterMetersPage() {
                         fontSize: 13,
                       }}
                     >
-                      Apartment #
+                      {text.apartmentPrefix}{" "}
                       {
                         meter.apartment_number
                       }
@@ -3337,7 +3749,7 @@ export default function WaterMetersPage() {
                         fontSize: 11,
                       }}
                     >
-                      Serial{" "}
+                      {text.serial}{" "}
                       {
                         meter.serial_number ||
                         "—"
@@ -3356,7 +3768,7 @@ export default function WaterMetersPage() {
           </div>
 
           <FormField
-            label="Reason"
+            label={text.reason}
           >
             <select
               value={
@@ -3373,16 +3785,16 @@ export default function WaterMetersPage() {
               style={fieldStyle}
             >
               <option value="replacement">
-                Replacement
+                {text.replacement}
               </option>
               <option value="fault">
-                Fault
+                {text.fault}
               </option>
               <option value="removed">
-                Removed
+                {text.removed}
               </option>
               <option value="other">
-                Other
+                {text.other}
               </option>
             </select>
           </FormField>
@@ -3406,7 +3818,7 @@ export default function WaterMetersPage() {
               }
               style={secondaryButton}
             >
-              Cancel
+              {text.cancel}
             </button>
 
             <button
@@ -3427,8 +3839,8 @@ export default function WaterMetersPage() {
               }}
             >
               {deactivateSubmitting
-                ? "Deactivating..."
-                : "Deactivate"}
+                ? text.deactivating
+                : text.deactivate}
             </button>
 
           </div>
@@ -3442,13 +3854,14 @@ export default function WaterMetersPage() {
 }
 
 function calculateCalibrationStatus(
-  expiresAt
+  expiresAt,
+  text
 ) {
 
   if (!expiresAt) {
     return {
       key: "missing",
-      label: "No calibration",
+      label: text.noCalibration,
       tone: "neutral",
     };
   }
@@ -3475,7 +3888,7 @@ function calculateCalibrationStatus(
   ) {
     return {
       key: "missing",
-      label: "No calibration",
+      label: text.noCalibration,
       tone: "neutral",
     };
   }
@@ -3492,7 +3905,7 @@ function calculateCalibrationStatus(
   if (daysRemaining < 0) {
     return {
       key: "expired",
-      label: "Expired",
+      label: text.expired,
       tone: "danger",
     };
   }
@@ -3503,14 +3916,17 @@ function calculateCalibrationStatus(
     return {
       key: "warning",
       label:
-        `Expires in ${daysRemaining} d`,
+        text.expiresInDays.replace(
+          "{days}",
+          daysRemaining
+        ),
       tone: "warning",
     };
   }
 
   return {
     key: "valid",
-    label: "Valid",
+    label: text.valid,
     tone: "success",
   };
 }
@@ -3667,6 +4083,7 @@ function FormField({
 
 function StatusBadge({
   active,
+  text,
 }) {
 
   return (
@@ -3689,8 +4106,8 @@ function StatusBadge({
       }}
     >
       {active
-        ? "Active"
-        : "Inactive"}
+        ? text.active
+        : text.inactive}
     </span>
   );
 }
@@ -3704,6 +4121,7 @@ function MeterCard({
   onOpenDocument,
   onOpenCalibrationHistory,
   onEdit,
+  text,
 }) {
 
   return (
@@ -3764,6 +4182,7 @@ function MeterCard({
             meter.status ===
             "active"
           }
+          text={text}
         />
 
       </div>
@@ -3781,68 +4200,68 @@ function MeterCard({
 
         {[
           [
-            "Serial Number",
+            text.serialNumber,
             meter.serial_number ||
               "—",
           ],
           [
-            "Manufacturer",
+            text.manufacturer,
             meter.manufacturer ||
               "—",
           ],
           [
-            "Model",
+            text.model,
             meter.model ||
               "—",
           ],
           [
-            "Riser",
+            text.riser,
             meter.riser,
           ],
           [
-            "Installed",
+            text.installed,
             formatDate(
               meter.installed_at
             ),
           ],
           [
-            "Calibration",
+            text.calibration,
             formatDate(
               meter.calibration_date
             ),
           ],
           [
-            "Expires",
+            text.expires,
             formatDate(
               meter.calibration_expires_at
             ),
           ],
           [
-            "Calibration Status",
+            text.calibrationStatus,
             getCalibrationStatus(
               meter.calibration_expires_at
             ).label,
           ],
           [
-            "Certificate Number",
+            text.certificateNumber,
             meter
               .calibration_certificate_number ||
               "—",
           ],
           [
-            "Laboratory",
+            text.laboratory,
             meter
               .calibration_laboratory ||
               "—",
           ],
           [
-            "Last Reading",
+            text.lastReading,
             formatReading(
               meter.last_reading
             ),
           ],
           [
-            "Last Date",
+            text.lastDate,
             formatDate(
               meter.last_reading_date
             ),
@@ -3901,7 +4320,7 @@ function MeterCard({
           marginTop: 10,
         }}
       >
-        Edit Meter
+        {text.editMeter}
       </button>
 
       <button
@@ -3917,7 +4336,7 @@ function MeterCard({
           marginTop: 10,
         }}
       >
-        Calibration History
+        {text.calibrationHistory}
       </button>
 
       {meter.calibration_id && (
@@ -3936,7 +4355,7 @@ function MeterCard({
             marginTop: 10,
           }}
         >
-          View Calibration Document
+          {text.viewCalibrationDocument}
         </button>
 
       )}
@@ -3947,6 +4366,7 @@ function MeterCard({
 
 function CalibrationBadge({
   status,
+  text,
 }) {
 
   const styles = {
@@ -3990,7 +4410,7 @@ function CalibrationBadge({
       }}
     >
       {status?.label ||
-        "No calibration"}
+        text.noCalibration}
     </span>
   );
 }
