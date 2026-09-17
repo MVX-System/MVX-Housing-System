@@ -7,7 +7,209 @@ import {
 import useWater
   from "../hooks/useWater";
 
+import {
+  useTranslation,
+} from "../i18n";
+
+const LOCALE_MAP = {
+  lv: "lv-LV",
+  en: "en-GB",
+  ru: "ru-RU",
+};
+
+const TEXT = {
+  lv: {
+    title: "Ūdens rādījumu vēsture",
+    subtitle: "Iesniegto, laboto un aizstāto ūdens skaitītāju rādījumu audita vēsture.",
+    refresh: "Atjaunot",
+    allRecords: "Visi ieraksti",
+    activeRecords: "Aktīvie",
+    supersededRecords: "Aizstātie",
+    adminReceived: "Administrācijas saņemtie",
+    searchPlaceholder: "Meklēt pēc dzīvokļa, sērijas numura vai lietotāja...",
+    allPeriods: "Visi periodi",
+    allWaterTypes: "Visi ūdens veidi",
+    coldWater: "Aukstais ūdens",
+    hotWater: "Karstais ūdens",
+    allSources: "Visi avoti",
+    residentPortal: "Iedzīvotāja portāls",
+    paperNote: "Papīra pieraksts",
+    email: "E-pasts",
+    phone: "Tālrunis",
+    manualAdminEntry: "Administratora manuāla ievade",
+    allStatuses: "Visi statusi",
+    active: "Aktīvs",
+    superseded: "Aizstāts",
+    exportXlsx: "Eksportēt XLSX",
+    loadingHistory: "Ielādē vēsturi...",
+    noMatches: "Neviens rādījumu ieraksts neatbilst atlasītajiem filtriem.",
+    noPeriod: "Nav perioda",
+    systemUnknown: "Sistēma / nav zināms",
+    unknown: "Nav zināms",
+    dateTime: "Datums / laiks",
+    period: "Periods",
+    apartment: "Dzīvoklis",
+    meter: "Skaitītājs",
+    reading: "Rādījums",
+    source: "Avots",
+    submittedBy: "Iesniedza",
+    status: "Statuss",
+    correction: "Labojums",
+    readingDate: "Rādījuma datums",
+    replacedBy: "Aizstāts ar",
+    noReasonRecorded: "Iemesls nav norādīts",
+    by: "Veica",
+    noSerial: "Nav sērijas numura",
+    riser: "Stāvvads",
+    submitted: "Iesniegts",
+    xlsxLibraryMissing: "XLSX bibliotēka nav ielādēta.",
+    noExportRecords: "Nav eksportējamu rādījumu ierakstu.",
+    exportSheetName: "Rādījumu vēsture",
+    exportReadingDate: "Rādījuma datums",
+    exportReportingPeriod: "Pārskata periods",
+    exportWaterType: "Ūdens veids",
+    exportSerialNumber: "Sērijas numurs",
+    exportLocation: "Atrašanās vieta",
+    exportReading: "Rādījums, m³",
+    exportSourceNote: "Avota piezīme",
+    exportCorrectionReason: "Labošanas iemesls",
+    exportCorrectedBy: "Laboja",
+    exportCorrectedAt: "Labots",
+    exportReplacementReading: "Aizstājošais rādījums, m³",
+  },
+  en: {
+    title: "Water Reading History",
+    subtitle: "Audit history of submitted, corrected and superseded water readings.",
+    refresh: "Refresh",
+    allRecords: "All records",
+    activeRecords: "Active",
+    supersededRecords: "Superseded",
+    adminReceived: "Admin received",
+    searchPlaceholder: "Search apartment, serial, user...",
+    allPeriods: "All periods",
+    allWaterTypes: "All water types",
+    coldWater: "Cold Water",
+    hotWater: "Hot Water",
+    allSources: "All sources",
+    residentPortal: "Resident portal",
+    paperNote: "Paper note",
+    email: "Email",
+    phone: "Phone",
+    manualAdminEntry: "Manual admin entry",
+    allStatuses: "All statuses",
+    active: "Active",
+    superseded: "Superseded",
+    exportXlsx: "Export XLSX",
+    loadingHistory: "Loading history...",
+    noMatches: "No reading records match the selected filters.",
+    noPeriod: "No period",
+    systemUnknown: "System / Unknown",
+    unknown: "Unknown",
+    dateTime: "Date / Time",
+    period: "Period",
+    apartment: "Apartment",
+    meter: "Meter",
+    reading: "Reading",
+    source: "Source",
+    submittedBy: "Submitted by",
+    status: "Status",
+    correction: "Correction",
+    readingDate: "Reading date",
+    replacedBy: "Replaced by",
+    noReasonRecorded: "No reason recorded",
+    by: "By",
+    noSerial: "No serial",
+    riser: "Riser",
+    submitted: "Submitted",
+    xlsxLibraryMissing: "XLSX library is not loaded.",
+    noExportRecords: "No reading records to export.",
+    exportSheetName: "Reading History",
+    exportReadingDate: "Reading Date",
+    exportReportingPeriod: "Reporting Period",
+    exportWaterType: "Water Type",
+    exportSerialNumber: "Serial Number",
+    exportLocation: "Location",
+    exportReading: "Reading, m³",
+    exportSourceNote: "Source Note",
+    exportCorrectionReason: "Correction Reason",
+    exportCorrectedBy: "Corrected By",
+    exportCorrectedAt: "Corrected At",
+    exportReplacementReading: "Replacement Reading, m³",
+  },
+  ru: {
+    title: "История показаний воды",
+    subtitle: "История аудита переданных, исправленных и заменённых показаний воды.",
+    refresh: "Обновить",
+    allRecords: "Все записи",
+    activeRecords: "Активные",
+    supersededRecords: "Заменённые",
+    adminReceived: "Получено администрацией",
+    searchPlaceholder: "Поиск по квартире, серийному номеру или пользователю...",
+    allPeriods: "Все периоды",
+    allWaterTypes: "Все типы воды",
+    coldWater: "Холодная вода",
+    hotWater: "Горячая вода",
+    allSources: "Все источники",
+    residentPortal: "Портал жильца",
+    paperNote: "Бумажная запись",
+    email: "Электронная почта",
+    phone: "Телефон",
+    manualAdminEntry: "Ручной ввод администратором",
+    allStatuses: "Все статусы",
+    active: "Активно",
+    superseded: "Заменено",
+    exportXlsx: "Экспортировать XLSX",
+    loadingHistory: "Загрузка истории...",
+    noMatches: "Нет записей показаний, соответствующих выбранным фильтрам.",
+    noPeriod: "Без периода",
+    systemUnknown: "Система / неизвестно",
+    unknown: "Неизвестно",
+    dateTime: "Дата / время",
+    period: "Период",
+    apartment: "Квартира",
+    meter: "Счётчик",
+    reading: "Показание",
+    source: "Источник",
+    submittedBy: "Передал",
+    status: "Статус",
+    correction: "Исправление",
+    readingDate: "Дата показания",
+    replacedBy: "Заменено на",
+    noReasonRecorded: "Причина не указана",
+    by: "Кем",
+    noSerial: "Без серийного номера",
+    riser: "Стояк",
+    submitted: "Передано",
+    xlsxLibraryMissing: "Библиотека XLSX не загружена.",
+    noExportRecords: "Нет записей показаний для экспорта.",
+    exportSheetName: "История показаний",
+    exportReadingDate: "Дата показания",
+    exportReportingPeriod: "Отчётный период",
+    exportWaterType: "Тип воды",
+    exportSerialNumber: "Серийный номер",
+    exportLocation: "Расположение",
+    exportReading: "Показание, м³",
+    exportSourceNote: "Примечание к источнику",
+    exportCorrectionReason: "Причина исправления",
+    exportCorrectedBy: "Исправил",
+    exportCorrectedAt: "Исправлено",
+    exportReplacementReading: "Заменяющее показание, м³",
+  },
+};
+
 export default function WaterReadingsPage() {
+
+  const {
+    language,
+  } = useTranslation();
+
+  const text =
+    TEXT[language] ||
+    TEXT.en;
+
+  const locale =
+    LOCALE_MAP[language] ||
+    LOCALE_MAP.en;
 
   const {
     adminWater,
@@ -93,12 +295,14 @@ export default function WaterReadingsPage() {
 
             source_label:
               formatSource(
-                row.submission_source
+                row.submission_source,
+                text
               ),
 
             status_label:
               formatStatus(
-                row.status
+                row.status,
+                text
               ),
 
             period_label:
@@ -107,18 +311,29 @@ export default function WaterReadingsPage() {
                 ? `${row.period_year}-${String(
                     row.period_month
                   ).padStart(2, "0")}`
-                : "No period",
+                : text.noPeriod,
+
+            period_key:
+              row.period_year &&
+              row.period_month
+                ? `${row.period_year}-${String(
+                    row.period_month
+                  ).padStart(2, "0")}`
+                : "none",
 
             submitted_by_name:
               row.submitted_by_nick ||
-              "System / Unknown",
+              text.systemUnknown,
 
             corrected_by_name:
               row.corrected_by_nick ||
               "",
           })
         ),
-      [adminWater]
+      [
+        adminWater,
+        text,
+      ]
     );
 
   const periods =
@@ -128,7 +343,7 @@ export default function WaterReadingsPage() {
           new Set(
             normalizedRows.map(
               (row) =>
-                row.period_label
+                row.period_key
             )
           )
         ).sort().reverse(),
@@ -200,7 +415,7 @@ export default function WaterReadingsPage() {
 
             if (
               filter.period !== "all" &&
-              row.period_label !==
+              row.period_key !==
                 filter.period
             ) {
               return false;
@@ -255,7 +470,7 @@ export default function WaterReadingsPage() {
       if (!XLSX) {
 
         alert(
-          "XLSX library is not loaded"
+          text.xlsxLibraryMissing
         );
 
         return;
@@ -266,7 +481,7 @@ export default function WaterReadingsPage() {
       ) {
 
         alert(
-          "No reading records to export"
+          text.noExportRecords
         );
 
         return;
@@ -276,74 +491,77 @@ export default function WaterReadingsPage() {
         filteredRows.map(
           (row) => ({
 
-            "Date / Time":
+            [text.dateTime]:
               formatDateTime(
                 row.submitted_at ||
-                row.created_at
+                row.created_at,
+                locale
               ),
 
-            "Reading Date":
+            [text.exportReadingDate]:
               formatDate(
-                row.reading_date
+                row.reading_date,
+                locale
               ),
 
-            "Reporting Period":
+            [text.exportReportingPeriod]:
               row.period_label,
 
-            "Apartment":
+            [text.apartment]:
               row.apartment_number,
 
-            "Water Type":
+            [text.exportWaterType]:
               row.type === "hot"
-                ? "Hot Water"
-                : "Cold Water",
+                ? text.hotWater
+                : text.coldWater,
 
-            "Serial Number":
+            [text.exportSerialNumber]:
               row.serial_number ||
               "",
 
-            "Riser":
+            [text.riser]:
               row.riser_code ||
               "",
 
-            "Location":
+            [text.exportLocation]:
               row.local_label ||
               "",
 
-            "Reading, m³":
+            [text.exportReading]:
               formatReadingNumber(
                 row.reading_value
               ),
 
-            "Source":
+            [text.source]:
               row.source_label,
 
-            "Source Note":
+            [text.exportSourceNote]:
               row.source_note ||
               "",
 
-            "Submitted By":
+            [text.submittedBy]:
               row.submitted_by_name,
 
-            "Status":
+            [text.status]:
               row.status_label,
 
-            "Correction Reason":
+            [text.exportCorrectionReason]:
               row.correction_reason ||
               "",
 
-            "Corrected By":
+            [text.exportCorrectedBy]:
               row.corrected_by_name ||
               "",
 
-            "Corrected At":
+            [text.exportCorrectedAt]:
               row.corrected_at
                 ? formatDateTime(
-                    row.corrected_at
+                    row.corrected_at,
+                    locale
                   )
                 : "",
 
-            "Replacement Reading, m³":
+            [text.exportReplacementReading]:
               row
                 .replacement_reading_value !==
                 null &&
@@ -389,7 +607,7 @@ export default function WaterReadingsPage() {
       XLSX.utils.book_append_sheet(
         workbook,
         worksheet,
-        "Reading History"
+        text.exportSheetName
       );
 
       const periodPart =
@@ -426,7 +644,7 @@ export default function WaterReadingsPage() {
               margin: 0,
             }}
           >
-            Water Reading History
+            {text.title}
           </h1>
 
           <p
@@ -437,9 +655,7 @@ export default function WaterReadingsPage() {
               lineHeight: 1.5,
             }}
           >
-            Audit history of submitted,
-            corrected and superseded
-            water readings.
+            {text.subtitle}
           </p>
 
         </div>
@@ -451,7 +667,7 @@ export default function WaterReadingsPage() {
           }
           style={secondaryButton}
         >
-          Refresh
+          {text.refresh}
         </button>
 
       </div>
@@ -467,22 +683,22 @@ export default function WaterReadingsPage() {
       >
 
         <SummaryCard
-          label="All records"
+          label={text.allRecords}
           value={summary.total}
         />
 
         <SummaryCard
-          label="Active"
+          label={text.activeRecords}
           value={summary.active}
         />
 
         <SummaryCard
-          label="Superseded"
+          label={text.supersededRecords}
           value={summary.superseded}
         />
 
         <SummaryCard
-          label="Admin received"
+          label={text.adminReceived}
           value={summary.admin}
         />
 
@@ -523,7 +739,9 @@ export default function WaterReadingsPage() {
                 })
               )
             }
-            placeholder="Search apartment, serial, user..."
+            placeholder={
+              text.searchPlaceholder
+            }
             style={fieldStyle}
           />
 
@@ -541,7 +759,7 @@ export default function WaterReadingsPage() {
             style={fieldStyle}
           >
             <option value="all">
-              All periods
+              {text.allPeriods}
             </option>
 
             {periods.map(
@@ -551,7 +769,9 @@ export default function WaterReadingsPage() {
                   key={period}
                   value={period}
                 >
-                  {period}
+                  {period === "none"
+                    ? text.noPeriod
+                    : period}
                 </option>
 
               )
@@ -572,13 +792,13 @@ export default function WaterReadingsPage() {
             style={fieldStyle}
           >
             <option value="all">
-              All water types
+              {text.allWaterTypes}
             </option>
             <option value="cold">
-              Cold Water
+              {text.coldWater}
             </option>
             <option value="hot">
-              Hot Water
+              {text.hotWater}
             </option>
           </select>
 
@@ -596,22 +816,22 @@ export default function WaterReadingsPage() {
             style={fieldStyle}
           >
             <option value="all">
-              All sources
+              {text.allSources}
             </option>
             <option value="resident_portal">
-              Resident portal
+              {text.residentPortal}
             </option>
             <option value="paper_note">
-              Paper note
+              {text.paperNote}
             </option>
             <option value="email">
-              Email
+              {text.email}
             </option>
             <option value="phone">
-              Phone
+              {text.phone}
             </option>
             <option value="admin_manual">
-              Admin manual
+              {text.manualAdminEntry}
             </option>
           </select>
 
@@ -629,13 +849,13 @@ export default function WaterReadingsPage() {
             style={fieldStyle}
           >
             <option value="all">
-              All statuses
+              {text.allStatuses}
             </option>
             <option value="active">
-              Active
+              {text.active}
             </option>
             <option value="superseded">
-              Superseded
+              {text.superseded}
             </option>
           </select>
 
@@ -662,7 +882,7 @@ export default function WaterReadingsPage() {
             minWidth: 150,
           }}
         >
-          Export XLSX
+          {text.exportXlsx}
         </button>
 
       </div>
@@ -670,15 +890,14 @@ export default function WaterReadingsPage() {
       {loading ? (
 
         <div style={emptyState}>
-          Loading history...
+          {text.loadingHistory}
         </div>
 
       ) : filteredRows.length ===
         0 ? (
 
         <div style={emptyState}>
-          No reading records match the
-          selected filters.
+          {text.noMatches}
         </div>
 
       ) : isMobile ? (
@@ -696,6 +915,8 @@ export default function WaterReadingsPage() {
               <ReadingCard
                 key={row.reading_id}
                 row={row}
+                text={text}
+                locale={locale}
               />
 
             )
@@ -736,15 +957,15 @@ export default function WaterReadingsPage() {
               >
 
                 {[
-                  "Date / Time",
-                  "Period",
-                  "Apartment",
-                  "Meter",
-                  "Reading",
-                  "Source",
-                  "Submitted by",
-                  "Status",
-                  "Correction",
+                  text.dateTime,
+                  text.period,
+                  text.apartment,
+                  text.meter,
+                  text.reading,
+                  text.source,
+                  text.submittedBy,
+                  text.status,
+                  text.correction,
                 ].map(
                   (heading) => (
 
@@ -791,16 +1012,18 @@ export default function WaterReadingsPage() {
                       >
                         {formatDateTime(
                           row.submitted_at ||
-                          row.created_at
+                          row.created_at,
+                          locale
                         )}
                       </strong>
 
                       <div
                         style={subText}
                       >
-                        Reading date:{" "}
+                        {text.readingDate}:{" "}
                         {formatDate(
-                          row.reading_date
+                          row.reading_date,
+                          locale
                         )}
                       </div>
                     </td>
@@ -828,8 +1051,8 @@ export default function WaterReadingsPage() {
                         }}
                       >
                         {row.type === "hot"
-                          ? "Hot Water"
-                          : "Cold Water"}
+                          ? text.hotWater
+                          : text.coldWater}
                       </div>
 
                       <div style={subText}>
@@ -845,7 +1068,8 @@ export default function WaterReadingsPage() {
 
                     <td style={tableCellStrong}>
                       {formatReading(
-                        row.reading_value
+                        row.reading_value,
+                        locale
                       )}
                     </td>
 
@@ -906,24 +1130,25 @@ export default function WaterReadingsPage() {
                               fontWeight: 700,
                             }}
                           >
-                            Replaced by{" "}
+                            {text.replacedBy}{" "}
                             {formatReading(
                               row
-                                .replacement_reading_value
+                                .replacement_reading_value,
+                              locale
                             )}
                           </div>
 
                           <div style={subText}>
                             {
                               row.correction_reason ||
-                              "No reason recorded"
+                              text.noReasonRecorded
                             }
                           </div>
 
                           {row.corrected_by_name && (
 
                             <div style={subText}>
-                              By{" "}
+                              {text.by}{" "}
                               {
                                 row.corrected_by_name
                               }
@@ -935,7 +1160,8 @@ export default function WaterReadingsPage() {
 
                             <div style={subText}>
                               {formatDateTime(
-                                row.corrected_at
+                                row.corrected_at,
+                                locale
                               )}
                             </div>
 
@@ -967,6 +1193,8 @@ export default function WaterReadingsPage() {
 
 function ReadingCard({
   row,
+  text,
+  locale,
 }) {
 
   return (
@@ -1002,17 +1230,17 @@ function ReadingCard({
               fontSize: 15,
             }}
           >
-            Apartment #
+            {text.apartment} #
             {row.apartment_number}
           </strong>
 
           <div style={subText}>
             {row.type === "hot"
-              ? "Hot Water"
-              : "Cold Water"}
+              ? text.hotWater
+              : text.coldWater}
             {" · "}
             {row.serial_number ||
-              "No serial"}
+              text.noSerial}
           </div>
 
         </div>
@@ -1035,43 +1263,45 @@ function ReadingCard({
       >
 
         <CardRow
-          label="Reading"
+          label={text.reading}
           value={
             formatReading(
-              row.reading_value
+              row.reading_value,
+              locale
             )
           }
         />
 
         <CardRow
-          label="Period"
+          label={text.period}
           value={row.period_label}
         />
 
         <CardRow
-          label="Submitted"
+          label={text.submitted}
           value={
             formatDateTime(
               row.submitted_at ||
-              row.created_at
+              row.created_at,
+              locale
             )
           }
         />
 
         <CardRow
-          label="Source"
+          label={text.source}
           value={row.source_label}
         />
 
         <CardRow
-          label="Submitted by"
+          label={text.submittedBy}
           value={
             row.submitted_by_name
           }
         />
 
         <CardRow
-          label="Riser"
+          label={text.riser}
           value={
             row.riser_code || "—"
           }
@@ -1112,10 +1342,11 @@ function ReadingCard({
             fontSize: 12,
           }}
         >
-          Replaced by{" "}
+          {text.replacedBy}{" "}
           {formatReading(
             row
-              .replacement_reading_value
+              .replacement_reading_value,
+            locale
           )}
           {row.correction_reason
             ? ` · ${row.correction_reason}`
@@ -1290,47 +1521,50 @@ function StatusBadge({
 }
 
 function formatSource(
-  source
+  source,
+  text
 ) {
 
   const labels = {
 
     resident_portal:
-      "Resident portal",
+      text.residentPortal,
 
     paper_note:
-      "Paper note",
+      text.paperNote,
 
     email:
-      "Email",
+      text.email,
 
     phone:
-      "Phone",
+      text.phone,
 
     admin_manual:
-      "Admin manual",
+      text.manualAdminEntry,
   };
 
   return (
     labels[source] ||
     source ||
-    "Unknown"
+    text.unknown
   );
 }
 
 function formatStatus(
-  status
+  status,
+  text
 ) {
 
   const labels = {
-    active: "Active",
-    superseded: "Superseded",
+    active: text.active,
+    superseded:
+      text.superseded,
   };
 
   return (
     labels[status] ||
     status ||
-    "Unknown"
+    text.unknown
   );
 }
 
@@ -1361,7 +1595,8 @@ function formatReadingNumber(
 }
 
 function formatReading(
-  value
+  value,
+  locale
 ) {
 
   if (
@@ -1383,28 +1618,53 @@ function formatReading(
     return String(value);
   }
 
-  return (
-    (numeric / 1000)
-      .toFixed(3)
-      .replace(".", ",") +
-    " m³"
-  );
+  return `${new Intl.NumberFormat(
+    locale,
+    {
+      minimumFractionDigits: 3,
+      maximumFractionDigits: 3,
+    }
+  ).format(numeric / 1000)} m³`;
 }
 
 function formatDate(
-  value
+  value,
+  locale
 ) {
 
   if (!value) {
     return "—";
   }
 
-  return String(value)
-    .slice(0, 10);
+  const date =
+    new Date(
+      `${String(value).slice(
+        0,
+        10
+      )}T00:00:00`
+    );
+
+  if (
+    Number.isNaN(
+      date.getTime()
+    )
+  ) {
+    return String(value);
+  }
+
+  return date.toLocaleDateString(
+    locale,
+    {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }
+  );
 }
 
 function formatDateTime(
-  value
+  value,
+  locale
 ) {
 
   if (!value) {
@@ -1423,7 +1683,7 @@ function formatDateTime(
   }
 
   return date.toLocaleString(
-    undefined,
+    locale,
     {
       year: "numeric",
       month: "2-digit",

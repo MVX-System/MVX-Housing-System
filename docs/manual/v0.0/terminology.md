@@ -90,7 +90,55 @@ The manuals must distinguish the public user recovery workflow from the administ
 
 Exact accepted input, decimal-separator, validation, correction, and late-entry behavior must be confirmed during functional verification before it is stated normatively in a manual.
 
-## 7. Announcements
+## 7. Admin water workflows
+
+The Admin Mode water pages use page-local LV, EN, and RU dictionaries. The following terms are controlling when the Admin Mode Manual describes those pages.
+
+### 7.1 Water Meter Management
+
+| Concept or control | LV | EN | RU | Active source |
+|---|---|---|---|---|
+| Page title | Ūdens skaitītāju pārvaldība | Water Meter Management | Управление счётчиками воды | `WaterMetersPage.jsx` page-local `TEXT` |
+| Add water meter | Pievienot ūdens skaitītāju | Add Water Meter | Добавить счётчик воды | `WaterMetersPage.jsx` page-local `TEXT` |
+| Edit water meter | Rediģēt ūdens skaitītāju | Edit Water Meter | Изменить счётчик воды | `WaterMetersPage.jsx` page-local `TEXT` |
+| Deactivate water meters | Deaktivizēt ūdens skaitītājus | Deactivate Water Meters | Деактивировать счётчики воды | `WaterMetersPage.jsx` page-local `TEXT` |
+| Installed date | Uzstādīšanas datums | Installed Date | Дата установки | `WaterMetersPage.jsx` page-local `TEXT` |
+| Initial reading | Sākotnējais rādījums, m³ | Initial Reading, m³ | Начальное показание, м³ | `WaterMetersPage.jsx` page-local `TEXT` |
+| Calibration history | Kalibrēšanas vēsture | Calibration History | История калибровки | `WaterMetersPage.jsx` page-local `TEXT` |
+| Add calibration | Pievienot kalibrēšanu | Add Calibration | Добавить калибровку | `WaterMetersPage.jsx` page-local `TEXT` |
+| Calibration date | Kalibrēšanas datums | Calibration Date | Дата калибровки | `WaterMetersPage.jsx` page-local `TEXT` |
+| Validity period | Derīguma termiņš | Validity Period | Срок действия | `WaterMetersPage.jsx` page-local `TEXT` |
+| Calibration certificate available | Vai kalibrēšanas sertifikāts ir pieejams? | Calibration Certificate Available? | Сертификат калибровки доступен? | `WaterMetersPage.jsx` page-local `TEXT` |
+| Certificate number | Sertifikāta numurs | Certificate Number | Номер сертификата | `WaterMetersPage.jsx` page-local `TEXT` |
+| Calibration laboratory | Kalibrēšanas laboratorija | Calibration Laboratory | Калибровочная лаборатория | `WaterMetersPage.jsx` page-local `TEXT` |
+| Calibration document | Kalibrēšanas dokuments | Calibration Document | Документ о калибровке | `WaterMetersPage.jsx` page-local `TEXT` |
+| Valid calibration | Derīga | Valid | Действует | `WaterMetersPage.jsx` page-local `TEXT` |
+| Calibration expires soon | Drīz beigsies | Expires soon | Скоро истекает | `WaterMetersPage.jsx` page-local `TEXT` |
+| Calibration expired | Termiņš beidzies | Expired | Срок истёк | `WaterMetersPage.jsx` page-local `TEXT` |
+| No calibration | Nav kalibrēšanas | No calibration | Нет калибровки | `WaterMetersPage.jsx` page-local `TEXT` |
+
+### 7.2 Water Reading History
+
+| Concept or control | LV | EN | RU | Active source |
+|---|---|---|---|---|
+| Page title | Ūdens rādījumu vēsture | Water Reading History | История показаний воды | `WaterReadingsPage.jsx` page-local `TEXT` |
+| Active reading | Aktīvs | Active | Активно | `WaterReadingsPage.jsx` page-local `TEXT` |
+| Superseded reading | Aizstāts | Superseded | Заменено | `WaterReadingsPage.jsx` page-local `TEXT` |
+| Resident portal source | Iedzīvotāja portāls | Resident portal | Портал жильца | `WaterReadingsPage.jsx` page-local `TEXT` |
+| Paper-note source | Papīra pieraksts | Paper note | Бумажная запись | `WaterReadingsPage.jsx` page-local `TEXT` |
+| Email source | E-pasts | Email | Электронная почта | `WaterReadingsPage.jsx` page-local `TEXT` |
+| Phone source | Tālrunis | Phone | Телефон | `WaterReadingsPage.jsx` page-local `TEXT` |
+| Manual administrator entry source | Administratora manuāla ievade | Manual admin entry | Ручной ввод администратором | `WaterReadingsPage.jsx` page-local `TEXT`; do not shorten to “Admin manual” |
+| Period | Periods | Period | Период | `WaterReadingsPage.jsx` page-local `TEXT` |
+| Reporting period in XLSX | Pārskata periods | Reporting Period | Отчётный период | `WaterReadingsPage.jsx` page-local `TEXT` |
+| Submitted by | Iesniedza | Submitted by | Передал | `WaterReadingsPage.jsx` page-local `TEXT` |
+| Correction | Labojums | Correction | Исправление | `WaterReadingsPage.jsx` page-local `TEXT` |
+| Replaced by | Aizstāts ar | Replaced by | Заменено на | `WaterReadingsPage.jsx` page-local `TEXT` |
+| Export XLSX | Eksportēt XLSX | Export XLSX | Экспортировать XLSX | `WaterReadingsPage.jsx` page-local `TEXT` |
+
+Machine values such as `cold`, `hot`, `active`, `superseded`, `resident_portal`, and `admin_manual` are implementation identifiers. The manuals must use the localized display terms above and must not present those identifiers as UI labels.
+
+## 8. Announcements
 
 | Concept or key | LV | EN | RU | Active source |
 |---|---|---|---|---|
@@ -104,7 +152,7 @@ Exact accepted input, decimal-separator, validation, correction, and late-entry 
 | Publish | Publicēt | Publish | Опубликовать | `announcements.admin.publish` |
 | Archive | Arhivēt | Archive | Архивировать | `announcements.admin.archive` |
 
-## 8. Documents and legal information
+## 9. Documents and legal information
 
 | Concept or key | LV | EN | RU | Active source |
 |---|---|---|---|---|
@@ -116,7 +164,7 @@ Exact accepted input, decimal-separator, validation, correction, and late-entry 
 
 Legal titles must be quoted from the active legal-link localization. The manuals must not paraphrase a title when instructing a user which document to open.
 
-## 9. Settings
+## 10. Settings
 
 | Concept or key | LV | EN | RU | Active source |
 |---|---|---|---|---|
@@ -135,7 +183,7 @@ Legal titles must be quoted from the active legal-link localization. The manuals
 
 The Admin Mode Manual must use user-level wording for backup and recovery/restore controls. It must not expose secrets or turn the manual into an infrastructure runbook.
 
-## 10. Technical roles
+## 11. Technical roles
 
 Technical role identifiers must remain unchanged in code formatting. Descriptive terms explain the roles but do not imply that each role has a separate V0.0 UI mode.
 
@@ -150,7 +198,7 @@ Technical role identifiers must remain unchanged in code formatting. Descriptive
 | `worker` | darbinieks | worker | работник | No |
 | `admin` | administrators | administrator | администратор | Admin Mode |
 
-## 11. Mobile and PWA terms
+## 12. Mobile and PWA terms
 
 | Concept | LV | EN | RU | Active source or rule |
 |---|---|---|---|---|
@@ -161,7 +209,7 @@ Technical role identifiers must remain unchanged in code formatting. Descriptive
 
 Apple Watch is not a separate supported MVX application or UI mode. A mirrored notification may be mentioned only as device behavior if it is verified and clearly distinguished from an MVX watch application.
 
-## 12. Known baseline localization gap
+## 13. Admin water localization status
 
 At source baseline `e5ea2f14dd6d2453726adfc82a809a8f8c9887bd`:
 
@@ -169,4 +217,6 @@ At source baseline `e5ea2f14dd6d2453726adfc82a809a8f8c9887bd`:
 - active `src/pages/WaterMetersPage.jsx` content is English-only;
 - active `src/pages/WaterReadingsPage.jsx` content is English-only.
 
-The LV and RU manuals must not pretend that translated controls already exist on these two pages. The gap must be fixed or formally dispositioned before `MAN-ADM-01` reaches `reviewed` status.
+PR-6C resolves this baseline gap by adding active page-local LV, EN, and RU dictionaries to both pages. The localization audit confirmed complete key parity, no untranslated LV/RU values, no residual user-facing strings outside the dictionaries, preserved API and machine-value contracts, and a successful production build.
+
+The terms in section 7 are the approved display labels introduced by PR-6C and may be quoted in `MAN-ADM-01`. Functional walkthrough verification remains required before the manual describes the behavior of a control normatively.
