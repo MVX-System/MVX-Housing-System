@@ -37,7 +37,7 @@ const login = {
     notNow: "Not now",
     guideTitle: "Add MVX to this device",
     guides: {
-      ios: "In Safari, tap Share, choose Add to Home Screen, then tap Add.",
+      ios: "In Safari, tap Share, choose Add to Home Screen, then tap Add. After that, iPhone will return to the Home Screen. Close the previously opened MVX tab in Safari, and from then on open MVX using the new MVX icon.",
       macSafari: "In Safari, choose File → Add to Dock and confirm.",
       android: "Open the browser menu and choose Install app or Add to Home screen.",
       desktop: "Open the browser menu and choose Install MVX or Install app.",
