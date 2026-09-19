@@ -13,6 +13,7 @@ const sidebar = {
     "Ūdens rādījumu vēsture",
   monthlyReport: "Mēneša pārskats",
   documents: "Dokumenti",
+  manual: "Rokasgrāmata",
   logout: "Iziet",
 };
 

@@ -13,6 +13,7 @@ const sidebar = {
     "Water Reading History",
   monthlyReport: "Monthly Report",
   documents: "Documents",
+  manual: "Manual",
   logout: "Logout",
 };
 
