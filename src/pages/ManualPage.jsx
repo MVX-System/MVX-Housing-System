@@ -1,10 +1,25 @@
 import {
+  useEffect,
+} from "react";
+
+import {
+  useLocation,
+} from "react-router-dom";
+
+import {
+  useAuth,
+} from "../context/AuthContext";
+
+import {
   useMode,
 } from "../context/ModeContext";
 
 import {
   useTranslation,
 } from "../i18n";
+
+import LanguageSelector
+  from "../components/LanguageSelector";
 
 import ManualMarkdown
   from "../manual/ManualMarkdown";
@@ -20,6 +35,7 @@ const TEXT = {
     adminMode: "Administratora režīms",
     version: "Versija",
     appliesTo: "Attiecas uz",
+    close: "Aizvērt",
     unavailable:
       "Rokasgrāmata nav pieejama.",
   },
@@ -29,6 +45,7 @@ const TEXT = {
     adminMode: "Admin Mode",
     version: "Version",
     appliesTo: "Applies to",
+    close: "Close",
     unavailable:
       "The manual is unavailable.",
   },
@@ -38,6 +55,7 @@ const TEXT = {
     adminMode: "Режим администратора",
     version: "Версия",
     appliesTo: "Применимо к",
+    close: "Закрыть",
     unavailable:
       "Руководство недоступно.",
   },
@@ -45,8 +63,15 @@ const TEXT = {
 
 export default function ManualPage() {
   const {
-    mode,
+    mode: activeMode,
   } = useMode();
+
+  const {
+    me,
+  } = useAuth();
+
+  const location =
+    useLocation();
 
   const {
     language,
@@ -55,16 +80,94 @@ export default function ManualPage() {
   const text =
     TEXT[language] || TEXT.en;
 
-  const document =
+  const requestedMode =
+    new URLSearchParams(
+      location.search
+    ).get("mode");
+
+  const roles =
+    Array.isArray(me?.roles)
+      ? me.roles
+      : [];
+
+  const requestedModeAllowed =
+    requestedMode === "admin"
+      ? roles.includes("admin")
+      : requestedMode ===
+          "resident"
+        ? roles.includes(
+            "resident"
+          ) ||
+          roles.includes("owner")
+        : false;
+
+  const manualMode =
+    requestedModeAllowed
+      ? requestedMode
+      : activeMode;
+
+  const manualDocument =
     getManualDocument({
-      mode,
+      mode: manualMode,
       language,
     });
 
   const modeLabel =
-    mode === "admin"
+    manualMode === "admin"
       ? text.adminMode
       : text.residentMode;
+
+  useEffect(() => {
+    const targetId =
+      location.hash.replace(
+        /^#/,
+        ""
+      );
+
+    if (
+      !manualDocument ||
+      !/^manual-section-\d+(?:-\d+)?$/.test(
+        targetId
+      )
+    ) {
+      return undefined;
+    }
+
+    const frame =
+      window.requestAnimationFrame(
+        () => {
+          document
+            .getElementById(
+              targetId
+            )
+            ?.scrollIntoView({
+              block: "start",
+            });
+        }
+      );
+
+    return () =>
+      window.cancelAnimationFrame(
+        frame
+      );
+  }, [
+    language,
+    location.hash,
+    manualDocument,
+  ]);
+
+  useEffect(() => {
+    const previousTitle =
+      document.title;
+
+    document.title =
+      `${text.section} — MVX`;
+
+    return () => {
+      document.title =
+        previousTitle;
+    };
+  }, [text.section]);
 
   return (
     <div
@@ -86,9 +189,27 @@ export default function ManualPage() {
             {modeLabel}
           </div>
         </div>
+
+        <div
+          className="manual-page-actions"
+        >
+          <LanguageSelector
+            variant="compact"
+          />
+
+          <button
+            type="button"
+            className="manual-close-button"
+            onClick={() =>
+              window.close()
+            }
+          >
+            {text.close}
+          </button>
+        </div>
       </header>
 
-      {!document && (
+      {!manualDocument && (
         <div
           className="manual-state"
           role="alert"
@@ -97,7 +218,7 @@ export default function ManualPage() {
         </div>
       )}
 
-      {document && (
+      {manualDocument && (
         <article
           className="manual-document"
         >
@@ -109,7 +230,7 @@ export default function ManualPage() {
                 {text.version}:
               </strong>{" "}
               {
-                document.metadata
+                manualDocument.metadata
                   .version
               }
             </span>
@@ -119,7 +240,7 @@ export default function ManualPage() {
                 {text.appliesTo}:
               </strong>{" "}
               {
-                document.metadata
+                manualDocument.metadata
                   .applies_to
               }
             </span>
@@ -130,7 +251,7 @@ export default function ManualPage() {
           >
             <ManualMarkdown
               markdown={
-                document.body
+                manualDocument.body
               }
             />
           </div>

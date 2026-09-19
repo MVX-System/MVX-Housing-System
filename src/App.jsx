@@ -13,6 +13,9 @@ import Sidebar
 import LanguageSelector
   from "./components/LanguageSelector";
 
+import ContextHelpButton
+  from "./components/ContextHelpButton";
+
 import {
   layout,
   content,
@@ -191,6 +194,8 @@ export default function App() {
       >
         <Outlet />
       </main>
+
+      <ContextHelpButton />
     </div>
   );
 }
