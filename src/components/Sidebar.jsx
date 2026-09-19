@@ -54,6 +54,7 @@ const RESIDENT_PATHS = new Set([
   "/water",
   "/announcements",
   "/documents",
+  "/manual",
   "/settings",
 ]);
 
@@ -66,6 +67,7 @@ const ADMIN_PATHS = new Set([
   "/monthly-report",
   "/admin-announcements",
   "/documents",
+  "/manual",
   "/settings",
 ]);
 
@@ -565,21 +567,39 @@ export default function Sidebar({
         )}
 
         {!mustChangePassword && (
-          <MenuButton
-            title={t(
-              "sidebar.documents"
-            )}
-            active={
-              isActivePath(
-                "/documents"
-              )
-            }
-            onClick={() =>
-              go(
-                "/documents"
-              )
-            }
-          />
+          <>
+            <MenuButton
+              title={t(
+                "sidebar.documents"
+              )}
+              active={
+                isActivePath(
+                  "/documents"
+                )
+              }
+              onClick={() =>
+                go(
+                  "/documents"
+                )
+              }
+            />
+
+            <MenuButton
+              title={t(
+                "sidebar.manual"
+              )}
+              active={
+                isActivePath(
+                  "/manual"
+                )
+              }
+              onClick={() =>
+                go(
+                  "/manual"
+                )
+              }
+            />
+          </>
         )}
 
         <hr style={divider} />
