@@ -16,9 +16,6 @@ import PublicLegalDocumentPage
 import DocumentsPage
   from "../pages/DocumentsPage";
 
-import ManualPage
-  from "../pages/ManualPage";
-
 import DashboardPage
   from "../pages/DashboardPage";
 
@@ -72,6 +69,21 @@ export const router =
       path: "/documents/:documentSlug",
       element:
         <PublicLegalDocumentPage />,
+    },
+
+    {
+      path: "/manual",
+      lazy: async () => {
+        const {
+          default: Component,
+        } = await import(
+          "../pages/ProtectedManualPage"
+        );
+
+        return {
+          Component,
+        };
+      },
     },
 
     {
@@ -149,12 +161,6 @@ export const router =
           path: "documents",
           element:
             <DocumentsPage />,
-        },
-
-        {
-          path: "manual",
-          element:
-            <ManualPage />,
         },
 
         {

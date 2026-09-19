@@ -26,6 +26,10 @@ import {
 } from "../i18n";
 
 import {
+  openManualWindow,
+} from "../manual/manualNavigation";
+
+import {
   sidebar,
   buttonStyle,
   menuButton,
@@ -226,6 +230,14 @@ export default function Sidebar({
     );
 
     navigate(path);
+
+    closeMobileSidebar();
+  };
+
+  const openManual = () => {
+    openManualWindow({
+      mode,
+    });
 
     closeMobileSidebar();
   };
@@ -585,19 +597,15 @@ export default function Sidebar({
             />
 
             <MenuButton
-              title={t(
+              title={`${t(
                 "sidebar.manual"
-              )}
+              )} ↗`}
               active={
                 isActivePath(
                   "/manual"
                 )
               }
-              onClick={() =>
-                go(
-                  "/manual"
-                )
-              }
+              onClick={openManual}
             />
           </>
         )}
