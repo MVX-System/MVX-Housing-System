@@ -12,7 +12,7 @@ public: false
 requires_acceptance: false
 ---
 
-# MVX V0.0 Resident Mode User Manual
+# MVX V0.0 Resident Mode Manual
 
 > This manual is a translation of the Latvian master. If the meaning differs, the Latvian version prevails.
 
