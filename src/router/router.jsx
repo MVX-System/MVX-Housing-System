@@ -16,6 +16,9 @@ import PublicLegalDocumentPage
 import DocumentsPage
   from "../pages/DocumentsPage";
 
+import ManualPage
+  from "../pages/ManualPage";
+
 import DashboardPage
   from "../pages/DashboardPage";
 
@@ -147,6 +150,13 @@ export const router =
           element:
             <DocumentsPage />,
         },
+
+        {
+          path: "manual",
+          element:
+            <ManualPage />,
+        },
+
         {
           path: "settings",
           element:
