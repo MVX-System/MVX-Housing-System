@@ -1074,7 +1074,8 @@ code {
   width: 100%;
   max-width: 1040px;
   margin: 0 auto;
-  padding-bottom: 40px;
+  min-height: 100vh;
+  padding: 24px;
   box-sizing: border-box;
 }
 
@@ -1107,6 +1108,35 @@ code {
   color: var(--text-h);
   font-size: 12px;
   font-weight: 700;
+}
+
+.manual-page-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.manual-close-button {
+  min-height: 36px;
+  padding: 7px 12px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface);
+  color: var(--text-h);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.manual-close-button:hover {
+  background: var(--surface-soft);
+}
+
+.manual-close-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .manual-state,
@@ -1159,6 +1189,11 @@ code {
   color: var(--text-h);
   font-size: 22px;
   line-height: 1.25;
+}
+
+.manual-markdown h2[id],
+.manual-markdown h3[id] {
+  scroll-margin-top: 24px;
 }
 
 .manual-markdown h3 {
@@ -1219,10 +1254,78 @@ code {
   color: var(--text-h);
 }
 
+.context-help-button {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 1300;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 7px 14px 7px 8px;
+  box-sizing: border-box;
+  border: 1px solid var(--accent-border);
+  border-radius: 999px;
+  background: var(--accent);
+  color: #ffffff;
+  box-shadow: var(--shadow);
+  font-size: 12px;
+  font-weight: 700;
+  font-family: inherit;
+  line-height: 1;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.context-help-button:hover {
+  filter: brightness(1.05);
+}
+
+.context-help-button:focus-visible {
+  outline: 3px solid var(--accent-soft);
+  outline-offset: 3px;
+}
+
+.context-help-symbol {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid rgba(255,255,255,.55);
+  border-radius: 50%;
+  font-size: 17px;
+  line-height: 1;
+}
+
 @media (max-width: 767px) {
+  .context-help-button {
+    right: 16px;
+    bottom: 16px;
+    width: 46px;
+    height: 46px;
+    min-height: 46px;
+    padding: 8px;
+    justify-content: center;
+  }
+
+  .context-help-label {
+    display: none;
+  }
+
   .manual-page-header {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .manual-page {
+    padding: 14px;
+  }
+
+  .manual-page-actions {
+    width: 100%;
+    justify-content: space-between;
   }
 
   .manual-state,
