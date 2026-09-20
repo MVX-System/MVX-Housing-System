@@ -4044,6 +4044,199 @@ class TestFindings {
       .toISOString();
   }
 
+  static async insertEvent(
+    {
+      env,
+      findingId,
+      actor,
+      eventType,
+      fromStatus = null,
+      toStatus = null,
+      reasonCode = null,
+      comment = null,
+    }
+  ) {
+
+    if (
+      !this.hasOpsDatabase(
+        env
+      )
+    ) {
+      return {
+        ok: false,
+        error:
+          "findings_storage_unavailable",
+      };
+    }
+
+    const normalizedFindingId =
+      this.normalizePositiveInteger(
+        findingId
+      );
+
+    const actorUserId =
+      this.normalizePositiveInteger(
+        actor?.user_id
+      );
+
+    const actorNick =
+      String(
+        actor?.nick ||
+        ""
+      ).trim();
+
+    const normalizedEventType =
+      this.normalizeEventType(
+        eventType
+      );
+
+    const normalizedFromStatus =
+      fromStatus == null
+        ? null
+        : this.normalizeStatus(
+            fromStatus
+          );
+
+    const normalizedToStatus =
+      toStatus == null
+        ? null
+        : this.normalizeStatus(
+            toStatus
+          );
+
+    if (
+      !normalizedFindingId ||
+      !actorUserId ||
+      !actorNick ||
+      !normalizedEventType
+    ) {
+      return {
+        ok: false,
+        error:
+          "invalid_event_context",
+      };
+    }
+
+    if (
+      fromStatus != null &&
+      !normalizedFromStatus
+    ) {
+      return {
+        ok: false,
+        error:
+          "invalid_event_from_status",
+      };
+    }
+
+    if (
+      toStatus != null &&
+      !normalizedToStatus
+    ) {
+      return {
+        ok: false,
+        error:
+          "invalid_event_to_status",
+      };
+    }
+
+    if (
+      normalizedFromStatus &&
+      normalizedToStatus &&
+      normalizedFromStatus ===
+        normalizedToStatus
+    ) {
+      return {
+        ok: false,
+        error:
+          "invalid_same_status_event",
+      };
+    }
+
+    const normalizedComment =
+      comment == null
+        ? null
+        : String(
+            comment
+          ).trim() ||
+          null;
+
+    try {
+
+      const result =
+        await env.OPS_DB
+          .prepare(`
+            INSERT INTO test_finding_events (
+              finding_id,
+              actor_user_id,
+              actor_nick,
+              actor_roles_json,
+              event_type,
+              from_status,
+              to_status,
+              reason_code,
+              comment,
+              created_at
+            )
+            VALUES (
+              ?,
+              ?,
+              ?,
+              ?,
+              ?,
+              ?,
+              ?,
+              ?,
+              ?,
+              ?
+            )
+          `)
+          .bind(
+            normalizedFindingId,
+            actorUserId,
+            actorNick,
+            this.rolesJson(
+              actor
+            ),
+            normalizedEventType,
+            normalizedFromStatus,
+            normalizedToStatus,
+            reasonCode,
+            normalizedComment,
+            this.nowIso()
+          )
+          .run();
+
+      return {
+        ok: true,
+        id:
+          this.normalizePositiveInteger(
+            result
+              ?.meta
+              ?.last_row_id
+          ),
+      };
+
+    } catch (error) {
+
+      App.logError(
+        "test_finding_event_insert_failed",
+        error,
+        {
+          finding_id:
+            normalizedFindingId,
+          event_type:
+            normalizedEventType,
+        }
+      );
+
+      return {
+        ok: false,
+        error:
+          "finding_event_insert_failed",
+      };
+    }
+  }
+
   static async applyStatusChange(
     {
       env,
@@ -7888,9 +8081,7 @@ Router.register(
               completed_at
             FROM test_finding_retests
             WHERE finding_id = ?
-              AND completed_at IS NOT NULL
             ORDER BY
-              datetime(completed_at) DESC,
               id DESC
             LIMIT 1
           `)
@@ -7901,6 +8092,7 @@ Router.register(
 
       if (
         !latestRetest ||
+        !latestRetest.completed_at ||
         latestRetest.outcome !==
           "PASS"
       ) {
@@ -8393,6 +8585,1147 @@ Router.register(
       ok: true,
       finding:
         result.finding,
+    };
+  }
+);
+
+
+// =========================
+// TEST FINDINGS — ADMIN RETEST ASSIGNMENT
+// PR-6K.1C.5B
+//
+// Preconditions:
+// - TEST only
+// - Admin only
+// - finding must be READY_FOR_RETEST
+// - assignee must exist and be active
+// - assignee must have resident or owner role
+// - only one active retest per finding
+// =========================
+
+Router.register(
+  "POST",
+  "/api/admin/test/finding/retest",
+  async (ctx) => {
+
+    if (
+      !TestFindings
+        .isTestEnvironment(
+          ctx
+        )
+    ) {
+      return {
+        error: "forbidden"
+      };
+    }
+
+    const admin =
+      await Auth.requireAdmin(
+        ctx
+      );
+
+    if (!admin) {
+      return {
+        error: "forbidden"
+      };
+    }
+
+    if (
+      !TestFindings
+        .hasOpsDatabase(
+          ctx.env
+        )
+    ) {
+      return {
+        error:
+          "findings_storage_unavailable"
+      };
+    }
+
+    const body =
+      await ctx.request
+        .json()
+        .catch(() => null);
+
+    if (
+      !body ||
+      typeof body !== "object" ||
+      Array.isArray(body)
+    ) {
+      return {
+        error:
+          "invalid_request_body"
+      };
+    }
+
+    const findingId =
+      TestFindings
+        .normalizePositiveInteger(
+          body.finding_id
+        );
+
+    const assignedUserId =
+      TestFindings
+        .normalizePositiveInteger(
+          body.assigned_user_id
+        );
+
+    if (!findingId) {
+      return {
+        error:
+          "invalid_finding_id"
+      };
+    }
+
+    if (!assignedUserId) {
+      return {
+        error:
+          "invalid_retest_assignee"
+      };
+    }
+
+    let assignmentComment =
+      null;
+
+    if (
+      body.comment !== null &&
+      body.comment !== undefined &&
+      String(
+        body.comment
+      ).trim() !== ""
+    ) {
+
+      assignmentComment =
+        TestFindings
+          .normalizeText(
+            body.comment,
+            {
+              maxLength: 4000,
+            }
+          );
+
+      if (!assignmentComment) {
+        return {
+          error:
+            "invalid_retest_assignment_comment"
+        };
+      }
+    }
+
+    const finding =
+      await ctx.env.OPS_DB
+        .prepare(`
+          SELECT *
+          FROM test_findings
+          WHERE id = ?
+          LIMIT 1
+        `)
+        .bind(
+          findingId
+        )
+        .first();
+
+    if (!finding) {
+      return {
+        error:
+          "finding_not_found"
+      };
+    }
+
+    if (
+      finding.status !==
+        "READY_FOR_RETEST"
+    ) {
+      return {
+        error:
+          "retest_requires_ready_status"
+      };
+    }
+
+    const assignee =
+      await ctx.env.DB
+        .prepare(`
+          SELECT
+            u.id,
+            u.nick,
+            u.is_active,
+
+            EXISTS (
+              SELECT 1
+              FROM user_roles ur
+              INNER JOIN roles r
+                ON r.id = ur.role_id
+              WHERE ur.user_id = u.id
+                AND r.name IN (
+                  'resident',
+                  'owner'
+                )
+            ) AS tester_role
+
+          FROM users u
+          WHERE u.id = ?
+          LIMIT 1
+        `)
+        .bind(
+          assignedUserId
+        )
+        .first();
+
+    if (
+      !assignee ||
+      Number(
+        assignee.is_active
+      ) !== 1 ||
+      Number(
+        assignee.tester_role
+      ) !== 1
+    ) {
+      return {
+        error:
+          "retest_assignee_not_eligible"
+      };
+    }
+
+    const activeRetest =
+      await ctx.env.OPS_DB
+        .prepare(`
+          SELECT
+            id
+          FROM test_finding_retests
+          WHERE finding_id = ?
+            AND completed_at IS NULL
+          LIMIT 1
+        `)
+        .bind(
+          findingId
+        )
+        .first();
+
+    if (activeRetest) {
+      return {
+        error:
+          "active_retest_exists"
+      };
+    }
+
+    const nowIso =
+      TestFindings
+        .nowIso();
+
+    let insertedRetestId =
+      null;
+
+    try {
+
+      const insertResult =
+        await ctx.env.OPS_DB
+          .prepare(`
+            INSERT INTO test_finding_retests (
+              finding_id,
+              assigned_user_id,
+              assigned_nick,
+              assigned_by_user_id,
+              assigned_by_nick,
+              outcome,
+              comment,
+              assigned_at,
+              completed_at
+            )
+            VALUES (
+              ?,
+              ?,
+              ?,
+              ?,
+              ?,
+              NULL,
+              NULL,
+              ?,
+              NULL
+            )
+          `)
+          .bind(
+            findingId,
+            assignedUserId,
+            assignee.nick,
+            admin.user_id,
+            admin.nick,
+            nowIso
+          )
+          .run();
+
+      insertedRetestId =
+        TestFindings
+          .normalizePositiveInteger(
+            insertResult
+              ?.meta
+              ?.last_row_id
+          );
+
+    } catch (error) {
+
+      const concurrentActive =
+        await ctx.env.OPS_DB
+          .prepare(`
+            SELECT id
+            FROM test_finding_retests
+            WHERE finding_id = ?
+              AND completed_at IS NULL
+            LIMIT 1
+          `)
+          .bind(
+            findingId
+          )
+          .first();
+
+      if (concurrentActive) {
+        return {
+          error:
+            "active_retest_exists"
+        };
+      }
+
+      App.logError(
+        "test_finding_retest_assignment_failed",
+        error,
+        {
+          finding_id:
+            findingId,
+          assigned_user_id:
+            assignedUserId,
+        }
+      );
+
+      return {
+        error:
+          "retest_assignment_failed"
+      };
+    }
+
+    if (!insertedRetestId) {
+      return {
+        error:
+          "retest_assignment_failed"
+      };
+    }
+
+    const eventResult =
+      await TestFindings
+        .insertEvent({
+          env:
+            ctx.env,
+
+          findingId,
+
+          actor:
+            admin,
+
+          eventType:
+            "retest_assigned",
+
+          fromStatus:
+            "READY_FOR_RETEST",
+
+          toStatus:
+            null,
+
+          reasonCode:
+            null,
+
+          comment:
+            assignmentComment,
+        });
+
+    if (!eventResult.ok) {
+
+      let rollbackSucceeded =
+        false;
+
+      try {
+
+        const rollbackResult =
+          await ctx.env.OPS_DB
+            .prepare(`
+              DELETE FROM test_finding_retests
+              WHERE id = ?
+                AND finding_id = ?
+                AND completed_at IS NULL
+                AND outcome IS NULL
+            `)
+            .bind(
+              insertedRetestId,
+              findingId
+            )
+            .run();
+
+        rollbackSucceeded =
+          Number(
+            rollbackResult
+              ?.meta
+              ?.changes ||
+            0
+          ) === 1;
+
+      } catch (rollbackError) {
+
+        App.logError(
+          "test_finding_retest_assignment_rollback_failed",
+          rollbackError,
+          {
+            finding_id:
+              findingId,
+            retest_id:
+              insertedRetestId,
+          }
+        );
+      }
+
+      return {
+        error:
+          rollbackSucceeded
+            ? "retest_assignment_failed"
+            : "retest_assignment_inconsistent"
+      };
+    }
+
+    const retest =
+      await ctx.env.OPS_DB
+        .prepare(`
+          SELECT *
+          FROM test_finding_retests
+          WHERE id = ?
+          LIMIT 1
+        `)
+        .bind(
+          insertedRetestId
+        )
+        .first();
+
+    if (!retest) {
+      return {
+        error:
+          "retest_assigned_but_reload_failed"
+      };
+    }
+
+    return {
+      ok: true,
+
+      retest:
+        TestFindings
+          .normalizeRetestRow(
+            retest
+          ),
+    };
+  }
+);
+
+
+// =========================
+// TEST FINDINGS — ASSIGNED RETESTS
+// PR-6K.1C.5B
+//
+// Returns all retests assigned to current tester,
+// newest first, with sufficient finding context
+// to perform the retest.
+// =========================
+
+Router.register(
+  "GET",
+  "/api/test/retests",
+  async (ctx) => {
+
+    if (
+      !TestFindings
+        .isTestEnvironment(
+          ctx
+        )
+    ) {
+      return {
+        error: "forbidden"
+      };
+    }
+
+    const user =
+      await Auth.requireUser(
+        ctx
+      );
+
+    if (!user) {
+      return {
+        error:
+          "unauthorized"
+      };
+    }
+
+    if (
+      !TestFindings
+        .canUseMode(
+          user,
+          "resident"
+        )
+    ) {
+      return {
+        error:
+          "forbidden"
+      };
+    }
+
+    if (
+      !TestFindings
+        .hasOpsDatabase(
+          ctx.env
+        )
+    ) {
+      return {
+        error:
+          "findings_storage_unavailable"
+      };
+    }
+
+    const result =
+      await ctx.env.OPS_DB
+        .prepare(`
+          SELECT
+            r.id,
+            r.finding_id,
+            r.assigned_user_id,
+            r.assigned_nick,
+            r.assigned_by_user_id,
+            r.assigned_by_nick,
+            r.outcome,
+            r.comment,
+            r.assigned_at,
+            r.completed_at,
+
+            f.title AS finding_title,
+            f.finding_type AS finding_type,
+            f.reproduction_steps AS finding_reproduction_steps,
+            f.expected_result AS finding_expected_result,
+            f.actual_result AS finding_actual_result,
+            f.extra_explanation AS finding_extra_explanation,
+            f.blocking AS finding_blocking,
+            f.route AS finding_route,
+            f.language AS finding_language,
+            f.app_commit_sha AS finding_app_commit_sha,
+            f.status AS finding_status
+
+          FROM test_finding_retests r
+          INNER JOIN test_findings f
+            ON f.id = r.finding_id
+
+          WHERE r.assigned_user_id = ?
+
+          ORDER BY
+            CASE
+              WHEN r.completed_at IS NULL
+                THEN 0
+              ELSE 1
+            END ASC,
+            datetime(r.assigned_at) DESC,
+            r.id DESC
+        `)
+        .bind(
+          user.user_id
+        )
+        .all();
+
+    const retests =
+      (result.results || [])
+        .map(
+          (row) => {
+
+            const normalized =
+              TestFindings
+                .normalizeRetestRow(
+                  row
+                );
+
+            return {
+              ...normalized,
+
+              active:
+                row.completed_at == null,
+
+              finding: {
+                id:
+                  TestFindings
+                    .normalizePositiveInteger(
+                      row.finding_id
+                    ),
+
+                display_id:
+                  TestFindings
+                    .displayId(
+                      row.finding_id
+                    ),
+
+                title:
+                  row.finding_title ||
+                  "",
+
+                finding_type:
+                  row.finding_type ||
+                  null,
+
+                reproduction_steps:
+                  row.finding_reproduction_steps ||
+                  "",
+
+                expected_result:
+                  row.finding_expected_result ||
+                  "",
+
+                actual_result:
+                  row.finding_actual_result ||
+                  "",
+
+                extra_explanation:
+                  row.finding_extra_explanation ||
+                  null,
+
+                blocking:
+                  Boolean(
+                    Number(
+                      row.finding_blocking
+                    )
+                  ),
+
+                route:
+                  row.finding_route ||
+                  null,
+
+                language:
+                  row.finding_language ||
+                  null,
+
+                app_commit_sha:
+                  row.finding_app_commit_sha ||
+                  null,
+
+                status:
+                  row.finding_status ||
+                  null,
+              },
+            };
+          }
+        );
+
+    return {
+      ok: true,
+      retests,
+    };
+  }
+);
+
+
+// =========================
+// TEST FINDINGS — RETEST RESULT
+// PR-6K.1C.5B
+//
+// Only assigned tester may submit.
+//
+// PASS:
+//   completes retest;
+//   finding remains READY_FOR_RETEST;
+//   Admin must separately set VERIFIED.
+//
+// FAIL:
+//   completes retest;
+//   finding returns to IN_PROGRESS;
+//   audit event records the status transition.
+// =========================
+
+Router.register(
+  "POST",
+  "/api/test/retest",
+  async (ctx) => {
+
+    if (
+      !TestFindings
+        .isTestEnvironment(
+          ctx
+        )
+    ) {
+      return {
+        error: "forbidden"
+      };
+    }
+
+    const user =
+      await Auth.requireUser(
+        ctx
+      );
+
+    if (!user) {
+      return {
+        error:
+          "unauthorized"
+      };
+    }
+
+    if (
+      !TestFindings
+        .canUseMode(
+          user,
+          "resident"
+        )
+    ) {
+      return {
+        error:
+          "forbidden"
+      };
+    }
+
+    if (
+      !TestFindings
+        .hasOpsDatabase(
+          ctx.env
+        )
+    ) {
+      return {
+        error:
+          "findings_storage_unavailable"
+      };
+    }
+
+    const body =
+      await ctx.request
+        .json()
+        .catch(() => null);
+
+    if (
+      !body ||
+      typeof body !== "object" ||
+      Array.isArray(body)
+    ) {
+      return {
+        error:
+          "invalid_request_body"
+      };
+    }
+
+    const retestId =
+      TestFindings
+        .normalizePositiveInteger(
+          body.retest_id
+        );
+
+    if (!retestId) {
+      return {
+        error:
+          "invalid_retest_id"
+      };
+    }
+
+    const outcome =
+      TestFindings
+        .normalizeRetestOutcome(
+          body.outcome
+        );
+
+    if (!outcome) {
+      return {
+        error:
+          "invalid_retest_outcome"
+      };
+    }
+
+    const comment =
+      TestFindings
+        .normalizeText(
+          body.comment,
+          {
+            required: true,
+            maxLength: 8000,
+          }
+        );
+
+    if (!comment) {
+      return {
+        error:
+          "retest_comment_required"
+      };
+    }
+
+    const retest =
+      await ctx.env.OPS_DB
+        .prepare(`
+          SELECT
+            r.*,
+
+            f.status AS finding_status,
+            f.status_reason_code AS finding_status_reason_code,
+            f.status_reason_text AS finding_status_reason_text,
+            f.updated_at AS finding_updated_at
+
+          FROM test_finding_retests r
+          INNER JOIN test_findings f
+            ON f.id = r.finding_id
+
+          WHERE r.id = ?
+          LIMIT 1
+        `)
+        .bind(
+          retestId
+        )
+        .first();
+
+    if (
+      !retest ||
+      Number(
+        retest.assigned_user_id
+      ) !==
+        Number(
+          user.user_id
+        )
+    ) {
+      return {
+        error:
+          "retest_not_found"
+      };
+    }
+
+    if (
+      retest.completed_at !==
+        null ||
+      retest.outcome !==
+        null
+    ) {
+      return {
+        error:
+          "retest_already_completed"
+      };
+    }
+
+    if (
+      retest.finding_status !==
+        "READY_FOR_RETEST"
+    ) {
+      return {
+        error:
+          "finding_not_ready_for_retest"
+      };
+    }
+
+    const nowIso =
+      TestFindings
+        .nowIso();
+
+    const previousComment =
+      retest.comment ||
+      null;
+
+    const completeResult =
+      await ctx.env.OPS_DB
+        .prepare(`
+          UPDATE test_finding_retests
+          SET
+            outcome = ?,
+            comment = ?,
+            completed_at = ?
+          WHERE id = ?
+            AND assigned_user_id = ?
+            AND completed_at IS NULL
+            AND outcome IS NULL
+        `)
+        .bind(
+          outcome,
+          comment,
+          nowIso,
+          retestId,
+          user.user_id
+        )
+        .run();
+
+    if (
+      Number(
+        completeResult
+          ?.meta
+          ?.changes ||
+        0
+      ) !== 1
+    ) {
+      return {
+        error:
+          "retest_state_changed"
+      };
+    }
+
+    if (outcome === "PASS") {
+
+      const eventResult =
+        await TestFindings
+          .insertEvent({
+            env:
+              ctx.env,
+
+            findingId:
+              retest.finding_id,
+
+            actor:
+              user,
+
+            eventType:
+              "retest_pass",
+
+            fromStatus:
+              "READY_FOR_RETEST",
+
+            toStatus:
+              null,
+
+            reasonCode:
+              null,
+
+            comment,
+          });
+
+      if (!eventResult.ok) {
+
+        let rollbackSucceeded =
+          false;
+
+        try {
+
+          const rollbackResult =
+            await ctx.env.OPS_DB
+              .prepare(`
+                UPDATE test_finding_retests
+                SET
+                  outcome = NULL,
+                  comment = ?,
+                  completed_at = NULL
+                WHERE id = ?
+                  AND assigned_user_id = ?
+                  AND outcome = 'PASS'
+                  AND completed_at = ?
+              `)
+              .bind(
+                previousComment,
+                retestId,
+                user.user_id,
+                nowIso
+              )
+              .run();
+
+          rollbackSucceeded =
+            Number(
+              rollbackResult
+                ?.meta
+                ?.changes ||
+              0
+            ) === 1;
+
+        } catch (rollbackError) {
+
+          App.logError(
+            "test_finding_retest_pass_rollback_failed",
+            rollbackError,
+            {
+              retest_id:
+                retestId,
+              finding_id:
+                retest.finding_id,
+            }
+          );
+        }
+
+        return {
+          error:
+            rollbackSucceeded
+              ? "retest_completion_failed"
+              : "retest_completion_inconsistent"
+        };
+      }
+
+    } else {
+
+      if (
+        !TestFindings
+          .canRetestFailReturn(
+            retest.finding_status
+          )
+      ) {
+
+        await ctx.env.OPS_DB
+          .prepare(`
+            UPDATE test_finding_retests
+            SET
+              outcome = NULL,
+              comment = ?,
+              completed_at = NULL
+            WHERE id = ?
+              AND assigned_user_id = ?
+              AND outcome = 'FAIL'
+              AND completed_at = ?
+          `)
+          .bind(
+            previousComment,
+            retestId,
+            user.user_id,
+            nowIso
+          )
+          .run();
+
+        return {
+          error:
+            "retest_fail_transition_not_allowed"
+        };
+      }
+
+      const findingForChange = {
+        id:
+          retest.finding_id,
+
+        status:
+          retest.finding_status,
+
+        status_reason_code:
+          retest.finding_status_reason_code,
+
+        status_reason_text:
+          retest.finding_status_reason_text,
+
+        updated_at:
+          retest.finding_updated_at,
+      };
+
+      const statusResult =
+        await TestFindings
+          .applyStatusChange({
+            env:
+              ctx.env,
+
+            finding:
+              findingForChange,
+
+            actor:
+              user,
+
+            toStatus:
+              "IN_PROGRESS",
+
+            eventType:
+              "retest_fail",
+
+            reasonCode:
+              null,
+
+            reasonText:
+              null,
+
+            comment,
+          });
+
+      if (!statusResult.ok) {
+
+        let rollbackSucceeded =
+          false;
+
+        try {
+
+          const rollbackResult =
+            await ctx.env.OPS_DB
+              .prepare(`
+                UPDATE test_finding_retests
+                SET
+                  outcome = NULL,
+                  comment = ?,
+                  completed_at = NULL
+                WHERE id = ?
+                  AND assigned_user_id = ?
+                  AND outcome = 'FAIL'
+                  AND completed_at = ?
+              `)
+              .bind(
+                previousComment,
+                retestId,
+                user.user_id,
+                nowIso
+              )
+              .run();
+
+          rollbackSucceeded =
+            Number(
+              rollbackResult
+                ?.meta
+                ?.changes ||
+              0
+            ) === 1;
+
+        } catch (rollbackError) {
+
+          App.logError(
+            "test_finding_retest_fail_rollback_failed",
+            rollbackError,
+            {
+              retest_id:
+                retestId,
+              finding_id:
+                retest.finding_id,
+            }
+          );
+        }
+
+        return {
+          error:
+            rollbackSucceeded
+              ? statusResult.error
+              : "retest_completion_inconsistent"
+        };
+      }
+    }
+
+    const completedRetest =
+      await ctx.env.OPS_DB
+        .prepare(`
+          SELECT *
+          FROM test_finding_retests
+          WHERE id = ?
+          LIMIT 1
+        `)
+        .bind(
+          retestId
+        )
+        .first();
+
+    const refreshedFinding =
+      await ctx.env.OPS_DB
+        .prepare(`
+          SELECT *
+          FROM test_findings
+          WHERE id = ?
+          LIMIT 1
+        `)
+        .bind(
+          retest.finding_id
+        )
+        .first();
+
+    if (
+      !completedRetest ||
+      !refreshedFinding
+    ) {
+      return {
+        error:
+          "retest_completed_but_reload_failed"
+      };
+    }
+
+    return {
+      ok: true,
+
+      retest:
+        TestFindings
+          .normalizeRetestRow(
+            completedRetest
+          ),
+
+      finding:
+        TestFindings
+          .normalizeFindingRow(
+            refreshedFinding
+          ),
     };
   }
 );
