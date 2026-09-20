@@ -73,6 +73,11 @@
           "binding": "WATER_CERTIFICATES",
           "bucket_name": "mvx-water-meter-certificates-test",
           "jurisdiction": "eu"
+        },
+        {
+          "binding": "FINDING_SCREENSHOTS",
+          "bucket_name": "mvx-test-finding-screenshots",
+          "jurisdiction": "eu"
         }
       ],
 
