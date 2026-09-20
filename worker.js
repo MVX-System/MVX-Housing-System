@@ -6638,6 +6638,710 @@ Router.register(
 
 
 // =========================
+// TEST FINDINGS — ADMIN REGISTER
+// PR-6K.1C.4A
+//
+// TEST only.
+// Administrator can read the complete findings register.
+// Query construction uses only fixed SQL fragments;
+// all user-supplied values are bound parameters.
+// =========================
+
+Router.register(
+  "GET",
+  "/api/admin/test/findings",
+  async (ctx) => {
+
+    if (
+      !TestFindings
+        .isTestEnvironment(
+          ctx
+        )
+    ) {
+      return {
+        error: "forbidden"
+      };
+    }
+
+    const admin =
+      await Auth.requireAdmin(
+        ctx
+      );
+
+    if (!admin) {
+      return {
+        error: "forbidden"
+      };
+    }
+
+    if (
+      !TestFindings
+        .hasOpsDatabase(
+          ctx.env
+        )
+    ) {
+      return {
+        error:
+          "findings_storage_unavailable"
+      };
+    }
+
+    const params =
+      ctx.url.searchParams;
+
+    const where = [];
+    const bindings = [];
+
+    // -------------------------
+    // Finding number / ID
+    // -------------------------
+
+    const numberRaw =
+      String(
+        params.get("number") ||
+        params.get("id") ||
+        ""
+      ).trim();
+
+    if (numberRaw) {
+
+      const numberMatch =
+        numberRaw.match(
+          /^(?:MVX-F-)?0*([1-9][0-9]*)$/i
+        );
+
+      if (!numberMatch) {
+        return {
+          error:
+            "invalid_finding_number"
+        };
+      }
+
+      const findingId =
+        TestFindings
+          .normalizePositiveInteger(
+            numberMatch[1]
+          );
+
+      if (!findingId) {
+        return {
+          error:
+            "invalid_finding_number"
+        };
+      }
+
+      where.push(
+        "id = ?"
+      );
+
+      bindings.push(
+        findingId
+      );
+    }
+
+    // -------------------------
+    // Status
+    // -------------------------
+
+    const statusRaw =
+      String(
+        params.get("status") ||
+        ""
+      ).trim();
+
+    if (statusRaw) {
+
+      const status =
+        TestFindings
+          .normalizeStatus(
+            statusRaw
+          );
+
+      if (!status) {
+        return {
+          error:
+            "invalid_finding_status"
+        };
+      }
+
+      where.push(
+        "status = ?"
+      );
+
+      bindings.push(
+        status
+      );
+    }
+
+    // -------------------------
+    // Finding type
+    // -------------------------
+
+    const typeRaw =
+      String(
+        params.get("type") ||
+        ""
+      ).trim();
+
+    if (typeRaw) {
+
+      const findingType =
+        TestFindings
+          .normalizeFindingType(
+            typeRaw
+          );
+
+      if (!findingType) {
+        return {
+          error:
+            "invalid_finding_type"
+        };
+      }
+
+      where.push(
+        "finding_type = ?"
+      );
+
+      bindings.push(
+        findingType
+      );
+    }
+
+    // -------------------------
+    // Tester
+    // Accept:
+    // - numeric user ID
+    // - Nick substring
+    // -------------------------
+
+    const testerRaw =
+      String(
+        params.get("tester") ||
+        ""
+      ).trim();
+
+    if (testerRaw) {
+
+      if (
+        /^[1-9][0-9]*$/
+          .test(
+            testerRaw
+          )
+      ) {
+
+        const testerId =
+          TestFindings
+            .normalizePositiveInteger(
+              testerRaw
+            );
+
+        where.push(
+          "author_user_id = ?"
+        );
+
+        bindings.push(
+          testerId
+        );
+
+      } else {
+
+        if (
+          testerRaw.length > 120
+        ) {
+          return {
+            error:
+              "invalid_tester_filter"
+          };
+        }
+
+        where.push(
+          "LOWER(author_nick) LIKE LOWER(?)"
+        );
+
+        bindings.push(
+          `%${testerRaw}%`
+        );
+      }
+    }
+
+    // -------------------------
+    // Role snapshot
+    // Stored JSON is produced by JSON.stringify()
+    // from normalized role strings.
+    // -------------------------
+
+    const roleRaw =
+      String(
+        params.get("role") ||
+        ""
+      ).trim();
+
+    if (roleRaw) {
+
+      if (
+        !/^[a-z_]{1,64}$/i
+          .test(
+            roleRaw
+          )
+      ) {
+        return {
+          error:
+            "invalid_role_filter"
+        };
+      }
+
+      where.push(
+        "author_roles_json LIKE ?"
+      );
+
+      bindings.push(
+        `%"${roleRaw}"%`
+      );
+    }
+
+    // -------------------------
+    // Route/page substring
+    // -------------------------
+
+    const routeRaw =
+      String(
+        params.get("route") ||
+        params.get("page") ||
+        ""
+      ).trim();
+
+    if (routeRaw) {
+
+      if (
+        routeRaw.length > 500
+      ) {
+        return {
+          error:
+            "invalid_route_filter"
+        };
+      }
+
+      where.push(
+        "route LIKE ?"
+      );
+
+      bindings.push(
+        `%${routeRaw}%`
+      );
+    }
+
+    // -------------------------
+    // App version / commit SHA
+    // -------------------------
+
+    const versionRaw =
+      String(
+        params.get("version") ||
+        ""
+      ).trim();
+
+    if (versionRaw) {
+
+      if (
+        !/^[0-9a-f]{7,64}$/i
+          .test(
+            versionRaw
+          )
+      ) {
+        return {
+          error:
+            "invalid_version_filter"
+        };
+      }
+
+      where.push(
+        "LOWER(app_commit_sha) LIKE LOWER(?)"
+      );
+
+      bindings.push(
+        `${versionRaw}%`
+      );
+    }
+
+    // -------------------------
+    // Blocking
+    // -------------------------
+
+    const blockingRaw =
+      String(
+        params.get("blocking") ||
+        ""
+      ).trim();
+
+    if (blockingRaw) {
+
+      const blocking =
+        TestFindings
+          .normalizeBooleanFlag(
+            blockingRaw
+          );
+
+      if (blocking === null) {
+        return {
+          error:
+            "invalid_blocking_filter"
+        };
+      }
+
+      where.push(
+        "blocking = ?"
+      );
+
+      bindings.push(
+        blocking
+      );
+    }
+
+    // -------------------------
+    // Created date range
+    // ISO-style text accepted by SQLite datetime().
+    // -------------------------
+
+    const fromRaw =
+      String(
+        params.get("from") ||
+        ""
+      ).trim();
+
+    if (fromRaw) {
+
+      if (
+        fromRaw.length > 40 ||
+        Number.isNaN(
+          Date.parse(
+            fromRaw
+          )
+        )
+      ) {
+        return {
+          error:
+            "invalid_from_date"
+        };
+      }
+
+      where.push(
+        "datetime(created_at) >= datetime(?)"
+      );
+
+      bindings.push(
+        fromRaw
+      );
+    }
+
+    const toRaw =
+      String(
+        params.get("to") ||
+        ""
+      ).trim();
+
+    if (toRaw) {
+
+      if (
+        toRaw.length > 40 ||
+        Number.isNaN(
+          Date.parse(
+            toRaw
+          )
+        )
+      ) {
+        return {
+          error:
+            "invalid_to_date"
+        };
+      }
+
+      where.push(
+        "datetime(created_at) <= datetime(?)"
+      );
+
+      bindings.push(
+        toRaw
+      );
+    }
+
+    // -------------------------
+    // Pagination
+    // -------------------------
+
+    const requestedLimit =
+      params.has("limit")
+        ? Number(
+            params.get("limit")
+          )
+        : 50;
+
+    if (
+      !Number.isInteger(
+        requestedLimit
+      ) ||
+      requestedLimit < 1 ||
+      requestedLimit > 100
+    ) {
+      return {
+        error:
+          "invalid_limit"
+      };
+    }
+
+    const requestedOffset =
+      params.has("offset")
+        ? Number(
+            params.get("offset")
+          )
+        : 0;
+
+    if (
+      !Number.isInteger(
+        requestedOffset
+      ) ||
+      requestedOffset < 0 ||
+      requestedOffset >
+        1000000
+    ) {
+      return {
+        error:
+          "invalid_offset"
+      };
+    }
+
+    const whereSql =
+      where.length
+        ? "WHERE " +
+          where.join(
+            " AND "
+          )
+        : "";
+
+    const listSql = `
+      SELECT *
+      FROM test_findings
+      ${whereSql}
+      ORDER BY
+        datetime(created_at) DESC,
+        id DESC
+      LIMIT ?
+      OFFSET ?
+    `;
+
+    const countSql = `
+      SELECT
+        COUNT(*) AS total
+      FROM test_findings
+      ${whereSql}
+    `;
+
+    const listStatement =
+      ctx.env.OPS_DB
+        .prepare(
+          listSql
+        )
+        .bind(
+          ...bindings,
+          requestedLimit,
+          requestedOffset
+        );
+
+    const countStatement =
+      ctx.env.OPS_DB
+        .prepare(
+          countSql
+        )
+        .bind(
+          ...bindings
+        );
+
+    const [
+      result,
+      countRow,
+    ] =
+      await Promise.all([
+        listStatement.all(),
+        countStatement.first(),
+      ]);
+
+    return {
+      ok: true,
+
+      total:
+        Number(
+          countRow?.total ||
+          0
+        ),
+
+      limit:
+        requestedLimit,
+
+      offset:
+        requestedOffset,
+
+      findings:
+        (result.results || [])
+          .map(
+            (row) =>
+              TestFindings
+                .normalizeFindingRow(
+                  row
+                )
+          ),
+    };
+  }
+);
+
+
+// =========================
+// TEST FINDINGS — ADMIN DETAIL
+// PR-6K.1C.4A
+//
+// Full finding record plus complete event and retest history.
+// =========================
+
+Router.register(
+  "GET",
+  "/api/admin/test/finding",
+  async (ctx) => {
+
+    if (
+      !TestFindings
+        .isTestEnvironment(
+          ctx
+        )
+    ) {
+      return {
+        error: "forbidden"
+      };
+    }
+
+    const admin =
+      await Auth.requireAdmin(
+        ctx
+      );
+
+    if (!admin) {
+      return {
+        error: "forbidden"
+      };
+    }
+
+    if (
+      !TestFindings
+        .hasOpsDatabase(
+          ctx.env
+        )
+    ) {
+      return {
+        error:
+          "findings_storage_unavailable"
+      };
+    }
+
+    const findingId =
+      TestFindings
+        .normalizePositiveInteger(
+          ctx.url
+            .searchParams
+            .get("id")
+        );
+
+    if (!findingId) {
+      return {
+        error:
+          "invalid_finding_id"
+      };
+    }
+
+    const finding =
+      await ctx.env.OPS_DB
+        .prepare(`
+          SELECT *
+          FROM test_findings
+          WHERE id = ?
+          LIMIT 1
+        `)
+        .bind(
+          findingId
+        )
+        .first();
+
+    if (!finding) {
+      return {
+        error:
+          "finding_not_found"
+      };
+    }
+
+    const [
+      eventsResult,
+      retestsResult,
+    ] =
+      await Promise.all([
+        ctx.env.OPS_DB
+          .prepare(`
+            SELECT *
+            FROM test_finding_events
+            WHERE finding_id = ?
+            ORDER BY
+              datetime(created_at) ASC,
+              id ASC
+          `)
+          .bind(
+            findingId
+          )
+          .all(),
+
+        ctx.env.OPS_DB
+          .prepare(`
+            SELECT *
+            FROM test_finding_retests
+            WHERE finding_id = ?
+            ORDER BY
+              datetime(assigned_at) ASC,
+              id ASC
+          `)
+          .bind(
+            findingId
+          )
+          .all(),
+      ]);
+
+    return {
+      ok: true,
+
+      finding:
+        TestFindings
+          .normalizeFindingRow(
+            finding
+          ),
+
+      events:
+        (eventsResult.results || [])
+          .map(
+            (row) =>
+              TestFindings
+                .normalizeEventRow(
+                  row
+                )
+          ),
+
+      retests:
+        (retestsResult.results || [])
+          .map(
+            (row) =>
+              TestFindings
+                .normalizeRetestRow(
+                  row
+                )
+          ),
+    };
+  }
+);
+
+
+// =========================
 // PUBLIC FACILITY PROFILE
 // PR-2I:
 // Unauthenticated because Login and Account Recovery need
