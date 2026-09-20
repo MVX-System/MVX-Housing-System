@@ -23,7 +23,7 @@ set -euo pipefail
 
 PROFILE="${MVX_WRANGLER_PROFILE:-mvx-system}"
 
-WRANGLER_VERSION="4.130.0"
+WRANGLER_VERSION="4.135.0"
 WRANGLER_CMD=(
   npx
   --yes
