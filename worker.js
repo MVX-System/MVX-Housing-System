@@ -3386,6 +3386,893 @@ const Auth = {
 };
 
 // =========================
+// TEST FINDINGS REGISTER
+// PR-6K.1C
+//
+// Shared backend contract only.
+//
+// IMPORTANT:
+// - no route is registered in this block;
+// - every future Findings endpoint must call isTestEnvironment();
+// - author identity always comes from Auth.user()/requireUser();
+// - findings metadata is stored only in OPS_DB;
+// - screenshots use only FINDING_SCREENSHOTS;
+// - no PROD or DEMO fallback is permitted.
+// =========================
+
+const TEST_FINDING_TYPES =
+  new Set([
+    "bug",
+    "usability_ux",
+    "text_translation",
+    "documentation",
+    "suggestion",
+  ]);
+
+const TEST_FINDING_STATUSES =
+  new Set([
+    "NEW",
+    "NEEDS_INFO",
+    "HOLD",
+    "APPROVED",
+    "IN_PROGRESS",
+    "READY_FOR_RETEST",
+    "VERIFIED",
+    "CLOSED",
+  ]);
+
+const TEST_FINDING_LANGUAGES =
+  new Set([
+    "lv",
+    "en",
+    "ru",
+  ]);
+
+const TEST_FINDING_MODES =
+  new Set([
+    "resident",
+    "admin",
+  ]);
+
+const TEST_FINDING_RETEST_OUTCOMES =
+  new Set([
+    "PASS",
+    "FAIL",
+  ]);
+
+const TEST_FINDING_CLOSE_REASON_CODES =
+  new Set([
+    "duplicate",
+    "expected_behaviour",
+    "not_reproduced",
+    "test_data_issue",
+    "documentation_issue",
+    "wont_fix",
+  ]);
+
+const TEST_FINDING_ADMIN_TRANSITIONS =
+  Object.freeze({
+    NEW: new Set([
+      "NEEDS_INFO",
+      "HOLD",
+      "APPROVED",
+      "CLOSED",
+    ]),
+
+    NEEDS_INFO: new Set([
+      "NEW",
+      "HOLD",
+      "APPROVED",
+      "CLOSED",
+    ]),
+
+    HOLD: new Set([
+      "NEW",
+      "APPROVED",
+      "CLOSED",
+    ]),
+
+    APPROVED: new Set([
+      "IN_PROGRESS",
+      "HOLD",
+      "CLOSED",
+    ]),
+
+    IN_PROGRESS: new Set([
+      "READY_FOR_RETEST",
+      "HOLD",
+      "CLOSED",
+    ]),
+
+    READY_FOR_RETEST: new Set([
+      "VERIFIED",
+      "HOLD",
+      "CLOSED",
+    ]),
+
+    VERIFIED: new Set(),
+
+    CLOSED: new Set(),
+  });
+
+const TEST_FINDING_SCREENSHOT_MAX_SIZE_BYTES =
+  5 * 1024 * 1024;
+
+const TEST_FINDING_SCREENSHOT_MIME_TYPES =
+  new Set([
+    "image/png",
+    "image/jpeg",
+    "image/webp",
+  ]);
+
+const TEST_FINDING_SCREENSHOT_EXTENSIONS =
+  Object.freeze({
+    "image/png": ".png",
+    "image/jpeg": ".jpg",
+    "image/webp": ".webp",
+  });
+
+class TestFindings {
+
+  static environment(
+    ctxOrEnv
+  ) {
+
+    const env =
+      ctxOrEnv?.env ||
+      ctxOrEnv ||
+      {};
+
+    return String(
+      env?.MVX_ENVIRONMENT ||
+      ""
+    )
+      .trim()
+      .toLowerCase();
+  }
+
+  static isTestEnvironment(
+    ctxOrEnv
+  ) {
+
+    return (
+      this.environment(
+        ctxOrEnv
+      ) === "test"
+    );
+  }
+
+  static hasOpsDatabase(
+    env
+  ) {
+
+    return Boolean(
+      env?.OPS_DB &&
+      typeof env.OPS_DB.prepare ===
+        "function"
+    );
+  }
+
+  static hasScreenshotStorage(
+    env
+  ) {
+
+    return Boolean(
+      env?.FINDING_SCREENSHOTS &&
+      typeof env
+        .FINDING_SCREENSHOTS
+        .put === "function" &&
+      typeof env
+        .FINDING_SCREENSHOTS
+        .get === "function" &&
+      typeof env
+        .FINDING_SCREENSHOTS
+        .delete === "function"
+    );
+  }
+
+  static normalizePositiveInteger(
+    value
+  ) {
+
+    const normalized =
+      Number(value);
+
+    return (
+      Number.isInteger(
+        normalized
+      ) &&
+      normalized > 0
+    )
+      ? normalized
+      : null;
+  }
+
+  static normalizeText(
+    value,
+    {
+      required = false,
+      maxLength = 4000,
+    } = {}
+  ) {
+
+    if (
+      value === null ||
+      value === undefined
+    ) {
+
+      return required
+        ? null
+        : null;
+    }
+
+    const normalized =
+      String(value).trim();
+
+    if (!normalized) {
+      return required
+        ? null
+        : null;
+    }
+
+    if (
+      normalized.length >
+      maxLength
+    ) {
+      return null;
+    }
+
+    return normalized;
+  }
+
+  static normalizeBooleanFlag(
+    value
+  ) {
+
+    if (
+      value === true ||
+      value === 1 ||
+      value === "1" ||
+      value === "true"
+    ) {
+      return 1;
+    }
+
+    if (
+      value === false ||
+      value === 0 ||
+      value === "0" ||
+      value === "false"
+    ) {
+      return 0;
+    }
+
+    return null;
+  }
+
+  static normalizeFindingType(
+    value
+  ) {
+
+    const normalized =
+      String(value || "")
+        .trim()
+        .toLowerCase();
+
+    return TEST_FINDING_TYPES
+      .has(normalized)
+        ? normalized
+        : null;
+  }
+
+  static normalizeStatus(
+    value
+  ) {
+
+    const normalized =
+      String(value || "")
+        .trim()
+        .toUpperCase();
+
+    return TEST_FINDING_STATUSES
+      .has(normalized)
+        ? normalized
+        : null;
+  }
+
+  static normalizeLanguage(
+    value
+  ) {
+
+    const normalized =
+      String(value || "")
+        .trim()
+        .toLowerCase();
+
+    return TEST_FINDING_LANGUAGES
+      .has(normalized)
+        ? normalized
+        : null;
+  }
+
+  static normalizeMode(
+    value
+  ) {
+
+    const normalized =
+      String(value || "")
+        .trim()
+        .toLowerCase();
+
+    return TEST_FINDING_MODES
+      .has(normalized)
+        ? normalized
+        : null;
+  }
+
+  static normalizeRetestOutcome(
+    value
+  ) {
+
+    const normalized =
+      String(value || "")
+        .trim()
+        .toUpperCase();
+
+    return TEST_FINDING_RETEST_OUTCOMES
+      .has(normalized)
+        ? normalized
+        : null;
+  }
+
+  static normalizeCloseReasonCode(
+    value
+  ) {
+
+    const normalized =
+      String(value || "")
+        .trim()
+        .toLowerCase();
+
+    return TEST_FINDING_CLOSE_REASON_CODES
+      .has(normalized)
+        ? normalized
+        : null;
+  }
+
+  static normalizeRoles(
+    roles
+  ) {
+
+    if (!Array.isArray(roles)) {
+      return [];
+    }
+
+    return Array.from(
+      new Set(
+        roles
+          .map(
+            (role) =>
+              String(
+                role || ""
+              ).trim()
+          )
+          .filter(Boolean)
+      )
+    ).sort();
+  }
+
+  static rolesJson(
+    user
+  ) {
+
+    return JSON.stringify(
+      this.normalizeRoles(
+        user?.roles
+      )
+    );
+  }
+
+  static parseRolesJson(
+    value
+  ) {
+
+    try {
+
+      const parsed =
+        JSON.parse(
+          String(
+            value || "[]"
+          )
+        );
+
+      return this.normalizeRoles(
+        parsed
+      );
+
+    } catch {
+
+      return [];
+    }
+  }
+
+  static displayId(
+    findingId
+  ) {
+
+    const id =
+      this.normalizePositiveInteger(
+        findingId
+      );
+
+    if (!id) {
+      return null;
+    }
+
+    return (
+      "MVX-F-" +
+      String(id)
+        .padStart(
+          4,
+          "0"
+        )
+    );
+  }
+
+  static isOwner(
+    finding,
+    user
+  ) {
+
+    const findingUserId =
+      this.normalizePositiveInteger(
+        finding?.author_user_id
+      );
+
+    const currentUserId =
+      this.normalizePositiveInteger(
+        user?.user_id
+      );
+
+    if (
+      !findingUserId ||
+      !currentUserId ||
+      findingUserId !==
+        currentUserId
+    ) {
+      return false;
+    }
+
+    const findingNick =
+      String(
+        finding?.author_nick ||
+        ""
+      ).trim();
+
+    const currentNick =
+      String(
+        user?.nick ||
+        ""
+      ).trim();
+
+    return Boolean(
+      findingNick &&
+      currentNick &&
+      findingNick ===
+        currentNick
+    );
+  }
+
+  static canAdminTransition(
+    fromStatus,
+    toStatus
+  ) {
+
+    const from =
+      this.normalizeStatus(
+        fromStatus
+      );
+
+    const to =
+      this.normalizeStatus(
+        toStatus
+      );
+
+    if (
+      !from ||
+      !to ||
+      from === to
+    ) {
+      return false;
+    }
+
+    return Boolean(
+      TEST_FINDING_ADMIN_TRANSITIONS[
+        from
+      ]?.has(to)
+    );
+  }
+
+  static canRetestFailReturn(
+    fromStatus
+  ) {
+
+    return (
+      this.normalizeStatus(
+        fromStatus
+      ) ===
+        "READY_FOR_RETEST"
+    );
+  }
+
+  static requiresReason(
+    status
+  ) {
+
+    const normalized =
+      this.normalizeStatus(
+        status
+      );
+
+    return (
+      normalized === "HOLD" ||
+      normalized === "CLOSED"
+    );
+  }
+
+  static screenshotExtension(
+    mimeType
+  ) {
+
+    const normalized =
+      String(
+        mimeType ||
+        ""
+      )
+        .trim()
+        .toLowerCase();
+
+    return (
+      TEST_FINDING_SCREENSHOT_EXTENSIONS[
+        normalized
+      ] ||
+      null
+    );
+  }
+
+  static isAllowedScreenshot(
+    {
+      mimeType,
+      sizeBytes,
+    } = {}
+  ) {
+
+    const normalizedMime =
+      String(
+        mimeType ||
+        ""
+      )
+        .trim()
+        .toLowerCase();
+
+    const normalizedSize =
+      Number(sizeBytes);
+
+    return Boolean(
+      TEST_FINDING_SCREENSHOT_MIME_TYPES
+        .has(normalizedMime) &&
+      Number.isInteger(
+        normalizedSize
+      ) &&
+      normalizedSize > 0 &&
+      normalizedSize <=
+        TEST_FINDING_SCREENSHOT_MAX_SIZE_BYTES
+    );
+  }
+
+  static nowIso() {
+
+    return new Date()
+      .toISOString();
+  }
+
+  static normalizeFindingRow(
+    row
+  ) {
+
+    if (!row) {
+      return null;
+    }
+
+    const id =
+      this.normalizePositiveInteger(
+        row.id
+      );
+
+    return {
+      id,
+      display_id:
+        this.displayId(id),
+
+      author_user_id:
+        this.normalizePositiveInteger(
+          row.author_user_id
+        ),
+
+      author_nick:
+        row.author_nick ||
+        null,
+
+      author_roles:
+        this.parseRolesJson(
+          row.author_roles_json
+        ),
+
+      author_mode:
+        row.author_mode ||
+        null,
+
+      finding_type:
+        row.finding_type ||
+        null,
+
+      title:
+        row.title ||
+        "",
+
+      reproduction_steps:
+        row.reproduction_steps ||
+        "",
+
+      expected_result:
+        row.expected_result ||
+        "",
+
+      actual_result:
+        row.actual_result ||
+        "",
+
+      blocking:
+        Number(
+          row.blocking
+        ) === 1,
+
+      extra_explanation:
+        row.extra_explanation ||
+        null,
+
+      route:
+        row.route ||
+        null,
+
+      language:
+        row.language ||
+        null,
+
+      app_commit_sha:
+        row.app_commit_sha ||
+        null,
+
+      browser:
+        row.browser ||
+        null,
+
+      operating_system:
+        row.operating_system ||
+        null,
+
+      screen_width:
+        row.screen_width == null
+          ? null
+          : Number(
+              row.screen_width
+            ),
+
+      screen_height:
+        row.screen_height == null
+          ? null
+          : Number(
+              row.screen_height
+            ),
+
+      environment:
+        row.environment ||
+        null,
+
+      has_screenshot:
+        Boolean(
+          row.screenshot_key
+        ),
+
+      screenshot_mime_type:
+        row.screenshot_mime_type ||
+        null,
+
+      screenshot_size_bytes:
+        row.screenshot_size_bytes ==
+          null
+          ? null
+          : Number(
+              row.screenshot_size_bytes
+            ),
+
+      status:
+        row.status ||
+        null,
+
+      status_reason_code:
+        row.status_reason_code ||
+        null,
+
+      status_reason_text:
+        row.status_reason_text ||
+        null,
+
+      github_issue_url:
+        row.github_issue_url ||
+        null,
+
+      implementation_ref:
+        row.implementation_ref ||
+        null,
+
+      created_at:
+        row.created_at ||
+        null,
+
+      updated_at:
+        row.updated_at ||
+        null,
+    };
+  }
+
+  static normalizeEventRow(
+    row
+  ) {
+
+    if (!row) {
+      return null;
+    }
+
+    return {
+      id:
+        this.normalizePositiveInteger(
+          row.id
+        ),
+
+      finding_id:
+        this.normalizePositiveInteger(
+          row.finding_id
+        ),
+
+      actor_user_id:
+        row.actor_user_id == null
+          ? null
+          : this
+              .normalizePositiveInteger(
+                row.actor_user_id
+              ),
+
+      actor_nick:
+        row.actor_nick ||
+        null,
+
+      actor_roles:
+        this.parseRolesJson(
+          row.actor_roles_json
+        ),
+
+      event_type:
+        row.event_type ||
+        null,
+
+      from_status:
+        row.from_status ||
+        null,
+
+      to_status:
+        row.to_status ||
+        null,
+
+      reason_code:
+        row.reason_code ||
+        null,
+
+      comment:
+        row.comment ||
+        null,
+
+      created_at:
+        row.created_at ||
+        null,
+    };
+  }
+
+  static normalizeRetestRow(
+    row
+  ) {
+
+    if (!row) {
+      return null;
+    }
+
+    return {
+      id:
+        this.normalizePositiveInteger(
+          row.id
+        ),
+
+      finding_id:
+        this.normalizePositiveInteger(
+          row.finding_id
+        ),
+
+      assigned_user_id:
+        this.normalizePositiveInteger(
+          row.assigned_user_id
+        ),
+
+      assigned_nick:
+        row.assigned_nick ||
+        null,
+
+      assigned_by_user_id:
+        this.normalizePositiveInteger(
+          row.assigned_by_user_id
+        ),
+
+      assigned_by_nick:
+        row.assigned_by_nick ||
+        null,
+
+      outcome:
+        row.outcome ||
+        null,
+
+      comment:
+        row.comment ||
+        null,
+
+      assigned_at:
+        row.assigned_at ||
+        null,
+
+      completed_at:
+        row.completed_at ||
+        null,
+    };
+  }
+
+  static normalizeScreenDimension(
+    value
+  ) {
+
+    if (
+      value === null ||
+      value === undefined ||
+      value === ""
+    ) {
+      return null;
+    }
+
+    const normalized =
+      Number(value);
+
+    if (
+      !Number.isInteger(
+        normalized
+      ) ||
+      normalized <= 0 ||
+      normalized > 100000
+    ) {
+      return null;
+    }
+
+    return normalized;
+  }
+}
+
+// =========================
 // SECURITY RATE LIMITING
 // Stage 2I-SR7:
 // D1-backed abuse controls for login, password verification,
