@@ -3480,7 +3480,10 @@ const TEST_FINDING_ADMIN_TRANSITIONS =
 
     HOLD: new Set([
       "NEW",
+      "NEEDS_INFO",
       "APPROVED",
+      "IN_PROGRESS",
+      "READY_FOR_RETEST",
       "CLOSED",
     ]),
 
@@ -4039,6 +4042,289 @@ class TestFindings {
 
     return new Date()
       .toISOString();
+  }
+
+  static async applyStatusChange(
+    {
+      env,
+      finding,
+      actor,
+      toStatus,
+      eventType =
+        "status_changed",
+      reasonCode = null,
+      reasonText = null,
+      comment = null,
+    }
+  ) {
+
+    if (
+      !this.hasOpsDatabase(
+        env
+      )
+    ) {
+      return {
+        ok: false,
+        error:
+          "findings_storage_unavailable",
+      };
+    }
+
+    const findingId =
+      this.normalizePositiveInteger(
+        finding?.id
+      );
+
+    const fromStatus =
+      this.normalizeStatus(
+        finding?.status
+      );
+
+    const normalizedToStatus =
+      this.normalizeStatus(
+        toStatus
+      );
+
+    const normalizedEventType =
+      this.normalizeEventType(
+        eventType
+      );
+
+    const actorUserId =
+      this.normalizePositiveInteger(
+        actor?.user_id
+      );
+
+    const actorNick =
+      String(
+        actor?.nick ||
+        ""
+      ).trim();
+
+    if (
+      !findingId ||
+      !fromStatus ||
+      !normalizedToStatus ||
+      !normalizedEventType ||
+      !actorUserId ||
+      !actorNick
+    ) {
+      return {
+        ok: false,
+        error:
+          "invalid_status_change_context",
+      };
+    }
+
+    const actorRolesJson =
+      this.rolesJson(
+        actor
+      );
+
+    const nowIso =
+      this.nowIso();
+
+    const previousReasonCode =
+      finding
+        ?.status_reason_code ||
+      null;
+
+    const previousReasonText =
+      finding
+        ?.status_reason_text ||
+      null;
+
+    const previousUpdatedAt =
+      finding
+        ?.updated_at ||
+      nowIso;
+
+    const updateResult =
+      await env.OPS_DB
+        .prepare(`
+          UPDATE test_findings
+          SET
+            status = ?,
+            status_reason_code = ?,
+            status_reason_text = ?,
+            updated_at = ?
+          WHERE id = ?
+            AND status = ?
+        `)
+        .bind(
+          normalizedToStatus,
+          reasonCode,
+          reasonText,
+          nowIso,
+          findingId,
+          fromStatus
+        )
+        .run();
+
+    const changedRows =
+      Number(
+        updateResult
+          ?.meta
+          ?.changes ||
+        0
+      );
+
+    if (changedRows !== 1) {
+      return {
+        ok: false,
+        error:
+          "finding_state_changed",
+      };
+    }
+
+    try {
+
+      await env.OPS_DB
+        .prepare(`
+          INSERT INTO test_finding_events (
+            finding_id,
+            actor_user_id,
+            actor_nick,
+            actor_roles_json,
+            event_type,
+            from_status,
+            to_status,
+            reason_code,
+            comment,
+            created_at
+          )
+          VALUES (
+            ?,
+            ?,
+            ?,
+            ?,
+            ?,
+            ?,
+            ?,
+            ?,
+            ?,
+            ?
+          )
+        `)
+        .bind(
+          findingId,
+          actorUserId,
+          actorNick,
+          actorRolesJson,
+          normalizedEventType,
+          fromStatus,
+          normalizedToStatus,
+          reasonCode,
+          comment,
+          nowIso
+        )
+        .run();
+
+    } catch (eventError) {
+
+      let rollbackSucceeded =
+        false;
+
+      try {
+
+        const rollbackResult =
+          await env.OPS_DB
+            .prepare(`
+              UPDATE test_findings
+              SET
+                status = ?,
+                status_reason_code = ?,
+                status_reason_text = ?,
+                updated_at = ?
+              WHERE id = ?
+                AND status = ?
+            `)
+            .bind(
+              fromStatus,
+              previousReasonCode,
+              previousReasonText,
+              previousUpdatedAt,
+              findingId,
+              normalizedToStatus
+            )
+            .run();
+
+        rollbackSucceeded =
+          Number(
+            rollbackResult
+              ?.meta
+              ?.changes ||
+            0
+          ) === 1;
+
+      } catch (rollbackError) {
+
+        App.logError(
+          "test_finding_status_rollback_failed",
+          rollbackError,
+          {
+            finding_id:
+              findingId,
+            from_status:
+              fromStatus,
+            attempted_status:
+              normalizedToStatus,
+          }
+        );
+      }
+
+      App.logError(
+        "test_finding_status_event_failed",
+        eventError,
+        {
+          finding_id:
+            findingId,
+          from_status:
+            fromStatus,
+          attempted_status:
+            normalizedToStatus,
+          rollback_succeeded:
+            rollbackSucceeded,
+        }
+      );
+
+      return {
+        ok: false,
+        error:
+          rollbackSucceeded
+            ? "finding_status_change_failed"
+            : "finding_status_change_inconsistent",
+      };
+    }
+
+    const refreshed =
+      await env.OPS_DB
+        .prepare(`
+          SELECT *
+          FROM test_findings
+          WHERE id = ?
+          LIMIT 1
+        `)
+        .bind(
+          findingId
+        )
+        .first();
+
+    if (!refreshed) {
+      return {
+        ok: false,
+        error:
+          "finding_status_changed_but_reload_failed",
+      };
+    }
+
+    return {
+      ok: true,
+      finding:
+        this.normalizeFindingRow(
+          refreshed
+        ),
+    };
   }
 
   static normalizeFindingRow(
@@ -7336,6 +7622,739 @@ Router.register(
                   row
                 )
           ),
+    };
+  }
+);
+
+
+// =========================
+// TEST FINDINGS — ADMIN STATUS WORKFLOW
+// PR-6K.1C.4B
+//
+// General Admin lifecycle transitions.
+//
+// NEEDS_INFO entry is intentionally handled by
+// /api/admin/test/finding/request-info.
+//
+// NEEDS_INFO -> NEW is intentionally handled by
+// /api/test/finding/info.
+//
+// HOLD resume is allowed only to the exact status from
+// which the finding entered HOLD.
+// =========================
+
+Router.register(
+  "POST",
+  "/api/admin/test/finding/status",
+  async (ctx) => {
+
+    if (
+      !TestFindings
+        .isTestEnvironment(
+          ctx
+        )
+    ) {
+      return {
+        error: "forbidden"
+      };
+    }
+
+    const admin =
+      await Auth.requireAdmin(
+        ctx
+      );
+
+    if (!admin) {
+      return {
+        error: "forbidden"
+      };
+    }
+
+    if (
+      !TestFindings
+        .hasOpsDatabase(
+          ctx.env
+        )
+    ) {
+      return {
+        error:
+          "findings_storage_unavailable"
+      };
+    }
+
+    const body =
+      await ctx.request
+        .json()
+        .catch(() => null);
+
+    if (
+      !body ||
+      typeof body !== "object" ||
+      Array.isArray(body)
+    ) {
+      return {
+        error:
+          "invalid_request_body"
+      };
+    }
+
+    const findingId =
+      TestFindings
+        .normalizePositiveInteger(
+          body.finding_id
+        );
+
+    if (!findingId) {
+      return {
+        error:
+          "invalid_finding_id"
+      };
+    }
+
+    const targetStatus =
+      TestFindings
+        .normalizeStatus(
+          body.status
+        );
+
+    if (!targetStatus) {
+      return {
+        error:
+          "invalid_finding_status"
+      };
+    }
+
+    const finding =
+      await ctx.env.OPS_DB
+        .prepare(`
+          SELECT *
+          FROM test_findings
+          WHERE id = ?
+          LIMIT 1
+        `)
+        .bind(
+          findingId
+        )
+        .first();
+
+    if (!finding) {
+      return {
+        error:
+          "finding_not_found"
+      };
+    }
+
+    const currentStatus =
+      TestFindings
+        .normalizeStatus(
+          finding.status
+        );
+
+    if (!currentStatus) {
+      return {
+        error:
+          "finding_status_invalid"
+      };
+    }
+
+    if (
+      targetStatus ===
+        "NEEDS_INFO"
+    ) {
+      return {
+        error:
+          "use_request_info_endpoint"
+      };
+    }
+
+    // NEW is reachable by Admin only as an exact HOLD resume.
+    if (
+      targetStatus === "NEW" &&
+      currentStatus !== "HOLD"
+    ) {
+      return {
+        error:
+          "invalid_status_transition"
+      };
+    }
+
+    let holdResumeStatus =
+      null;
+
+    if (
+      currentStatus === "HOLD" &&
+      targetStatus !== "CLOSED"
+    ) {
+
+      const holdEvent =
+        await ctx.env.OPS_DB
+          .prepare(`
+            SELECT
+              from_status,
+              to_status
+            FROM test_finding_events
+            WHERE finding_id = ?
+              AND event_type = 'status_changed'
+              AND to_status = 'HOLD'
+            ORDER BY
+              id DESC
+            LIMIT 1
+          `)
+          .bind(
+            findingId
+          )
+          .first();
+
+      holdResumeStatus =
+        TestFindings
+          .normalizeStatus(
+            holdEvent?.from_status
+          );
+
+      if (
+        !holdResumeStatus ||
+        targetStatus !==
+          holdResumeStatus
+      ) {
+        return {
+          error:
+            "invalid_hold_resume_status"
+        };
+      }
+    }
+
+    if (
+      !TestFindings
+        .canAdminTransition(
+          currentStatus,
+          targetStatus
+        )
+    ) {
+      return {
+        error:
+          "invalid_status_transition"
+      };
+    }
+
+    // VERIFIED requires a completed PASS retest.
+    if (
+      targetStatus ===
+        "VERIFIED"
+    ) {
+
+      const latestRetest =
+        await ctx.env.OPS_DB
+          .prepare(`
+            SELECT
+              outcome,
+              completed_at
+            FROM test_finding_retests
+            WHERE finding_id = ?
+              AND completed_at IS NOT NULL
+            ORDER BY
+              datetime(completed_at) DESC,
+              id DESC
+            LIMIT 1
+          `)
+          .bind(
+            findingId
+          )
+          .first();
+
+      if (
+        !latestRetest ||
+        latestRetest.outcome !==
+          "PASS"
+      ) {
+        return {
+          error:
+            "passing_retest_required"
+        };
+      }
+    }
+
+    let reasonCode =
+      null;
+
+    let reasonText =
+      null;
+
+    if (
+      targetStatus ===
+        "HOLD"
+    ) {
+
+      reasonCode =
+        "hold";
+
+      reasonText =
+        TestFindings
+          .normalizeText(
+            body.reason_text,
+            {
+              required: true,
+              maxLength: 4000,
+            }
+          );
+
+      if (!reasonText) {
+        return {
+          error:
+            "hold_reason_required"
+        };
+      }
+
+    } else if (
+      targetStatus ===
+        "CLOSED"
+    ) {
+
+      reasonCode =
+        TestFindings
+          .normalizeCloseReasonCode(
+            body.reason_code
+          );
+
+      if (!reasonCode) {
+        return {
+          error:
+            "close_reason_required"
+        };
+      }
+
+      if (
+        body.reason_text !==
+          null &&
+        body.reason_text !==
+          undefined &&
+        String(
+          body.reason_text
+        ).trim() !== ""
+      ) {
+
+        reasonText =
+          TestFindings
+            .normalizeText(
+              body.reason_text,
+              {
+                maxLength: 4000,
+              }
+            );
+
+        if (!reasonText) {
+          return {
+            error:
+              "invalid_reason_text"
+          };
+        }
+      }
+    }
+
+    let comment =
+      null;
+
+    if (
+      body.comment !== null &&
+      body.comment !== undefined &&
+      String(
+        body.comment
+      ).trim() !== ""
+    ) {
+
+      comment =
+        TestFindings
+          .normalizeText(
+            body.comment,
+            {
+              maxLength: 4000,
+            }
+          );
+
+      if (!comment) {
+        return {
+          error:
+            "invalid_status_comment"
+        };
+      }
+    }
+
+    const result =
+      await TestFindings
+        .applyStatusChange({
+          env:
+            ctx.env,
+
+          finding,
+
+          actor:
+            admin,
+
+          toStatus:
+            targetStatus,
+
+          eventType:
+            "status_changed",
+
+          reasonCode,
+
+          reasonText,
+
+          comment,
+        });
+
+    if (!result.ok) {
+      return {
+        error:
+          result.error
+      };
+    }
+
+    return {
+      ok: true,
+      finding:
+        result.finding,
+    };
+  }
+);
+
+
+// =========================
+// TEST FINDINGS — ADMIN REQUEST INFO
+// PR-6K.1C.4B
+//
+// NEW -> NEEDS_INFO.
+// The request text is preserved both as current status reason
+// and in the immutable event history.
+// =========================
+
+Router.register(
+  "POST",
+  "/api/admin/test/finding/request-info",
+  async (ctx) => {
+
+    if (
+      !TestFindings
+        .isTestEnvironment(
+          ctx
+        )
+    ) {
+      return {
+        error: "forbidden"
+      };
+    }
+
+    const admin =
+      await Auth.requireAdmin(
+        ctx
+      );
+
+    if (!admin) {
+      return {
+        error: "forbidden"
+      };
+    }
+
+    if (
+      !TestFindings
+        .hasOpsDatabase(
+          ctx.env
+        )
+    ) {
+      return {
+        error:
+          "findings_storage_unavailable"
+      };
+    }
+
+    const body =
+      await ctx.request
+        .json()
+        .catch(() => null);
+
+    if (
+      !body ||
+      typeof body !== "object" ||
+      Array.isArray(body)
+    ) {
+      return {
+        error:
+          "invalid_request_body"
+      };
+    }
+
+    const findingId =
+      TestFindings
+        .normalizePositiveInteger(
+          body.finding_id
+        );
+
+    if (!findingId) {
+      return {
+        error:
+          "invalid_finding_id"
+      };
+    }
+
+    const requestText =
+      TestFindings
+        .normalizeText(
+          body.request,
+          {
+            required: true,
+            maxLength: 8000,
+          }
+        );
+
+    if (!requestText) {
+      return {
+        error:
+          "information_request_required"
+      };
+    }
+
+    const finding =
+      await ctx.env.OPS_DB
+        .prepare(`
+          SELECT *
+          FROM test_findings
+          WHERE id = ?
+          LIMIT 1
+        `)
+        .bind(
+          findingId
+        )
+        .first();
+
+    if (!finding) {
+      return {
+        error:
+          "finding_not_found"
+      };
+    }
+
+    if (
+      finding.status !==
+        "NEW"
+    ) {
+      return {
+        error:
+          "information_request_requires_new_status"
+      };
+    }
+
+    const result =
+      await TestFindings
+        .applyStatusChange({
+          env:
+            ctx.env,
+
+          finding,
+
+          actor:
+            admin,
+
+          toStatus:
+            "NEEDS_INFO",
+
+          eventType:
+            "info_requested",
+
+          reasonCode:
+            "needs_info",
+
+          reasonText:
+            requestText,
+
+          comment:
+            requestText,
+        });
+
+    if (!result.ok) {
+      return {
+        error:
+          result.error
+      };
+    }
+
+    return {
+      ok: true,
+      finding:
+        result.finding,
+    };
+  }
+);
+
+
+// =========================
+// TEST FINDINGS — TESTER ADDITIONAL INFO
+// PR-6K.1C.4B
+//
+// Only the original author may answer.
+// NEEDS_INFO -> NEW.
+// The tester's information is stored in event history.
+// =========================
+
+Router.register(
+  "POST",
+  "/api/test/finding/info",
+  async (ctx) => {
+
+    if (
+      !TestFindings
+        .isTestEnvironment(
+          ctx
+        )
+    ) {
+      return {
+        error: "forbidden"
+      };
+    }
+
+    const user =
+      await Auth.requireUser(
+        ctx
+      );
+
+    if (!user) {
+      return {
+        error:
+          "unauthorized"
+      };
+    }
+
+    if (
+      !TestFindings
+        .hasOpsDatabase(
+          ctx.env
+        )
+    ) {
+      return {
+        error:
+          "findings_storage_unavailable"
+      };
+    }
+
+    const body =
+      await ctx.request
+        .json()
+        .catch(() => null);
+
+    if (
+      !body ||
+      typeof body !== "object" ||
+      Array.isArray(body)
+    ) {
+      return {
+        error:
+          "invalid_request_body"
+      };
+    }
+
+    const findingId =
+      TestFindings
+        .normalizePositiveInteger(
+          body.finding_id
+        );
+
+    if (!findingId) {
+      return {
+        error:
+          "invalid_finding_id"
+      };
+    }
+
+    const information =
+      TestFindings
+        .normalizeText(
+          body.information,
+          {
+            required: true,
+            maxLength: 8000,
+          }
+        );
+
+    if (!information) {
+      return {
+        error:
+          "additional_information_required"
+      };
+    }
+
+    const finding =
+      await ctx.env.OPS_DB
+        .prepare(`
+          SELECT *
+          FROM test_findings
+          WHERE id = ?
+          LIMIT 1
+        `)
+        .bind(
+          findingId
+        )
+        .first();
+
+    if (
+      !finding ||
+      !TestFindings
+        .isOwner(
+          finding,
+          user
+        )
+    ) {
+      return {
+        error:
+          "finding_not_found"
+      };
+    }
+
+    if (
+      finding.status !==
+        "NEEDS_INFO"
+    ) {
+      return {
+        error:
+          "finding_not_waiting_for_information"
+      };
+    }
+
+    const result =
+      await TestFindings
+        .applyStatusChange({
+          env:
+            ctx.env,
+
+          finding,
+
+          actor:
+            user,
+
+          toStatus:
+            "NEW",
+
+          eventType:
+            "info_added",
+
+          reasonCode:
+            null,
+
+          reasonText:
+            null,
+
+          comment:
+            information,
+        });
+
+    if (!result.ok) {
+      return {
+        error:
+          result.error
+      };
+    }
+
+    return {
+      ok: true,
+      finding:
+        result.finding,
     };
   }
 );
