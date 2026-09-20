@@ -3450,6 +3450,18 @@ const TEST_FINDING_CLOSE_REASON_CODES =
     "wont_fix",
   ]);
 
+const TEST_FINDING_EVENT_TYPES =
+  new Set([
+    "created",
+    "info_added",
+    "info_requested",
+    "status_changed",
+    "retest_assigned",
+    "retest_pass",
+    "retest_fail",
+    "implementation_updated",
+  ]);
+
 const TEST_FINDING_ADMIN_TRANSITIONS =
   Object.freeze({
     NEW: new Set([
@@ -3738,6 +3750,59 @@ class TestFindings {
       .has(normalized)
         ? normalized
         : null;
+  }
+
+  static normalizeEventType(
+    value
+  ) {
+
+    const normalized =
+      String(value || "")
+        .trim()
+        .toLowerCase();
+
+    return TEST_FINDING_EVENT_TYPES
+      .has(normalized)
+        ? normalized
+        : null;
+  }
+
+  static canUseMode(
+    user,
+    mode
+  ) {
+
+    const normalizedMode =
+      this.normalizeMode(
+        mode
+      );
+
+    if (!normalizedMode) {
+      return false;
+    }
+
+    const roles =
+      this.normalizeRoles(
+        user?.roles
+      );
+
+    if (
+      normalizedMode ===
+        "admin"
+    ) {
+      return roles.includes(
+        "admin"
+      );
+    }
+
+    return (
+      roles.includes(
+        "resident"
+      ) ||
+      roles.includes(
+        "owner"
+      )
+    );
   }
 
   static normalizeRoles(
@@ -5661,6 +5726,915 @@ async function getWaterReportingSettings(env) {
     .first();
 }
 
+
+
+// =========================
+// TEST FINDINGS — TESTER CREATE
+// PR-6K.1C.3
+//
+// TEST only.
+// Author identity is derived exclusively from the authenticated session.
+// No client-supplied user ID or Nick is accepted.
+// Screenshot upload is intentionally handled by a later endpoint.
+// =========================
+
+Router.register(
+  "POST",
+  "/api/test/findings",
+  async (ctx) => {
+
+    if (
+      !TestFindings
+        .isTestEnvironment(
+          ctx
+        )
+    ) {
+      return {
+        error: "forbidden"
+      };
+    }
+
+    const user =
+      await Auth.requireUser(
+        ctx
+      );
+
+    if (!user) {
+      return {
+        error: "unauthorized"
+      };
+    }
+
+    if (
+      !TestFindings
+        .hasOpsDatabase(
+          ctx.env
+        )
+    ) {
+      return {
+        error:
+          "findings_storage_unavailable"
+      };
+    }
+
+    const body =
+      await ctx.request
+        .json()
+        .catch(() => null);
+
+    if (
+      !body ||
+      typeof body !== "object" ||
+      Array.isArray(body)
+    ) {
+      return {
+        error:
+          "invalid_request_body"
+      };
+    }
+
+    const authorMode =
+      TestFindings
+        .normalizeMode(
+          body.author_mode
+        );
+
+    if (
+      !authorMode ||
+      !TestFindings
+        .canUseMode(
+          user,
+          authorMode
+        )
+    ) {
+      return {
+        error:
+          "invalid_author_mode"
+      };
+    }
+
+    const findingType =
+      TestFindings
+        .normalizeFindingType(
+          body.finding_type
+        );
+
+    if (!findingType) {
+      return {
+        error:
+          "invalid_finding_type"
+      };
+    }
+
+    const title =
+      TestFindings
+        .normalizeText(
+          body.title,
+          {
+            required: true,
+            maxLength: 240,
+          }
+        );
+
+    if (!title) {
+      return {
+        error:
+          "invalid_finding_title"
+      };
+    }
+
+    const reproductionSteps =
+      TestFindings
+        .normalizeText(
+          body.reproduction_steps,
+          {
+            required: true,
+            maxLength: 8000,
+          }
+        );
+
+    if (!reproductionSteps) {
+      return {
+        error:
+          "invalid_reproduction_steps"
+      };
+    }
+
+    const expectedResult =
+      TestFindings
+        .normalizeText(
+          body.expected_result,
+          {
+            required: true,
+            maxLength: 8000,
+          }
+        );
+
+    if (!expectedResult) {
+      return {
+        error:
+          "invalid_expected_result"
+      };
+    }
+
+    const actualResult =
+      TestFindings
+        .normalizeText(
+          body.actual_result,
+          {
+            required: true,
+            maxLength: 8000,
+          }
+        );
+
+    if (!actualResult) {
+      return {
+        error:
+          "invalid_actual_result"
+      };
+    }
+
+    const blocking =
+      TestFindings
+        .normalizeBooleanFlag(
+          body.blocking
+        );
+
+    if (blocking === null) {
+      return {
+        error:
+          "invalid_blocking_flag"
+      };
+    }
+
+    const extraExplanation =
+      body.extra_explanation ===
+        null ||
+      body.extra_explanation ===
+        undefined ||
+      String(
+        body.extra_explanation
+      ).trim() === ""
+        ? null
+        : TestFindings
+            .normalizeText(
+              body.extra_explanation,
+              {
+                maxLength: 8000,
+              }
+            );
+
+    if (
+      body.extra_explanation !==
+        null &&
+      body.extra_explanation !==
+        undefined &&
+      String(
+        body.extra_explanation
+      ).trim() !== "" &&
+      !extraExplanation
+    ) {
+      return {
+        error:
+          "invalid_extra_explanation"
+      };
+    }
+
+    const route =
+      TestFindings
+        .normalizeText(
+          body.route,
+          {
+            required: true,
+            maxLength: 500,
+          }
+        );
+
+    if (!route) {
+      return {
+        error:
+          "invalid_route"
+      };
+    }
+
+    const language =
+      TestFindings
+        .normalizeLanguage(
+          body.language
+        );
+
+    if (!language) {
+      return {
+        error:
+          "invalid_language"
+      };
+    }
+
+    const appCommitSha =
+      TestFindings
+        .normalizeText(
+          body.app_commit_sha,
+          {
+            required: true,
+            maxLength: 64,
+          }
+        );
+
+    if (
+      !appCommitSha ||
+      !/^[0-9a-f]{7,64}$/i
+        .test(
+          appCommitSha
+        )
+    ) {
+      return {
+        error:
+          "invalid_app_commit_sha"
+      };
+    }
+
+    const browser =
+      body.browser ===
+        null ||
+      body.browser ===
+        undefined ||
+      String(
+        body.browser
+      ).trim() === ""
+        ? null
+        : TestFindings
+            .normalizeText(
+              body.browser,
+              {
+                maxLength: 500,
+              }
+            );
+
+    if (
+      body.browser !== null &&
+      body.browser !== undefined &&
+      String(
+        body.browser
+      ).trim() !== "" &&
+      !browser
+    ) {
+      return {
+        error:
+          "invalid_browser"
+      };
+    }
+
+    const operatingSystem =
+      body.operating_system ===
+        null ||
+      body.operating_system ===
+        undefined ||
+      String(
+        body.operating_system
+      ).trim() === ""
+        ? null
+        : TestFindings
+            .normalizeText(
+              body.operating_system,
+              {
+                maxLength: 500,
+              }
+            );
+
+    if (
+      body.operating_system !==
+        null &&
+      body.operating_system !==
+        undefined &&
+      String(
+        body.operating_system
+      ).trim() !== "" &&
+      !operatingSystem
+    ) {
+      return {
+        error:
+          "invalid_operating_system"
+      };
+    }
+
+    const screenWidth =
+      TestFindings
+        .normalizeScreenDimension(
+          body.screen_width
+        );
+
+    const screenHeight =
+      TestFindings
+        .normalizeScreenDimension(
+          body.screen_height
+        );
+
+    if (
+      body.screen_width !==
+        null &&
+      body.screen_width !==
+        undefined &&
+      body.screen_width !== "" &&
+      screenWidth === null
+    ) {
+      return {
+        error:
+          "invalid_screen_width"
+      };
+    }
+
+    if (
+      body.screen_height !==
+        null &&
+      body.screen_height !==
+        undefined &&
+      body.screen_height !== "" &&
+      screenHeight === null
+    ) {
+      return {
+        error:
+          "invalid_screen_height"
+      };
+    }
+
+    const authorNick =
+      String(
+        user.nick ||
+        ""
+      ).trim();
+
+    if (!authorNick) {
+      return {
+        error:
+          "authenticated_user_nick_missing"
+      };
+    }
+
+    const authorUserId =
+      TestFindings
+        .normalizePositiveInteger(
+          user.user_id
+        );
+
+    if (!authorUserId) {
+      return {
+        error:
+          "authenticated_user_id_invalid"
+      };
+    }
+
+    const rolesJson =
+      TestFindings
+        .rolesJson(
+          user
+        );
+
+    const nowIso =
+      TestFindings
+        .nowIso();
+
+    const insertResult =
+      await ctx.env.OPS_DB
+        .prepare(`
+          INSERT INTO test_findings (
+            author_user_id,
+            author_nick,
+            author_roles_json,
+            author_mode,
+            finding_type,
+            title,
+            reproduction_steps,
+            expected_result,
+            actual_result,
+            blocking,
+            extra_explanation,
+            route,
+            language,
+            app_commit_sha,
+            browser,
+            operating_system,
+            screen_width,
+            screen_height,
+            environment,
+            status,
+            created_at,
+            updated_at
+          )
+          VALUES (
+            ?,
+            ?,
+            ?,
+            ?,
+            ?,
+            ?,
+            ?,
+            ?,
+            ?,
+            ?,
+            ?,
+            ?,
+            ?,
+            ?,
+            ?,
+            ?,
+            ?,
+            ?,
+            'test',
+            'NEW',
+            ?,
+            ?
+          )
+        `)
+        .bind(
+          authorUserId,
+          authorNick,
+          rolesJson,
+          authorMode,
+          findingType,
+          title,
+          reproductionSteps,
+          expectedResult,
+          actualResult,
+          blocking,
+          extraExplanation,
+          route,
+          language,
+          appCommitSha,
+          browser,
+          operatingSystem,
+          screenWidth,
+          screenHeight,
+          nowIso,
+          nowIso
+        )
+        .run();
+
+    const findingId =
+      TestFindings
+        .normalizePositiveInteger(
+          insertResult
+            ?.meta
+            ?.last_row_id
+        );
+
+    if (!findingId) {
+
+      App.logError(
+        "test_finding_insert_missing_id",
+        new Error(
+          "missing_last_row_id"
+        ),
+        {
+          actor_user_id:
+            authorUserId,
+        }
+      );
+
+      return {
+        error:
+          "finding_create_failed"
+      };
+    }
+
+    try {
+
+      await ctx.env.OPS_DB
+        .prepare(`
+          INSERT INTO test_finding_events (
+            finding_id,
+            actor_user_id,
+            actor_nick,
+            actor_roles_json,
+            event_type,
+            from_status,
+            to_status,
+            reason_code,
+            comment,
+            created_at
+          )
+          VALUES (
+            ?,
+            ?,
+            ?,
+            ?,
+            'created',
+            NULL,
+            'NEW',
+            NULL,
+            NULL,
+            ?
+          )
+        `)
+        .bind(
+          findingId,
+          authorUserId,
+          authorNick,
+          rolesJson,
+          nowIso
+        )
+        .run();
+
+    } catch (eventError) {
+
+      let cleanupSucceeded =
+        false;
+
+      try {
+
+        await ctx.env.OPS_DB
+          .prepare(`
+            DELETE FROM test_findings
+            WHERE id = ?
+              AND author_user_id = ?
+              AND author_nick = ?
+              AND status = 'NEW'
+          `)
+          .bind(
+            findingId,
+            authorUserId,
+            authorNick
+          )
+          .run();
+
+        const remaining =
+          await ctx.env.OPS_DB
+            .prepare(`
+              SELECT id
+              FROM test_findings
+              WHERE id = ?
+              LIMIT 1
+            `)
+            .bind(
+              findingId
+            )
+            .first();
+
+        cleanupSucceeded =
+          !remaining;
+
+      } catch (cleanupError) {
+
+        App.logError(
+          "test_finding_create_cleanup_failed",
+          cleanupError,
+          {
+            finding_id:
+              findingId,
+            actor_user_id:
+              authorUserId,
+          }
+        );
+      }
+
+      App.logError(
+        "test_finding_event_insert_failed",
+        eventError,
+        {
+          finding_id:
+            findingId,
+          actor_user_id:
+            authorUserId,
+          compensating_cleanup:
+            cleanupSucceeded,
+        }
+      );
+
+      return {
+        error:
+          cleanupSucceeded
+            ? "finding_create_failed"
+            : "finding_create_inconsistent"
+      };
+    }
+
+    const created =
+      await ctx.env.OPS_DB
+        .prepare(`
+          SELECT *
+          FROM test_findings
+          WHERE id = ?
+          LIMIT 1
+        `)
+        .bind(
+          findingId
+        )
+        .first();
+
+    if (!created) {
+      return {
+        error:
+          "finding_created_but_reload_failed"
+      };
+    }
+
+    return {
+      ok: true,
+      finding:
+        TestFindings
+          .normalizeFindingRow(
+            created
+          ),
+    };
+  }
+);
+
+
+// =========================
+// TEST FINDINGS — TESTER OWN LIST
+// PR-6K.1C.3
+//
+// A tester can see only findings created by the same
+// authenticated user ID AND the same Nick snapshot.
+// =========================
+
+Router.register(
+  "GET",
+  "/api/test/findings",
+  async (ctx) => {
+
+    if (
+      !TestFindings
+        .isTestEnvironment(
+          ctx
+        )
+    ) {
+      return {
+        error: "forbidden"
+      };
+    }
+
+    const user =
+      await Auth.requireUser(
+        ctx
+      );
+
+    if (!user) {
+      return {
+        error: "unauthorized"
+      };
+    }
+
+    if (
+      !TestFindings
+        .hasOpsDatabase(
+          ctx.env
+        )
+    ) {
+      return {
+        error:
+          "findings_storage_unavailable"
+      };
+    }
+
+    const userId =
+      TestFindings
+        .normalizePositiveInteger(
+          user.user_id
+        );
+
+    const nick =
+      String(
+        user.nick ||
+        ""
+      ).trim();
+
+    if (
+      !userId ||
+      !nick
+    ) {
+      return {
+        error:
+          "authenticated_user_identity_invalid"
+      };
+    }
+
+    const result =
+      await ctx.env.OPS_DB
+        .prepare(`
+          SELECT *
+          FROM test_findings
+          WHERE author_user_id = ?
+            AND author_nick = ?
+          ORDER BY
+            datetime(created_at) DESC,
+            id DESC
+        `)
+        .bind(
+          userId,
+          nick
+        )
+        .all();
+
+    return {
+      ok: true,
+      findings:
+        (result.results || [])
+          .map(
+            (row) =>
+              TestFindings
+                .normalizeFindingRow(
+                  row
+                )
+          ),
+    };
+  }
+);
+
+
+// =========================
+// TEST FINDINGS — TESTER OWN DETAIL
+// PR-6K.1C.3
+//
+// Ownership is checked using both user_id and Nick.
+// Other testers' findings are not disclosed.
+// =========================
+
+Router.register(
+  "GET",
+  "/api/test/finding",
+  async (ctx) => {
+
+    if (
+      !TestFindings
+        .isTestEnvironment(
+          ctx
+        )
+    ) {
+      return {
+        error: "forbidden"
+      };
+    }
+
+    const user =
+      await Auth.requireUser(
+        ctx
+      );
+
+    if (!user) {
+      return {
+        error: "unauthorized"
+      };
+    }
+
+    if (
+      !TestFindings
+        .hasOpsDatabase(
+          ctx.env
+        )
+    ) {
+      return {
+        error:
+          "findings_storage_unavailable"
+      };
+    }
+
+    const findingId =
+      TestFindings
+        .normalizePositiveInteger(
+          ctx.url
+            .searchParams
+            .get("id")
+        );
+
+    if (!findingId) {
+      return {
+        error:
+          "invalid_finding_id"
+      };
+    }
+
+    const finding =
+      await ctx.env.OPS_DB
+        .prepare(`
+          SELECT *
+          FROM test_findings
+          WHERE id = ?
+          LIMIT 1
+        `)
+        .bind(
+          findingId
+        )
+        .first();
+
+    if (
+      !finding ||
+      !TestFindings
+        .isOwner(
+          finding,
+          user
+        )
+    ) {
+      return {
+        error:
+          "finding_not_found"
+      };
+    }
+
+    const [
+      eventsResult,
+      retestsResult,
+    ] =
+      await Promise.all([
+        ctx.env.OPS_DB
+          .prepare(`
+            SELECT *
+            FROM test_finding_events
+            WHERE finding_id = ?
+            ORDER BY
+              datetime(created_at) ASC,
+              id ASC
+          `)
+          .bind(
+            findingId
+          )
+          .all(),
+
+        ctx.env.OPS_DB
+          .prepare(`
+            SELECT *
+            FROM test_finding_retests
+            WHERE finding_id = ?
+            ORDER BY
+              datetime(assigned_at) ASC,
+              id ASC
+          `)
+          .bind(
+            findingId
+          )
+          .all(),
+      ]);
+
+    return {
+      ok: true,
+
+      finding:
+        TestFindings
+          .normalizeFindingRow(
+            finding
+          ),
+
+      events:
+        (eventsResult.results || [])
+          .map(
+            (row) =>
+              TestFindings
+                .normalizeEventRow(
+                  row
+                )
+          ),
+
+      retests:
+        (retestsResult.results || [])
+          .map(
+            (row) =>
+              TestFindings
+                .normalizeRetestRow(
+                  row
+                )
+          ),
+    };
+  }
+);
 
 
 // =========================
