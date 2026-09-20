@@ -4121,6 +4121,44 @@ class TestFindings {
         actor
       );
 
+    const normalizedReasonText =
+      reasonText == null
+        ? null
+        : String(
+            reasonText
+          ).trim() ||
+          null;
+
+    const normalizedComment =
+      comment == null
+        ? null
+        : String(
+            comment
+          ).trim() ||
+          null;
+
+    let eventComment =
+      normalizedComment;
+
+    if (
+      normalizedReasonText &&
+      !normalizedComment
+    ) {
+      eventComment =
+        normalizedReasonText;
+
+    } else if (
+      normalizedReasonText &&
+      normalizedComment &&
+      normalizedReasonText !==
+        normalizedComment
+    ) {
+      eventComment =
+        normalizedReasonText +
+        "\n\n" +
+        normalizedComment;
+    }
+
     const nowIso =
       this.nowIso();
 
@@ -4215,7 +4253,7 @@ class TestFindings {
           fromStatus,
           normalizedToStatus,
           reasonCode,
-          comment,
+          eventComment,
           nowIso
         )
         .run();
