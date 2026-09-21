@@ -3740,6 +3740,98 @@ class TestFindings {
         : null;
   }
 
+  static normalizeGithubIssueUrl(
+    value
+  ) {
+
+    const normalized =
+      String(
+        value ||
+        ""
+      ).trim();
+
+    if (
+      !normalized ||
+      normalized.length >
+        1000
+    ) {
+      return null;
+    }
+
+    try {
+
+      const parsed =
+        new URL(
+          normalized
+        );
+
+      const hostname =
+        parsed.hostname
+          .toLowerCase();
+
+      if (
+        parsed.protocol !==
+          "https:" ||
+        (
+          hostname !==
+            "github.com" &&
+          hostname !==
+            "www.github.com"
+        ) ||
+        parsed.search ||
+        parsed.hash
+      ) {
+        return null;
+      }
+
+      const pathname =
+        parsed.pathname
+          .replace(
+            /\/+$/,
+            ""
+          );
+
+      if (
+        !/^\/[^/]+\/[^/]+\/issues\/[1-9][0-9]*$/
+          .test(
+            pathname
+          )
+      ) {
+        return null;
+      }
+
+      return (
+        "https://github.com" +
+        pathname
+      );
+
+    } catch {
+
+      return null;
+    }
+  }
+
+  static normalizeImplementationRef(
+    value
+  ) {
+
+    const normalized =
+      String(
+        value ||
+        ""
+      ).trim();
+
+    if (
+      !normalized ||
+      normalized.length >
+        1000
+    ) {
+      return null;
+    }
+
+    return normalized;
+  }
+
   static normalizeCloseReasonCode(
     value
   ) {
@@ -9720,6 +9812,491 @@ Router.register(
           .normalizeRetestRow(
             completedRetest
           ),
+
+      finding:
+        TestFindings
+          .normalizeFindingRow(
+            refreshedFinding
+          ),
+    };
+  }
+);
+
+
+// =========================
+// TEST FINDINGS — IMPLEMENTATION REFERENCES
+// PR-6K.1C.6B
+//
+// Admin-only metadata action.
+//
+// This endpoint DOES NOT change finding status and
+// DOES NOT authorize implementation work.
+//
+// Code-change authorization continues to be governed
+// exclusively by the finding workflow:
+// APPROVED authorizes implementation.
+//
+// Supported metadata:
+// - GitHub Issue URL
+// - implementation reference (commit / PR / other ref)
+//
+// Explicit null or empty string clears a field.
+// Every actual change creates immutable
+// implementation_updated history.
+// =========================
+
+Router.register(
+  "POST",
+  "/api/admin/test/finding/implementation",
+  async (ctx) => {
+
+    if (
+      !TestFindings
+        .isTestEnvironment(
+          ctx
+        )
+    ) {
+      return {
+        error:
+          "forbidden"
+      };
+    }
+
+    const admin =
+      await Auth.requireAdmin(
+        ctx
+      );
+
+    if (!admin) {
+      return {
+        error:
+          "forbidden"
+      };
+    }
+
+    if (
+      !TestFindings
+        .hasOpsDatabase(
+          ctx.env
+        )
+    ) {
+      return {
+        error:
+          "findings_storage_unavailable"
+      };
+    }
+
+    const body =
+      await ctx.request
+        .json()
+        .catch(() => null);
+
+    if (
+      !body ||
+      typeof body !==
+        "object" ||
+      Array.isArray(
+        body
+      )
+    ) {
+      return {
+        error:
+          "invalid_request_body"
+      };
+    }
+
+    const findingId =
+      TestFindings
+        .normalizePositiveInteger(
+          body.finding_id
+        );
+
+    if (!findingId) {
+      return {
+        error:
+          "invalid_finding_id"
+      };
+    }
+
+    const hasGithubIssueUrl =
+      Object.prototype
+        .hasOwnProperty
+        .call(
+          body,
+          "github_issue_url"
+        );
+
+    const hasImplementationRef =
+      Object.prototype
+        .hasOwnProperty
+        .call(
+          body,
+          "implementation_ref"
+        );
+
+    if (
+      !hasGithubIssueUrl &&
+      !hasImplementationRef
+    ) {
+      return {
+        error:
+          "implementation_fields_required"
+      };
+    }
+
+    const finding =
+      await ctx.env.OPS_DB
+        .prepare(`
+          SELECT *
+          FROM test_findings
+          WHERE id = ?
+          LIMIT 1
+        `)
+        .bind(
+          findingId
+        )
+        .first();
+
+    if (!finding) {
+      return {
+        error:
+          "finding_not_found"
+      };
+    }
+
+    const previousGithubIssueUrl =
+      finding.github_issue_url ||
+      null;
+
+    const previousImplementationRef =
+      finding.implementation_ref ||
+      null;
+
+    let nextGithubIssueUrl =
+      previousGithubIssueUrl;
+
+    let nextImplementationRef =
+      previousImplementationRef;
+
+    if (
+      hasGithubIssueUrl
+    ) {
+
+      const rawGithubIssueUrl =
+        body.github_issue_url;
+
+      const clearGithubIssueUrl =
+        rawGithubIssueUrl ===
+          null ||
+        String(
+          rawGithubIssueUrl
+        ).trim() ===
+          "";
+
+      if (
+        clearGithubIssueUrl
+      ) {
+
+        nextGithubIssueUrl =
+          null;
+
+      } else {
+
+        nextGithubIssueUrl =
+          TestFindings
+            .normalizeGithubIssueUrl(
+              rawGithubIssueUrl
+            );
+
+        if (
+          !nextGithubIssueUrl
+        ) {
+          return {
+            error:
+              "invalid_github_issue_url"
+          };
+        }
+      }
+    }
+
+    if (
+      hasImplementationRef
+    ) {
+
+      const rawImplementationRef =
+        body.implementation_ref;
+
+      const clearImplementationRef =
+        rawImplementationRef ===
+          null ||
+        String(
+          rawImplementationRef
+        ).trim() ===
+          "";
+
+      if (
+        clearImplementationRef
+      ) {
+
+        nextImplementationRef =
+          null;
+
+      } else {
+
+        nextImplementationRef =
+          TestFindings
+            .normalizeImplementationRef(
+              rawImplementationRef
+            );
+
+        if (
+          !nextImplementationRef
+        ) {
+          return {
+            error:
+              "invalid_implementation_ref"
+          };
+        }
+      }
+    }
+
+    if (
+      nextGithubIssueUrl ===
+        previousGithubIssueUrl &&
+      nextImplementationRef ===
+        previousImplementationRef
+    ) {
+      return {
+        error:
+          "implementation_unchanged"
+      };
+    }
+
+    const previousUpdatedAt =
+      finding.updated_at;
+
+    const nowIso =
+      TestFindings
+        .nowIso();
+
+    let updateResult;
+
+    try {
+
+      updateResult =
+        await ctx.env.OPS_DB
+          .prepare(`
+            UPDATE test_findings
+            SET
+              github_issue_url = ?,
+              implementation_ref = ?,
+              updated_at = ?
+            WHERE id = ?
+              AND updated_at = ?
+              AND (
+                (
+                  github_issue_url IS NULL
+                  AND ? IS NULL
+                )
+                OR github_issue_url = ?
+              )
+              AND (
+                (
+                  implementation_ref IS NULL
+                  AND ? IS NULL
+                )
+                OR implementation_ref = ?
+              )
+          `)
+          .bind(
+            nextGithubIssueUrl,
+            nextImplementationRef,
+            nowIso,
+            findingId,
+            previousUpdatedAt,
+
+            previousGithubIssueUrl,
+            previousGithubIssueUrl,
+
+            previousImplementationRef,
+            previousImplementationRef
+          )
+          .run();
+
+    } catch (error) {
+
+      App.logError(
+        "test_finding_implementation_update_failed",
+        error,
+        {
+          finding_id:
+            findingId,
+        }
+      );
+
+      return {
+        error:
+          "implementation_update_failed"
+      };
+    }
+
+    if (
+      Number(
+        updateResult
+          ?.meta
+          ?.changes ||
+        0
+      ) !== 1
+    ) {
+      return {
+        error:
+          "finding_state_changed"
+      };
+    }
+
+    const eventPayload =
+      JSON.stringify({
+        previous: {
+          github_issue_url:
+            previousGithubIssueUrl,
+
+          implementation_ref:
+            previousImplementationRef,
+        },
+
+        next: {
+          github_issue_url:
+            nextGithubIssueUrl,
+
+          implementation_ref:
+            nextImplementationRef,
+        },
+      });
+
+    const eventResult =
+      await TestFindings
+        .insertEvent({
+          env:
+            ctx.env,
+
+          findingId,
+
+          actor:
+            admin,
+
+          eventType:
+            "implementation_updated",
+
+          fromStatus:
+            finding.status,
+
+          toStatus:
+            null,
+
+          reasonCode:
+            null,
+
+          comment:
+            eventPayload,
+        });
+
+    if (!eventResult.ok) {
+
+      let rollbackSucceeded =
+        false;
+
+      try {
+
+        const rollbackResult =
+          await ctx.env.OPS_DB
+            .prepare(`
+              UPDATE test_findings
+              SET
+                github_issue_url = ?,
+                implementation_ref = ?,
+                updated_at = ?
+              WHERE id = ?
+                AND updated_at = ?
+                AND (
+                  (
+                    github_issue_url IS NULL
+                    AND ? IS NULL
+                  )
+                  OR github_issue_url = ?
+                )
+                AND (
+                  (
+                    implementation_ref IS NULL
+                    AND ? IS NULL
+                  )
+                  OR implementation_ref = ?
+                )
+            `)
+            .bind(
+              previousGithubIssueUrl,
+              previousImplementationRef,
+              previousUpdatedAt,
+              findingId,
+              nowIso,
+
+              nextGithubIssueUrl,
+              nextGithubIssueUrl,
+
+              nextImplementationRef,
+              nextImplementationRef
+            )
+            .run();
+
+        rollbackSucceeded =
+          Number(
+            rollbackResult
+              ?.meta
+              ?.changes ||
+            0
+          ) === 1;
+
+      } catch (rollbackError) {
+
+        App.logError(
+          "test_finding_implementation_rollback_failed",
+          rollbackError,
+          {
+            finding_id:
+              findingId,
+          }
+        );
+      }
+
+      return {
+        error:
+          rollbackSucceeded
+            ? "implementation_update_failed"
+            : "implementation_update_inconsistent"
+      };
+    }
+
+    const refreshedFinding =
+      await ctx.env.OPS_DB
+        .prepare(`
+          SELECT *
+          FROM test_findings
+          WHERE id = ?
+          LIMIT 1
+        `)
+        .bind(
+          findingId
+        )
+        .first();
+
+    if (!refreshedFinding) {
+      return {
+        error:
+          "implementation_updated_but_reload_failed"
+      };
+    }
+
+    return {
+      ok: true,
 
       finding:
         TestFindings
