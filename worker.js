@@ -4130,6 +4130,157 @@ class TestFindings {
     );
   }
 
+  static matchesScreenshotSignature(
+    bytes,
+    mimeType
+  ) {
+
+    const data =
+      bytes instanceof Uint8Array
+        ? bytes
+        : new Uint8Array(
+            bytes ||
+            new ArrayBuffer(0)
+          );
+
+    const normalizedMime =
+      String(
+        mimeType ||
+        ""
+      )
+        .trim()
+        .toLowerCase();
+
+    if (
+      normalizedMime ===
+        "image/png"
+    ) {
+
+      const signature = [
+        0x89,
+        0x50,
+        0x4e,
+        0x47,
+        0x0d,
+        0x0a,
+        0x1a,
+        0x0a,
+      ];
+
+      return (
+        data.length >=
+          signature.length &&
+        signature.every(
+          (
+            value,
+            index
+          ) =>
+            data[index] ===
+              value
+        )
+      );
+    }
+
+    if (
+      normalizedMime ===
+        "image/jpeg"
+    ) {
+
+      return (
+        data.length >= 3 &&
+        data[0] === 0xff &&
+        data[1] === 0xd8 &&
+        data[2] === 0xff
+      );
+    }
+
+    if (
+      normalizedMime ===
+        "image/webp"
+    ) {
+
+      return (
+        data.length >= 12 &&
+
+        data[0] === 0x52 &&
+        data[1] === 0x49 &&
+        data[2] === 0x46 &&
+        data[3] === 0x46 &&
+
+        data[8] === 0x57 &&
+        data[9] === 0x45 &&
+        data[10] === 0x42 &&
+        data[11] === 0x50
+      );
+    }
+
+    return false;
+  }
+
+  static screenshotObjectKey(
+    {
+      findingId,
+      mimeType,
+    } = {}
+  ) {
+
+    const normalizedFindingId =
+      this.normalizePositiveInteger(
+        findingId
+      );
+
+    const extension =
+      this.screenshotExtension(
+        mimeType
+      );
+
+    if (
+      !normalizedFindingId ||
+      !extension
+    ) {
+      return null;
+    }
+
+    return (
+      "findings/" +
+      normalizedFindingId +
+      "/" +
+      crypto.randomUUID() +
+      extension
+    );
+  }
+
+  static screenshotDownloadName(
+    findingId,
+    mimeType
+  ) {
+
+    const normalizedFindingId =
+      this.normalizePositiveInteger(
+        findingId
+      );
+
+    const extension =
+      this.screenshotExtension(
+        mimeType
+      );
+
+    if (
+      !normalizedFindingId ||
+      !extension
+    ) {
+      return "finding-screenshot";
+    }
+
+    return (
+      this.displayId(
+        normalizedFindingId
+      ) +
+      "-screenshot" +
+      extension
+    );
+  }
+
   static nowIso() {
 
     return new Date()
@@ -10304,6 +10455,1016 @@ Router.register(
             refreshedFinding
           ),
     };
+  }
+);
+
+
+// =========================
+// TEST FINDINGS — SCREENSHOT UPLOAD
+// PR-6K.1C.7B
+//
+// Raw binary request body.
+//
+// Security contract:
+// - TEST only;
+// - authenticated author only;
+// - exact own-finding semantics;
+// - finding must still be NEW;
+// - one screenshot maximum;
+// - PNG / JPEG / WebP only;
+// - maximum 5 MiB;
+// - MIME signature must match declared Content-Type;
+// - R2 key is generated only server-side;
+// - R2 key is never returned to the client.
+// =========================
+
+Router.register(
+  "POST",
+  "/api/test/finding/screenshot",
+  async (ctx) => {
+
+    if (
+      !TestFindings
+        .isTestEnvironment(
+          ctx
+        )
+    ) {
+      return {
+        error:
+          "forbidden"
+      };
+    }
+
+    const user =
+      await Auth.requireUser(
+        ctx
+      );
+
+    if (!user) {
+      return {
+        error:
+          "unauthorized"
+      };
+    }
+
+    if (
+      !TestFindings
+        .hasOpsDatabase(
+          ctx.env
+        )
+    ) {
+      return {
+        error:
+          "findings_storage_unavailable"
+      };
+    }
+
+    if (
+      !TestFindings
+        .hasScreenshotStorage(
+          ctx.env
+        )
+    ) {
+      return {
+        error:
+          "screenshot_storage_unavailable"
+      };
+    }
+
+    const findingId =
+      TestFindings
+        .normalizePositiveInteger(
+          ctx.url
+            .searchParams
+            .get("id")
+        );
+
+    if (!findingId) {
+      return {
+        error:
+          "invalid_finding_id"
+      };
+    }
+
+    const finding =
+      await ctx.env.OPS_DB
+        .prepare(`
+          SELECT *
+          FROM test_findings
+          WHERE id = ?
+          LIMIT 1
+        `)
+        .bind(
+          findingId
+        )
+        .first();
+
+    if (
+      !finding ||
+      !TestFindings
+        .isOwner(
+          finding,
+          user
+        )
+    ) {
+      return {
+        error:
+          "finding_not_found"
+      };
+    }
+
+    if (
+      finding.screenshot_key
+    ) {
+      return {
+        error:
+          "screenshot_already_exists"
+      };
+    }
+
+    if (
+      finding.status !==
+        "NEW"
+    ) {
+      return {
+        error:
+          "screenshot_upload_not_allowed"
+      };
+    }
+
+    const rawContentType =
+      String(
+        ctx.request
+          .headers
+          .get(
+            "Content-Type"
+          ) ||
+        ""
+      );
+
+    const mimeType =
+      rawContentType
+        .split(";")[0]
+        .trim()
+        .toLowerCase();
+
+    const extension =
+      TestFindings
+        .screenshotExtension(
+          mimeType
+        );
+
+    if (!extension) {
+      return {
+        error:
+          "invalid_screenshot_mime_type"
+      };
+    }
+
+    const rawContentLength =
+      ctx.request
+        .headers
+        .get(
+          "Content-Length"
+        );
+
+    if (
+      rawContentLength !==
+        null
+    ) {
+
+      const declaredSize =
+        Number(
+          rawContentLength
+        );
+
+      if (
+        !Number.isInteger(
+          declaredSize
+        ) ||
+        declaredSize < 0
+      ) {
+        return {
+          error:
+            "invalid_screenshot_size"
+        };
+      }
+
+      if (
+        declaredSize >
+          TEST_FINDING_SCREENSHOT_MAX_SIZE_BYTES
+      ) {
+        return {
+          error:
+            "screenshot_too_large"
+        };
+      }
+    }
+
+    let body;
+
+    try {
+
+      body =
+        await ctx.request
+          .arrayBuffer();
+
+    } catch (error) {
+
+      App.logError(
+        "test_finding_screenshot_body_read_failed",
+        error,
+        {
+          finding_id:
+            findingId,
+          actor_user_id:
+            user.user_id,
+        }
+      );
+
+      return {
+        error:
+          "invalid_screenshot_body"
+      };
+    }
+
+    const sizeBytes =
+      body.byteLength;
+
+    if (
+      sizeBytes >
+        TEST_FINDING_SCREENSHOT_MAX_SIZE_BYTES
+    ) {
+      return {
+        error:
+          "screenshot_too_large"
+      };
+    }
+
+    if (
+      !TestFindings
+        .isAllowedScreenshot({
+          mimeType,
+          sizeBytes,
+        })
+    ) {
+      return {
+        error:
+          "invalid_screenshot"
+      };
+    }
+
+    if (
+      !TestFindings
+        .matchesScreenshotSignature(
+          body,
+          mimeType
+        )
+    ) {
+      return {
+        error:
+          "screenshot_signature_mismatch"
+      };
+    }
+
+    const objectKey =
+      TestFindings
+        .screenshotObjectKey({
+          findingId,
+          mimeType,
+        });
+
+    if (!objectKey) {
+      return {
+        error:
+          "screenshot_key_generation_failed"
+      };
+    }
+
+    const nowIso =
+      TestFindings
+        .nowIso();
+
+    let objectStored =
+      false;
+
+    try {
+
+      await ctx.env
+        .FINDING_SCREENSHOTS
+        .put(
+          objectKey,
+          body,
+          {
+            httpMetadata: {
+              contentType:
+                mimeType,
+
+              contentDisposition:
+                "inline",
+            },
+
+            customMetadata: {
+              finding_id:
+                String(
+                  findingId
+                ),
+
+              author_user_id:
+                String(
+                  finding.author_user_id
+                ),
+
+              author_nick:
+                String(
+                  finding.author_nick
+                ),
+
+              stored_at:
+                nowIso,
+            },
+          }
+        );
+
+      objectStored =
+        true;
+
+    } catch (error) {
+
+      App.logError(
+        "test_finding_screenshot_r2_put_failed",
+        error,
+        {
+          finding_id:
+            findingId,
+          actor_user_id:
+            user.user_id,
+        }
+      );
+
+      return {
+        error:
+          "screenshot_storage_write_failed"
+      };
+    }
+
+    let metadataResult;
+
+    try {
+
+      metadataResult =
+        await ctx.env.OPS_DB
+          .prepare(`
+            UPDATE test_findings
+            SET
+              screenshot_key = ?,
+              screenshot_mime_type = ?,
+              screenshot_size_bytes = ?,
+              updated_at = ?
+            WHERE id = ?
+              AND status = 'NEW'
+              AND screenshot_key IS NULL
+              AND updated_at = ?
+          `)
+          .bind(
+            objectKey,
+            mimeType,
+            sizeBytes,
+            nowIso,
+            findingId,
+            finding.updated_at
+          )
+          .run();
+
+    } catch (error) {
+
+      App.logError(
+        "test_finding_screenshot_metadata_update_failed",
+        error,
+        {
+          finding_id:
+            findingId,
+          actor_user_id:
+            user.user_id,
+        }
+      );
+
+      let cleanupSucceeded =
+        false;
+
+      if (objectStored) {
+
+        try {
+
+          await ctx.env
+            .FINDING_SCREENSHOTS
+            .delete(
+              objectKey
+            );
+
+          cleanupSucceeded =
+            true;
+
+        } catch (
+          cleanupError
+        ) {
+
+          App.logError(
+            "test_finding_screenshot_r2_cleanup_failed",
+            cleanupError,
+            {
+              finding_id:
+                findingId,
+            }
+          );
+        }
+      }
+
+      return {
+        error:
+          cleanupSucceeded
+            ? "screenshot_upload_failed"
+            : "screenshot_upload_inconsistent"
+      };
+    }
+
+    if (
+      Number(
+        metadataResult
+          ?.meta
+          ?.changes ||
+        0
+      ) !== 1
+    ) {
+
+      let cleanupSucceeded =
+        false;
+
+      try {
+
+        await ctx.env
+          .FINDING_SCREENSHOTS
+          .delete(
+            objectKey
+          );
+
+        cleanupSucceeded =
+          true;
+
+      } catch (
+        cleanupError
+      ) {
+
+        App.logError(
+          "test_finding_screenshot_race_cleanup_failed",
+          cleanupError,
+          {
+            finding_id:
+              findingId,
+          }
+        );
+      }
+
+      if (
+        !cleanupSucceeded
+      ) {
+        return {
+          error:
+            "screenshot_upload_inconsistent"
+        };
+      }
+
+      const current =
+        await ctx.env.OPS_DB
+          .prepare(`
+            SELECT
+              status,
+              screenshot_key
+            FROM test_findings
+            WHERE id = ?
+            LIMIT 1
+          `)
+          .bind(
+            findingId
+          )
+          .first();
+
+      if (
+        current
+          ?.screenshot_key
+      ) {
+        return {
+          error:
+            "screenshot_already_exists"
+        };
+      }
+
+      if (
+        current?.status !==
+          "NEW"
+      ) {
+        return {
+          error:
+            "screenshot_upload_not_allowed"
+        };
+      }
+
+      return {
+        error:
+          "finding_state_changed"
+      };
+    }
+
+    const refreshedFinding =
+      await ctx.env.OPS_DB
+        .prepare(`
+          SELECT *
+          FROM test_findings
+          WHERE id = ?
+          LIMIT 1
+        `)
+        .bind(
+          findingId
+        )
+        .first();
+
+    if (
+      !refreshedFinding
+    ) {
+      return {
+        error:
+          "screenshot_uploaded_but_reload_failed"
+      };
+    }
+
+    return {
+      ok: true,
+
+      finding:
+        TestFindings
+          .normalizeFindingRow(
+            refreshedFinding
+          ),
+    };
+  }
+);
+
+
+// =========================
+// TEST FINDINGS — TESTER SCREENSHOT RETRIEVAL
+// PR-6K.1C.7B
+//
+// Only the exact finding author may retrieve.
+// Internal R2 key is never returned.
+// =========================
+
+Router.register(
+  "GET",
+  "/api/test/finding/screenshot",
+  async (ctx) => {
+
+    if (
+      !TestFindings
+        .isTestEnvironment(
+          ctx
+        )
+    ) {
+      return {
+        error:
+          "forbidden"
+      };
+    }
+
+    const user =
+      await Auth.requireUser(
+        ctx
+      );
+
+    if (!user) {
+      return {
+        error:
+          "unauthorized"
+      };
+    }
+
+    if (
+      !TestFindings
+        .hasOpsDatabase(
+          ctx.env
+        )
+    ) {
+      return {
+        error:
+          "findings_storage_unavailable"
+      };
+    }
+
+    if (
+      !TestFindings
+        .hasScreenshotStorage(
+          ctx.env
+        )
+    ) {
+      return {
+        error:
+          "screenshot_storage_unavailable"
+      };
+    }
+
+    const findingId =
+      TestFindings
+        .normalizePositiveInteger(
+          ctx.url
+            .searchParams
+            .get("id")
+        );
+
+    if (!findingId) {
+      return {
+        error:
+          "invalid_finding_id"
+      };
+    }
+
+    const finding =
+      await ctx.env.OPS_DB
+        .prepare(`
+          SELECT *
+          FROM test_findings
+          WHERE id = ?
+          LIMIT 1
+        `)
+        .bind(
+          findingId
+        )
+        .first();
+
+    if (
+      !finding ||
+      !TestFindings
+        .isOwner(
+          finding,
+          user
+        )
+    ) {
+      return {
+        error:
+          "finding_not_found"
+      };
+    }
+
+    if (
+      !finding.screenshot_key
+    ) {
+      return {
+        error:
+          "screenshot_not_found"
+      };
+    }
+
+    let object;
+
+    try {
+
+      object =
+        await ctx.env
+          .FINDING_SCREENSHOTS
+          .get(
+            finding
+              .screenshot_key
+          );
+
+    } catch (error) {
+
+      App.logError(
+        "test_finding_screenshot_r2_get_failed",
+        error,
+        {
+          finding_id:
+            findingId,
+          actor_user_id:
+            user.user_id,
+        }
+      );
+
+      return {
+        error:
+          "screenshot_storage_read_failed"
+      };
+    }
+
+    if (!object) {
+
+      App.logError(
+        "test_finding_screenshot_object_missing",
+        new Error(
+          "r2_object_not_found"
+        ),
+        {
+          finding_id:
+            findingId,
+        }
+      );
+
+      return {
+        error:
+          "screenshot_object_not_found"
+      };
+    }
+
+    const headers =
+      new Headers(
+        ctx.cors ||
+        {}
+      );
+
+    if (
+      typeof object
+        .writeHttpMetadata ===
+        "function"
+    ) {
+      object
+        .writeHttpMetadata(
+          headers
+        );
+    }
+
+    headers.set(
+      "Content-Type",
+      finding
+        .screenshot_mime_type ||
+      "application/octet-stream"
+    );
+
+    headers.set(
+      "Content-Disposition",
+      'inline; filename="' +
+      TestFindings
+        .screenshotDownloadName(
+          findingId,
+          finding
+            .screenshot_mime_type
+        ) +
+      '"'
+    );
+
+    headers.set(
+      "Cache-Control",
+      "private, no-store"
+    );
+
+    headers.set(
+      "X-Content-Type-Options",
+      "nosniff"
+    );
+
+    if (
+      finding
+        .screenshot_size_bytes !=
+        null
+    ) {
+      headers.set(
+        "Content-Length",
+        String(
+          finding
+            .screenshot_size_bytes
+        )
+      );
+    }
+
+    return new Response(
+      object.body,
+      {
+        status: 200,
+        headers,
+      }
+    );
+  }
+);
+
+
+// =========================
+// TEST FINDINGS — ADMIN SCREENSHOT RETRIEVAL
+// PR-6K.1C.7B
+//
+// Admin may retrieve screenshot for any TEST finding.
+// Internal R2 key is never returned.
+// =========================
+
+Router.register(
+  "GET",
+  "/api/admin/test/finding/screenshot",
+  async (ctx) => {
+
+    if (
+      !TestFindings
+        .isTestEnvironment(
+          ctx
+        )
+    ) {
+      return {
+        error:
+          "forbidden"
+      };
+    }
+
+    const admin =
+      await Auth.requireAdmin(
+        ctx
+      );
+
+    if (!admin) {
+      return {
+        error:
+          "forbidden"
+      };
+    }
+
+    if (
+      !TestFindings
+        .hasOpsDatabase(
+          ctx.env
+        )
+    ) {
+      return {
+        error:
+          "findings_storage_unavailable"
+      };
+    }
+
+    if (
+      !TestFindings
+        .hasScreenshotStorage(
+          ctx.env
+        )
+    ) {
+      return {
+        error:
+          "screenshot_storage_unavailable"
+      };
+    }
+
+    const findingId =
+      TestFindings
+        .normalizePositiveInteger(
+          ctx.url
+            .searchParams
+            .get("id")
+        );
+
+    if (!findingId) {
+      return {
+        error:
+          "invalid_finding_id"
+      };
+    }
+
+    const finding =
+      await ctx.env.OPS_DB
+        .prepare(`
+          SELECT *
+          FROM test_findings
+          WHERE id = ?
+          LIMIT 1
+        `)
+        .bind(
+          findingId
+        )
+        .first();
+
+    if (!finding) {
+      return {
+        error:
+          "finding_not_found"
+      };
+    }
+
+    if (
+      !finding.screenshot_key
+    ) {
+      return {
+        error:
+          "screenshot_not_found"
+      };
+    }
+
+    let object;
+
+    try {
+
+      object =
+        await ctx.env
+          .FINDING_SCREENSHOTS
+          .get(
+            finding
+              .screenshot_key
+          );
+
+    } catch (error) {
+
+      App.logError(
+        "admin_test_finding_screenshot_r2_get_failed",
+        error,
+        {
+          finding_id:
+            findingId,
+          actor_user_id:
+            admin.user_id,
+        }
+      );
+
+      return {
+        error:
+          "screenshot_storage_read_failed"
+      };
+    }
+
+    if (!object) {
+
+      App.logError(
+        "admin_test_finding_screenshot_object_missing",
+        new Error(
+          "r2_object_not_found"
+        ),
+        {
+          finding_id:
+            findingId,
+        }
+      );
+
+      return {
+        error:
+          "screenshot_object_not_found"
+      };
+    }
+
+    const headers =
+      new Headers(
+        ctx.cors ||
+        {}
+      );
+
+    if (
+      typeof object
+        .writeHttpMetadata ===
+        "function"
+    ) {
+      object
+        .writeHttpMetadata(
+          headers
+        );
+    }
+
+    headers.set(
+      "Content-Type",
+      finding
+        .screenshot_mime_type ||
+      "application/octet-stream"
+    );
+
+    headers.set(
+      "Content-Disposition",
+      'inline; filename="' +
+      TestFindings
+        .screenshotDownloadName(
+          findingId,
+          finding
+            .screenshot_mime_type
+        ) +
+      '"'
+    );
+
+    headers.set(
+      "Cache-Control",
+      "private, no-store"
+    );
+
+    headers.set(
+      "X-Content-Type-Options",
+      "nosniff"
+    );
+
+    if (
+      finding
+        .screenshot_size_bytes !=
+        null
+    ) {
+      headers.set(
+        "Content-Length",
+        String(
+          finding
+            .screenshot_size_bytes
+        )
+      );
+    }
+
+    return new Response(
+      object.body,
+      {
+        status: 200,
+        headers,
+      }
+    );
   }
 );
 
