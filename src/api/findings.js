@@ -10,11 +10,11 @@ import {
 
 export const FINDING_TYPES =
   Object.freeze([
-    "Bug",
-    "Usability/UX",
-    "Text/translation",
-    "Documentation",
-    "Suggestion",
+    "bug",
+    "usability_ux",
+    "text_translation",
+    "documentation",
+    "suggestion",
   ]);
 
 
@@ -330,7 +330,7 @@ export function getMyTestFinding(
 
 export function addTestFindingInfo({
   findingId,
-  comment,
+  information,
 } = {}) {
 
   const id =
@@ -344,9 +344,9 @@ export function addTestFindingInfo({
     {
       finding_id: id,
 
-      comment:
+      information:
         String(
-          comment ||
+          information ||
           ""
         ),
     }
