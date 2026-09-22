@@ -280,6 +280,50 @@ export default function Sidebar({
     (path) =>
       location.pathname === path;
 
+  const findingsPath =
+    mode === "admin"
+      ? "/admin-findings"
+      : "/findings";
+
+  const findingsActive =
+    isActivePath(
+      findingsPath
+    );
+
+  const findingsLabel =
+    mode === "admin"
+      ? t(
+          "sidebar.findingsRegister"
+        )
+      : t(
+          "sidebar.findings"
+        );
+
+  const findingsButtonStyle = {
+    ...(findingsActive
+      ? activeButton
+      : menuButton),
+    background:
+      findingsActive
+        ? "#E0B0A7"
+        : "#BD4D56",
+  };
+
+  const openFindings = () => {
+    if (
+      mode === "resident"
+    ) {
+      sessionStorage.setItem(
+        "mvx:test-finding-origin-route",
+        location.pathname
+      );
+    }
+
+    go(
+      findingsPath
+    );
+  };
+
   const sidebarStyle = {
     ...sidebar,
 
@@ -500,24 +544,6 @@ export default function Sidebar({
               }
             />
 
-            {environment === "test" && (
-              <MenuButton
-                title={t(
-                  "sidebar.findings"
-                )}
-                active={isActivePath("/findings")}
-                onClick={() => {
-                  sessionStorage.setItem(
-                    "mvx:test-finding-origin-route",
-                    location.pathname
-                  );
-
-                  go(
-                    "/findings"
-                  );
-                }}
-              />
-            )}
           </>
         )}
 
@@ -587,20 +613,6 @@ export default function Sidebar({
                 )
               }
             />
-
-            {environment === "test" && (
-              <MenuButton
-                title={t(
-                  "sidebar.findingsRegister"
-                )}
-                active={isActivePath("/admin-findings")}
-                onClick={() =>
-                  go(
-                    "/admin-findings"
-                  )
-                }
-              />
-            )}
 
             <MenuButton
               title={t(
@@ -689,6 +701,24 @@ export default function Sidebar({
       <div
         style={bottomBlockStyle}
       >
+        {!mustChangePassword &&
+          environment === "test" && (
+            <button
+              type="button"
+              onClick={openFindings}
+              aria-current={
+                findingsActive
+                  ? "page"
+                  : undefined
+              }
+              style={
+                findingsButtonStyle
+              }
+            >
+              {findingsLabel}
+            </button>
+          )}
+
         <hr style={divider} />
 
         {!isMobile && (
