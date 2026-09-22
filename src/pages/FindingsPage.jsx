@@ -675,10 +675,24 @@ export default function FindingsPage() {
   useEffect(() => {
 
     if (
-      mode === "resident"
+      mode !== "resident"
     ) {
-      loadAll();
+      return undefined;
     }
+
+    const timerId =
+      window.setTimeout(
+        () => {
+          loadAll();
+        },
+        0
+      );
+
+    return () => {
+      window.clearTimeout(
+        timerId
+      );
+    };
 
   }, [
     loadAll,
@@ -849,23 +863,16 @@ export default function FindingsPage() {
 
 
   const refreshSelected =
-    useCallback(
-      async () => {
+    async () => {
 
-        if (
-          selected?.id
-        ) {
-          await openFinding(
-            selected.id
-          );
-        }
-
-      },
-      [
-        openFinding,
-        selected?.id,
-      ]
-    );
+      if (
+        selected?.id
+      ) {
+        await openFinding(
+          selected.id
+        );
+      }
+    };
 
 
   const validateScreenshot =
