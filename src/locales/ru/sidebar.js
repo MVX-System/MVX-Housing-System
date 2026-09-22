@@ -5,6 +5,8 @@ const sidebar = {
   dashboard: "Главная",
   waterMeters: "Счётчики воды",
   announcements: "Объявления",
+  findings: "Замечания тестирования",
+  findingsRegister: "Реестр замечаний",
   users: "Пользователи",
   apartments: "Квартиры",
   waterMeterManagement:

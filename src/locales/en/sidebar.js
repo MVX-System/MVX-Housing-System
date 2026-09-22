@@ -5,6 +5,8 @@ const sidebar = {
   dashboard: "Dashboard",
   waterMeters: "Water Meters",
   announcements: "Announcements",
+  findings: "Test Findings",
+  findingsRegister: "Findings Register",
   users: "Users",
   apartments: "Apartments",
   waterMeterManagement:

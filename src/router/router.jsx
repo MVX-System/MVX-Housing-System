@@ -49,6 +49,15 @@ import AnnouncementDetailsPage
 import SettingsPage
   from "../pages/SettingsPage";
 
+import FindingsPage
+  from "../pages/FindingsPage";
+
+import AdminFindingsPage
+  from "../pages/AdminFindingsPage";
+
+import TestEnvironmentRoute
+  from "../routes/TestEnvironmentRoute";
+
 import ProtectedRoute
   from "../routes/ProtectedRoute";
 
@@ -155,6 +164,24 @@ export const router =
           path: "monthly-report",
           element:
             <AdminMonthlyReportPage />,
+        },
+
+        {
+          path: "findings",
+          element: (
+            <TestEnvironmentRoute>
+              <FindingsPage />
+            </TestEnvironmentRoute>
+          ),
+        },
+
+        {
+          path: "admin-findings",
+          element: (
+            <TestEnvironmentRoute>
+              <AdminFindingsPage />
+            </TestEnvironmentRoute>
+          ),
         },
 
         {

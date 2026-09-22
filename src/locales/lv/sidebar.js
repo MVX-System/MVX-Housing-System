@@ -5,6 +5,8 @@ const sidebar = {
   dashboard: "Informācijas panelis",
   waterMeters: "Ūdens skaitītāji",
   announcements: "Paziņojumi",
+  findings: "Testēšanas konstatējumi",
+  findingsRegister: "Konstatējumu reģistrs",
   users: "Lietotāji",
   apartments: "Dzīvokļi",
   waterMeterManagement:

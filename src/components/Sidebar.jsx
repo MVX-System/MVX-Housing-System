@@ -57,6 +57,7 @@ const RESIDENT_PATHS = new Set([
   "/",
   "/water",
   "/announcements",
+  "/findings",
   "/documents",
   "/manual",
   "/settings",
@@ -70,6 +71,7 @@ const ADMIN_PATHS = new Set([
   "/water-readings",
   "/monthly-report",
   "/admin-announcements",
+  "/admin-findings",
   "/documents",
   "/manual",
   "/settings",
@@ -172,6 +174,7 @@ export default function Sidebar({
 
   const {
     facility,
+    environment,
     loading: facilityLoading,
   } = useFacility();
 
@@ -496,6 +499,20 @@ export default function Sidebar({
                 )
               }
             />
+
+            {environment === "test" && (
+              <MenuButton
+                title={t(
+                  "sidebar.findings"
+                )}
+                active={isActivePath("/findings")}
+                onClick={() =>
+                  go(
+                    "/findings"
+                  )
+                }
+              />
+            )}
           </>
         )}
 
@@ -565,6 +582,20 @@ export default function Sidebar({
                 )
               }
             />
+
+            {environment === "test" && (
+              <MenuButton
+                title={t(
+                  "sidebar.findingsRegister"
+                )}
+                active={isActivePath("/admin-findings")}
+                onClick={() =>
+                  go(
+                    "/admin-findings"
+                  )
+                }
+              />
+            )}
 
             <MenuButton
               title={t(
