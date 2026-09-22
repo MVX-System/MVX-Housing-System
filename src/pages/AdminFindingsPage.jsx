@@ -14,6 +14,9 @@ import PageHeader
 import SectionCard
   from "../components/SectionCard";
 
+import AdminFindingWorkflow
+  from "../components/AdminFindingWorkflow";
+
 import {
   useMode,
 } from "../context/ModeContext";
@@ -340,6 +343,11 @@ export default function AdminFindingsPage() {
   ] = useState(0);
 
   const [
+    reloadNonce,
+    setReloadNonce,
+  ] = useState(0);
+
+  const [
     loading,
     setLoading,
   ] = useState(true);
@@ -502,6 +510,7 @@ export default function AdminFindingsPage() {
     appliedFilters,
     offset,
     mode,
+    reloadNonce,
     t,
   ]);
 
@@ -660,6 +669,23 @@ export default function AdminFindingsPage() {
     };
 
 
+  const handleWorkflowChanged =
+    async () => {
+      setReloadNonce(
+        (value) =>
+          value + 1
+      );
+
+      if (
+        selected?.id
+      ) {
+        await openFinding(
+          selected.id
+        );
+      }
+    };
+
+
   if (
     mode !== "admin"
   ) {
@@ -699,12 +725,6 @@ export default function AdminFindingsPage() {
 
       <Notice kind="error">
         {error}
-      </Notice>
-
-      <Notice kind="info">
-        {t(
-          "findings.admin.readOnlyNotice"
-        )}
       </Notice>
 
       <SectionCard
@@ -1626,6 +1646,17 @@ export default function AdminFindingsPage() {
                 .join(" — ")}
             </DetailRow>
           )}
+
+          <AdminFindingWorkflow
+            key={`${selected.id}:${selected.updated_at}`}
+            finding={selected}
+            events={selectedEvents}
+            retests={selectedRetests}
+            t={t}
+            onChanged={
+              handleWorkflowChanged
+            }
+          />
 
           <div
             style={{
