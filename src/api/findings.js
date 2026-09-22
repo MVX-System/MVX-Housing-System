@@ -487,6 +487,58 @@ export function updateAdminTestFindingImplementation(
 
 
 // =========================
+// ADMIN RETEST ASSIGNEE LOOKUP
+// =========================
+//
+// /api/admin/users intentionally does NOT expose
+// authoritative role membership.
+//
+// Eligibility must therefore be confirmed from:
+//   /api/admin/roles
+//   /api/admin/user-roles
+//
+// Backend /api/admin/test/finding/retest remains
+// the final authoritative eligibility check.
+// =========================
+
+export function getAdminTestUsers() {
+
+  return api(
+    "/api/admin/users"
+  );
+}
+
+
+export function getAdminTestRoles() {
+
+  return api(
+    "/api/admin/roles"
+  );
+}
+
+
+export function getAdminTestUserRoles(
+  userId
+) {
+
+  const id =
+    normalizePositiveInteger(
+      userId,
+      "user_id"
+    );
+
+  return api(
+    withQuery(
+      "/api/admin/user-roles",
+      {
+        user_id: id,
+      }
+    )
+  );
+}
+
+
+// =========================
 // SCREENSHOT EVIDENCE
 // =========================
 
