@@ -245,6 +245,28 @@ const findings = {
       saving: "Saglabā...",
       statusUpdated: "Konstatējuma statuss atjaunināts.",
       noStatusActions: "Turpmākas statusa pārejas nav pieejamas.",
+      retestAssignment: {
+        title: "Piešķirt atkārtotu pārbaudi",
+        description:
+          "Atkārtotu pārbaudi drīkst piešķirt tikai aktīvam lietotājam, kura autoritatīvā MVX loma ir Iedzīvotājs vai Īpašnieks.",
+        loadCandidates: "Ielādēt testētāju kandidātus",
+        loadingCandidates: "Ielādē testētājus...",
+        tester: "Testētājs",
+        checkingRoles: "Pārbauda autoritatīvās lomas...",
+        eligible: "Lietotājs ir piemērots atkārtotās pārbaudes veikšanai.",
+        notEligible: "Lietotājs nav piemērots atkārtotās pārbaudes piešķiršanai.",
+        roles: "Lomas",
+        comment: "Piešķiršanas komentārs",
+        commentPlaceholder:
+          "Neobligāti norādījumi testētājam...",
+        assign: "Piešķirt atkārtotu pārbaudi",
+        assigning: "Piešķir...",
+        assigned: "Atkārtotā pārbaude piešķirta.",
+        active: "Aktīva atkārtotā pārbaude jau pastāv.",
+        assignedTo: "Piešķirts",
+        operationFailed: "Atkārtotās pārbaudes piešķiršana neizdevās",
+      },
+
       implementationTitle: "Ieviešanas uzskaite",
       saveImplementation: "Saglabāt ieviešanas atsauces",
       implementationSaved: "Ieviešanas atsauces saglabātas.",

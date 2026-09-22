@@ -2,6 +2,9 @@ import {
   useState,
 } from "react";
 
+import AdminFindingRetestAssignment
+  from "./AdminFindingRetestAssignment";
+
 import {
   requestAdminTestFindingInfo,
   setAdminTestFindingStatus,
@@ -918,6 +921,15 @@ export default function AdminFindingWorkflow({
           )}
         </div>
       )}
+
+      <AdminFindingRetestAssignment
+        finding={finding}
+        retests={retests}
+        t={t}
+        onChanged={
+          onChanged
+        }
+      />
 
       <div
         style={{

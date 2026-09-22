@@ -245,6 +245,28 @@ const findings = {
       saving: "Saving...",
       statusUpdated: "Finding status updated.",
       noStatusActions: "No further status transitions are available.",
+      retestAssignment: {
+        title: "Assign retest",
+        description:
+          "Retest may be assigned only to an active user whose authoritative MVX role is Resident or Owner.",
+        loadCandidates: "Load tester candidates",
+        loadingCandidates: "Loading testers...",
+        tester: "Tester",
+        checkingRoles: "Checking authoritative roles...",
+        eligible: "Eligible for retest assignment.",
+        notEligible: "This user is not eligible for retest assignment.",
+        roles: "Roles",
+        comment: "Assignment comment",
+        commentPlaceholder:
+          "Optional instructions for the tester...",
+        assign: "Assign retest",
+        assigning: "Assigning...",
+        assigned: "Retest assigned.",
+        active: "An active retest already exists.",
+        assignedTo: "Assigned to",
+        operationFailed: "Retest assignment failed",
+      },
+
       implementationTitle: "Implementation tracking",
       saveImplementation: "Save implementation references",
       implementationSaved: "Implementation references saved.",
