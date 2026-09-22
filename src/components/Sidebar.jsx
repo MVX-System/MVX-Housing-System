@@ -506,11 +506,16 @@ export default function Sidebar({
                   "sidebar.findings"
                 )}
                 active={isActivePath("/findings")}
-                onClick={() =>
+                onClick={() => {
+                  sessionStorage.setItem(
+                    "mvx:test-finding-origin-route",
+                    location.pathname
+                  );
+
                   go(
                     "/findings"
-                  )
-                }
+                  );
+                }}
               />
             )}
           </>
