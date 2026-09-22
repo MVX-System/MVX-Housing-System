@@ -6,6 +6,10 @@ import {
 import process
   from "node:process";
 
+import {
+  execFileSync,
+} from "node:child_process";
+
 import react
   from "@vitejs/plugin-react";
 
@@ -47,6 +51,114 @@ const PWA_ENVIRONMENTS = {
       "MVX DEMO",
   },
 };
+
+function normalizeBuildCommitSha(
+  rawValue
+) {
+
+  const value =
+    String(
+      rawValue || ""
+    )
+      .trim();
+
+  return /^[0-9a-f]{7,64}$/i
+    .test(
+      value
+    )
+      ? value
+      : null;
+}
+
+
+function resolveBuildCommitSha() {
+
+  const explicitSources = [
+    [
+      "MVX_BUILD_COMMIT_SHA",
+      process.env
+        .MVX_BUILD_COMMIT_SHA,
+    ],
+
+    [
+      "CF_PAGES_COMMIT_SHA",
+      process.env
+        .CF_PAGES_COMMIT_SHA,
+    ],
+  ];
+
+  for (
+    const [
+      name,
+      rawValue,
+    ]
+    of explicitSources
+  ) {
+
+    if (
+      rawValue === undefined ||
+      rawValue === null ||
+      String(
+        rawValue
+      ).trim() === ""
+    ) {
+      continue;
+    }
+
+    const normalized =
+      normalizeBuildCommitSha(
+        rawValue
+      );
+
+    if (!normalized) {
+      throw new Error(
+        `Invalid ${name}: expected 7-64 hexadecimal characters`
+      );
+    }
+
+    return normalized;
+  }
+
+  try {
+
+    const gitSha =
+      execFileSync(
+        "git",
+        [
+          "rev-parse",
+          "HEAD",
+        ],
+        {
+          encoding:
+            "utf8",
+
+          stdio: [
+            "ignore",
+            "pipe",
+            "ignore",
+          ],
+        }
+      )
+        .trim();
+
+    const normalized =
+      normalizeBuildCommitSha(
+        gitSha
+      );
+
+    if (normalized) {
+      return normalized;
+    }
+
+  } catch {
+    // Explicit error below.
+  }
+
+  throw new Error(
+    "Unable to resolve MVX build commit SHA"
+  );
+}
+
 
 function normalizeEnvironment(
   rawValue
@@ -133,7 +245,8 @@ function resolvePwaEnvironment(
 }
 
 function mvxPwaHtmlPlugin(
-  environment
+  environment,
+  buildCommitSha
 ) {
   const config =
     PWA_ENVIRONMENTS[
@@ -146,6 +259,21 @@ function mvxPwaHtmlPlugin(
 
     transformIndexHtml() {
       return [
+        {
+          tag: "meta",
+
+          attrs: {
+            name:
+              "mvx-build-commit",
+
+            content:
+              buildCommitSha,
+          },
+
+          injectTo:
+            "head-prepend",
+        },
+
         {
           tag: "link",
           attrs: {
@@ -258,16 +386,31 @@ export default defineConfig(
         mode
       );
 
+    const buildCommitSha =
+      resolveBuildCommitSha();
+
     console.log(
       `[MVX PWA] build environment: ${environment}`
     );
 
+    console.log(
+      `[MVX Build] commit SHA: ${buildCommitSha}`
+    );
+
     return {
+      define: {
+        "import.meta.env.VITE_MVX_BUILD_COMMIT_SHA":
+          JSON.stringify(
+            buildCommitSha
+          ),
+      },
+
       plugins: [
         react(),
         mvxPwaHtmlPlugin(
-          environment
-        ),
+            environment,
+            buildCommitSha
+          ),
       ],
     };
   }
