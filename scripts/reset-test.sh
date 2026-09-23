@@ -1880,6 +1880,233 @@ VALUES
     'admin_manual',
     'Canonical TEST missing-previous scenario'
   );
+
+
+-- ---------------------------------------------------------
+-- Canonical TEST announcements
+--
+-- Base set: 7 announcements.
+-- TST-03 user-target announcement is inserted only when
+-- the canonical TST-03 account has already been provisioned.
+--
+-- Announcement 2 is pre-linked to current period 2 so
+-- Worker runtime synchronization cannot create a duplicate
+-- water-period opening announcement.
+-- ---------------------------------------------------------
+
+INSERT INTO announcements (
+  id,
+  title,
+  content,
+  status,
+  priority,
+  publish_from,
+  publish_until,
+  created_by,
+  created_at,
+  updated_at,
+  published_at
+)
+VALUES
+  (
+    1,
+    'Canonical TEST general notice',
+    'General published announcement visible to all TEST users.',
+    'published',
+    'normal',
+    NULL,
+    NULL,
+    (
+      SELECT id
+      FROM users
+      WHERE LOWER(nick) = 'test-admin'
+    ),
+    '$NOW_ISO',
+    '$NOW_ISO',
+    '$NOW_ISO'
+  ),
+
+  (
+    2,
+    'Water readings / Ūdens skaitītāju rādījumi / Показания воды',
+    'Canonical TEST water-meter reporting period is open until $CURRENT_PERIOD_CLOSES.',
+    'published',
+    'important',
+    '$CURRENT_PERIOD_OPENS',
+    '$CURRENT_PERIOD_CLOSES',
+    NULL,
+    '$NOW_ISO',
+    '$NOW_ISO',
+    '$NOW_ISO'
+  ),
+
+  (
+    3,
+    'Canonical TEST section 1 notice',
+    'Published announcement targeted to section 1.',
+    'published',
+    'normal',
+    NULL,
+    NULL,
+    (
+      SELECT id
+      FROM users
+      WHERE LOWER(nick) = 'test-admin'
+    ),
+    '$NOW_ISO',
+    '$NOW_ISO',
+    '$NOW_ISO'
+  ),
+
+  (
+    4,
+    'Canonical TEST apartment 201 notice',
+    'Published announcement targeted to apartment 201.',
+    'published',
+    'normal',
+    NULL,
+    NULL,
+    (
+      SELECT id
+      FROM users
+      WHERE LOWER(nick) = 'test-admin'
+    ),
+    '$NOW_ISO',
+    '$NOW_ISO',
+    '$NOW_ISO'
+  ),
+
+  (
+    5,
+    'Canonical TEST owner-role notice',
+    'Published announcement targeted to users with the owner role.',
+    'published',
+    'normal',
+    NULL,
+    NULL,
+    (
+      SELECT id
+      FROM users
+      WHERE LOWER(nick) = 'test-admin'
+    ),
+    '$NOW_ISO',
+    '$NOW_ISO',
+    '$NOW_ISO'
+  ),
+
+  (
+    7,
+    'Canonical TEST draft notice',
+    'Draft announcement for Admin-mode testing.',
+    'draft',
+    'normal',
+    NULL,
+    NULL,
+    (
+      SELECT id
+      FROM users
+      WHERE LOWER(nick) = 'test-admin'
+    ),
+    '$NOW_ISO',
+    '$NOW_ISO',
+    NULL
+  ),
+
+  (
+    8,
+    'Canonical TEST archived notice',
+    'Archived announcement for Admin-mode testing.',
+    'archived',
+    'normal',
+    NULL,
+    NULL,
+    (
+      SELECT id
+      FROM users
+      WHERE LOWER(nick) = 'test-admin'
+    ),
+    '$NOW_ISO',
+    '$NOW_ISO',
+    '$NOW_ISO'
+  );
+
+
+-- Conditional TST-03 user-target announcement.
+
+INSERT INTO announcements (
+  id,
+  title,
+  content,
+  status,
+  priority,
+  publish_from,
+  publish_until,
+  created_by,
+  created_at,
+  updated_at,
+  published_at
+)
+SELECT
+  6,
+  'Canonical TEST TST-03 notice',
+  'Published announcement targeted only to TST-03.',
+  'published',
+  'normal',
+  NULL,
+  NULL,
+  (
+    SELECT id
+    FROM users
+    WHERE LOWER(nick) = 'test-admin'
+  ),
+  '$NOW_ISO',
+  '$NOW_ISO',
+  '$NOW_ISO'
+FROM users
+WHERE LOWER(nick) = 'tst-03';
+
+
+INSERT INTO announcement_targets (
+  announcement_id,
+  target_type,
+  target_value
+)
+VALUES
+  (1, 'all', NULL),
+  (2, 'all', NULL),
+  (3, 'section', '1'),
+  (4, 'apartment', '4'),
+  (5, 'role', 'owner'),
+  (7, 'all', NULL),
+  (8, 'all', NULL);
+
+
+INSERT INTO announcement_targets (
+  announcement_id,
+  target_type,
+  target_value
+)
+SELECT
+  6,
+  'user',
+  CAST(id AS TEXT)
+FROM users
+WHERE LOWER(nick) = 'tst-03';
+
+
+INSERT INTO water_reporting_period_announcements (
+  period_id,
+  announcement_id,
+  claim_token,
+  created_at
+)
+VALUES (
+  2,
+  2,
+  'pr8-current-period-announcement',
+  '$NOW_ISO'
+);
+
 "
 
 d1_json \
@@ -2696,8 +2923,174 @@ POST_MAIN_JSON="$(
       (SELECT COUNT(*) FROM security_rate_limits) = 0
         AS rate_limits,
 
-      (SELECT COUNT(*) FROM announcements) = 0
-        AS announcements,
+      (
+        SELECT COUNT(*)
+        FROM announcements
+      ) = (
+        7
+        + (
+          SELECT COUNT(*)
+          FROM users
+          WHERE LOWER(nick) = 'tst-03'
+        )
+      )
+        AS announcements_count,
+
+      (
+        SELECT COUNT(*)
+        FROM announcements
+        WHERE
+          (
+            id = 1
+            AND status = 'published'
+            AND priority = 'normal'
+            AND title = 'Canonical TEST general notice'
+          )
+          OR
+          (
+            id = 2
+            AND status = 'published'
+            AND priority = 'important'
+            AND title =
+              'Water readings / Ūdens skaitītāju rādījumi / Показания воды'
+            AND publish_from = '$CURRENT_PERIOD_OPENS'
+            AND publish_until = '$CURRENT_PERIOD_CLOSES'
+          )
+          OR
+          (
+            id = 3
+            AND status = 'published'
+            AND priority = 'normal'
+            AND title = 'Canonical TEST section 1 notice'
+          )
+          OR
+          (
+            id = 4
+            AND status = 'published'
+            AND priority = 'normal'
+            AND title = 'Canonical TEST apartment 201 notice'
+          )
+          OR
+          (
+            id = 5
+            AND status = 'published'
+            AND priority = 'normal'
+            AND title = 'Canonical TEST owner-role notice'
+          )
+          OR
+          (
+            id = 7
+            AND status = 'draft'
+            AND priority = 'normal'
+            AND published_at IS NULL
+          )
+          OR
+          (
+            id = 8
+            AND status = 'archived'
+            AND priority = 'normal'
+          )
+      ) = 7
+        AS canonical_base_announcements,
+
+      (
+        SELECT COUNT(*)
+        FROM announcement_targets
+      ) = (
+        7
+        + (
+          SELECT COUNT(*)
+          FROM users
+          WHERE LOWER(nick) = 'tst-03'
+        )
+      )
+        AS announcement_targets_count,
+
+      (
+        SELECT COUNT(*)
+        FROM announcement_targets
+        WHERE
+          (
+            announcement_id = 1
+            AND target_type = 'all'
+            AND target_value IS NULL
+          )
+          OR
+          (
+            announcement_id = 2
+            AND target_type = 'all'
+            AND target_value IS NULL
+          )
+          OR
+          (
+            announcement_id = 3
+            AND target_type = 'section'
+            AND target_value = '1'
+          )
+          OR
+          (
+            announcement_id = 4
+            AND target_type = 'apartment'
+            AND target_value = '4'
+          )
+          OR
+          (
+            announcement_id = 5
+            AND target_type = 'role'
+            AND target_value = 'owner'
+          )
+          OR
+          (
+            announcement_id = 7
+            AND target_type = 'all'
+            AND target_value IS NULL
+          )
+          OR
+          (
+            announcement_id = 8
+            AND target_type = 'all'
+            AND target_value IS NULL
+          )
+      ) = 7
+        AS canonical_base_announcement_targets,
+
+      NOT EXISTS (
+        SELECT 1
+        FROM users u
+        WHERE LOWER(u.nick) = 'tst-03'
+          AND NOT EXISTS (
+            SELECT 1
+            FROM announcements a
+            JOIN announcement_targets target
+              ON target.announcement_id = a.id
+            WHERE a.id = 6
+              AND a.status = 'published'
+              AND a.priority = 'normal'
+              AND a.title =
+                'Canonical TEST TST-03 notice'
+              AND target.target_type = 'user'
+              AND CAST(
+                target.target_value AS INTEGER
+              ) = u.id
+          )
+      )
+        AS tst03_user_announcement,
+
+      (
+        SELECT COUNT(*)
+        FROM water_reporting_period_announcements
+      ) = 1
+        AS period_announcement_links_count,
+
+      (
+        SELECT COUNT(*)
+        FROM water_reporting_period_announcements
+        WHERE period_id = 2
+          AND announcement_id = 2
+          AND claim_token =
+            'pr8-current-period-announcement'
+      ) = 1
+        AS current_period_announcement_link,
 
       (SELECT COUNT(*) FROM tickets) = 0
         AS tickets;
