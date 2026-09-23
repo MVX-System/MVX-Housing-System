@@ -1565,23 +1565,42 @@ INSERT INTO water_reporting_periods (
   created_at,
   updated_at
 )
-VALUES (
-  1,
-  $PERIOD_YEAR,
-  $PERIOD_MONTH,
-  '$PERIOD_STATUS',
-  '$PERIOD_OPENS',
-  '$PERIOD_CLOSES',
-  $OPENED_AT_SQL,
-  NULL,
-  NULL,
-  NULL,
-  NULL,
-  NULL,
-  'Synthetic TEST reset baseline',
-  '$NOW_ISO',
-  '$NOW_ISO'
-);
+VALUES
+  (
+    1,
+    $PREVIOUS_PERIOD_YEAR,
+    $PREVIOUS_PERIOD_MONTH,
+    'finalized',
+    '$PREVIOUS_PERIOD_OPENS',
+    '$PREVIOUS_PERIOD_CLOSES',
+    '$PREVIOUS_PERIOD_OPENS',
+    NULL,
+    '$PREVIOUS_PERIOD_CLOSES',
+    NULL,
+    '$PREVIOUS_PERIOD_FINALIZED_AT',
+    NULL,
+    'Canonical TEST previous finalized period',
+    '$NOW_ISO',
+    '$NOW_ISO'
+  ),
+  (
+    2,
+    $CURRENT_PERIOD_YEAR,
+    $CURRENT_PERIOD_MONTH,
+    'open',
+    '$CURRENT_PERIOD_OPENS',
+    '$CURRENT_PERIOD_CLOSES',
+    '$CURRENT_PERIOD_OPENS',
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    'Canonical TEST current open period',
+    '$NOW_ISO',
+    '$NOW_ISO'
+  );
+
 
 INSERT INTO water_meter_readings (
   id,
@@ -1601,39 +1620,265 @@ INSERT INTO water_meter_readings (
   source_note
 )
 VALUES
+
+  -- 901: initial baseline + complete current readings.
   (
-    1,
-    1,
-    10000,
-    '$INITIAL_READING_DATE',
-    1,
-    '$NOW_ISO',
-    'active',
-    NULL,
-    NULL,
-    NULL,
-    NULL,
+    1, 1, 10000, '$INITIAL_READING_DATE',
+    (SELECT id FROM users
+     WHERE LOWER(nick) = 'test-admin'),
+    '$NOW_ISO', 'active',
+    NULL, NULL, NULL, NULL,
     NULL,
     '$NOW_ISO',
     'admin_manual',
-    'Synthetic TEST initial reading'
+    'Canonical TEST initial baseline'
   ),
   (
-    2,
-    2,
-    5000,
-    '$INITIAL_READING_DATE',
-    1,
-    '$NOW_ISO',
-    'active',
-    NULL,
-    NULL,
-    NULL,
-    NULL,
+    2, 2, 5000, '$INITIAL_READING_DATE',
+    (SELECT id FROM users
+     WHERE LOWER(nick) = 'test-admin'),
+    '$NOW_ISO', 'active',
+    NULL, NULL, NULL, NULL,
     NULL,
     '$NOW_ISO',
     'admin_manual',
-    'Synthetic TEST initial reading'
+    'Canonical TEST initial baseline'
+  ),
+
+  -- 101: previous exists, current intentionally absent.
+  (
+    3, 3, 2000, '$PREVIOUS_READING_DATE',
+    (SELECT id FROM users
+     WHERE LOWER(nick) = 'test-admin'),
+    '$NOW_ISO', 'active',
+    NULL, NULL, NULL, NULL,
+    1,
+    '$NOW_ISO',
+    'admin_manual',
+    'Canonical TEST previous reading'
+  ),
+  (
+    4, 4, 1100, '$PREVIOUS_READING_DATE',
+    (SELECT id FROM users
+     WHERE LOWER(nick) = 'test-admin'),
+    '$NOW_ISO', 'active',
+    NULL, NULL, NULL, NULL,
+    1,
+    '$NOW_ISO',
+    'admin_manual',
+    'Canonical TEST previous reading'
+  ),
+  (
+    5, 5, 800, '$PREVIOUS_READING_DATE',
+    (SELECT id FROM users
+     WHERE LOWER(nick) = 'test-admin'),
+    '$NOW_ISO', 'active',
+    NULL, NULL, NULL, NULL,
+    1,
+    '$NOW_ISO',
+    'admin_manual',
+    'Canonical TEST previous reading'
+  ),
+  (
+    6, 6, 400, '$PREVIOUS_READING_DATE',
+    (SELECT id FROM users
+     WHERE LOWER(nick) = 'test-admin'),
+    '$NOW_ISO', 'active',
+    NULL, NULL, NULL, NULL,
+    1,
+    '$NOW_ISO',
+    'admin_manual',
+    'Canonical TEST previous reading'
+  ),
+
+  -- 102: complete.
+  (
+    7, 7, 3000, '$PREVIOUS_READING_DATE',
+    (SELECT id FROM users
+     WHERE LOWER(nick) = 'test-admin'),
+    '$NOW_ISO', 'active',
+    NULL, NULL, NULL, NULL,
+    1,
+    '$NOW_ISO',
+    'admin_manual',
+    'Canonical TEST previous reading'
+  ),
+  (
+    8, 8, 1500, '$PREVIOUS_READING_DATE',
+    (SELECT id FROM users
+     WHERE LOWER(nick) = 'test-admin'),
+    '$NOW_ISO', 'active',
+    NULL, NULL, NULL, NULL,
+    1,
+    '$NOW_ISO',
+    'admin_manual',
+    'Canonical TEST previous reading'
+  ),
+
+  -- 201: three complete, one missing current.
+  (
+    9, 9, 4000, '$PREVIOUS_READING_DATE',
+    (SELECT id FROM users
+     WHERE LOWER(nick) = 'test-admin'),
+    '$NOW_ISO', 'active',
+    NULL, NULL, NULL, NULL,
+    1,
+    '$NOW_ISO',
+    'admin_manual',
+    'Canonical TEST previous reading'
+  ),
+  (
+    10, 10, 2000, '$PREVIOUS_READING_DATE',
+    (SELECT id FROM users
+     WHERE LOWER(nick) = 'test-admin'),
+    '$NOW_ISO', 'active',
+    NULL, NULL, NULL, NULL,
+    1,
+    '$NOW_ISO',
+    'admin_manual',
+    'Canonical TEST previous reading'
+  ),
+  (
+    11, 11, 1000, '$PREVIOUS_READING_DATE',
+    (SELECT id FROM users
+     WHERE LOWER(nick) = 'test-admin'),
+    '$NOW_ISO', 'active',
+    NULL, NULL, NULL, NULL,
+    1,
+    '$NOW_ISO',
+    'admin_manual',
+    'Canonical TEST previous reading'
+  ),
+  (
+    12, 12, 500, '$PREVIOUS_READING_DATE',
+    (SELECT id FROM users
+     WHERE LOWER(nick) = 'test-admin'),
+    '$NOW_ISO', 'active',
+    NULL, NULL, NULL, NULL,
+    1,
+    '$NOW_ISO',
+    'admin_manual',
+    'Canonical TEST previous reading'
+  ),
+
+  -- 202 cold: intentional negative consumption.
+  (
+    13, 13, 700, '$PREVIOUS_READING_DATE',
+    (SELECT id FROM users
+     WHERE LOWER(nick) = 'test-admin'),
+    '$NOW_ISO', 'active',
+    NULL, NULL, NULL, NULL,
+    1,
+    '$NOW_ISO',
+    'admin_manual',
+    'Canonical TEST previous reading'
+  ),
+
+  -- Current-period rows begin here.
+
+  (
+    14, 1, 10120, '$CURRENT_READING_DATE',
+    (SELECT id FROM users
+     WHERE LOWER(nick) = 'test-admin'),
+    '$NOW_ISO', 'active',
+    NULL, NULL, NULL, NULL,
+    2,
+    '$NOW_ISO',
+    'admin_manual',
+    'Canonical TEST current reading'
+  ),
+  (
+    15, 2, 5070, '$CURRENT_READING_DATE',
+    (SELECT id FROM users
+     WHERE LOWER(nick) = 'test-admin'),
+    '$NOW_ISO', 'active',
+    NULL, NULL, NULL, NULL,
+    2,
+    '$NOW_ISO',
+    'admin_manual',
+    'Canonical TEST current reading'
+  ),
+
+  (
+    16, 7, 3100, '$CURRENT_READING_DATE',
+    (SELECT id FROM users
+     WHERE LOWER(nick) = 'test-admin'),
+    '$NOW_ISO', 'active',
+    NULL, NULL, NULL, NULL,
+    2,
+    '$NOW_ISO',
+    'admin_manual',
+    'Canonical TEST current reading'
+  ),
+  (
+    17, 8, 1550, '$CURRENT_READING_DATE',
+    (SELECT id FROM users
+     WHERE LOWER(nick) = 'test-admin'),
+    '$NOW_ISO', 'active',
+    NULL, NULL, NULL, NULL,
+    2,
+    '$NOW_ISO',
+    'admin_manual',
+    'Canonical TEST current reading'
+  ),
+
+  (
+    18, 9, 4100, '$CURRENT_READING_DATE',
+    (SELECT id FROM users
+     WHERE LOWER(nick) = 'test-admin'),
+    '$NOW_ISO', 'active',
+    NULL, NULL, NULL, NULL,
+    2,
+    '$NOW_ISO',
+    'admin_manual',
+    'Canonical TEST current reading'
+  ),
+  (
+    19, 10, 2060, '$CURRENT_READING_DATE',
+    (SELECT id FROM users
+     WHERE LOWER(nick) = 'test-admin'),
+    '$NOW_ISO', 'active',
+    NULL, NULL, NULL, NULL,
+    2,
+    '$NOW_ISO',
+    'admin_manual',
+    'Canonical TEST current reading'
+  ),
+  (
+    20, 11, 1040, '$CURRENT_READING_DATE',
+    (SELECT id FROM users
+     WHERE LOWER(nick) = 'test-admin'),
+    '$NOW_ISO', 'active',
+    NULL, NULL, NULL, NULL,
+    2,
+    '$NOW_ISO',
+    'admin_manual',
+    'Canonical TEST current reading'
+  ),
+
+  (
+    21, 13, 690, '$CURRENT_READING_DATE',
+    (SELECT id FROM users
+     WHERE LOWER(nick) = 'test-admin'),
+    '$NOW_ISO', 'active',
+    NULL, NULL, NULL, NULL,
+    2,
+    '$NOW_ISO',
+    'admin_manual',
+    'Canonical TEST negative-consumption reading'
+  ),
+
+  -- Meter 14 intentionally has no previous/initial reading.
+  (
+    22, 14, 900, '$CURRENT_READING_DATE',
+    (SELECT id FROM users
+     WHERE LOWER(nick) = 'test-admin'),
+    '$NOW_ISO', 'active',
+    NULL, NULL, NULL, NULL,
+    2,
+    '$NOW_ISO',
+    'admin_manual',
+    'Canonical TEST missing-previous scenario'
   );
 "
 
@@ -2264,36 +2509,91 @@ POST_MAIN_JSON="$(
       (
         SELECT COUNT(*)
         FROM water_meter_readings
-      ) = 2
+      ) = 22
         AS readings_count,
 
       (
         SELECT COUNT(*)
         FROM water_meter_readings
-        WHERE id = 1
-          AND meter_id = 1
-          AND reading_value = 10000
-          AND reading_date = '$INITIAL_READING_DATE'
-          AND status = 'active'
+        WHERE status = 'active'
           AND reporting_period_id IS NULL
-          AND submission_source = 'admin_manual'
-          AND source_note = 'Synthetic TEST initial reading'
-      ) = 1
-        AS cold_initial_reading,
+          AND meter_id IN (1, 2)
+          AND reading_date = '$INITIAL_READING_DATE'
+      ) = 2
+        AS initial_baselines,
 
       (
         SELECT COUNT(*)
         FROM water_meter_readings
-        WHERE id = 2
-          AND meter_id = 2
-          AND reading_value = 5000
-          AND reading_date = '$INITIAL_READING_DATE'
+        WHERE status = 'active'
+          AND reporting_period_id = 1
+          AND meter_id BETWEEN 3 AND 13
+          AND reading_date = '$PREVIOUS_READING_DATE'
+      ) = 11
+        AS previous_period_readings,
+
+      (
+        SELECT COUNT(*)
+        FROM water_meter_readings
+        WHERE status = 'active'
+          AND reporting_period_id = 2
+          AND meter_id IN (
+            1, 2, 7, 8, 9, 10, 11, 13, 14
+          )
+          AND reading_date = '$CURRENT_READING_DATE'
+      ) = 9
+        AS current_period_readings,
+
+      NOT EXISTS (
+        SELECT 1
+        FROM water_meter_readings
+        WHERE status = 'active'
+          AND reporting_period_id = 2
+          AND meter_id IN (3, 4, 5, 6, 12)
+      )
+        AS missing_current_scenarios,
+
+      NOT EXISTS (
+        SELECT 1
+        FROM water_meter_readings
+        WHERE status = 'active'
+          AND meter_id = 14
+          AND (
+            reporting_period_id = 1
+            OR reporting_period_id IS NULL
+          )
+      )
+        AS missing_previous_scenario,
+
+      (
+        SELECT COUNT(*)
+        FROM water_meter_readings
+        WHERE meter_id = 13
+          AND reporting_period_id = 1
           AND status = 'active'
-          AND reporting_period_id IS NULL
-          AND submission_source = 'admin_manual'
-          AND source_note = 'Synthetic TEST initial reading'
+          AND reading_value = 700
       ) = 1
-        AS hot_initial_reading,
+        AS negative_previous_anchor,
+
+      (
+        SELECT COUNT(*)
+        FROM water_meter_readings
+        WHERE meter_id = 13
+          AND reporting_period_id = 2
+          AND status = 'active'
+          AND reading_value = 690
+      ) = 1
+        AS negative_current_anchor,
+
+      (
+        SELECT COUNT(*)
+        FROM water_meter_readings
+        WHERE meter_id = 14
+          AND reporting_period_id = 2
+          AND status = 'active'
+          AND reading_value = 900
+      ) = 1
+        AS missing_previous_current_anchor,
 
       (
         SELECT COUNT(*)
@@ -2347,23 +2647,42 @@ POST_MAIN_JSON="$(
       (
         SELECT COUNT(*)
         FROM water_reporting_periods
-      ) = 1
+      ) = 2
         AS periods_count,
 
       (
         SELECT COUNT(*)
         FROM water_reporting_periods
         WHERE id = 1
-          AND period_year = $PERIOD_YEAR
-          AND period_month = $PERIOD_MONTH
-          AND status = '$PERIOD_STATUS'
-          AND collection_opens_at = '$PERIOD_OPENS'
-          AND collection_closes_at = '$PERIOD_CLOSES'
+          AND period_year = $PREVIOUS_PERIOD_YEAR
+          AND period_month = $PREVIOUS_PERIOD_MONTH
+          AND status = 'finalized'
+          AND collection_opens_at = '$PREVIOUS_PERIOD_OPENS'
+          AND collection_closes_at = '$PREVIOUS_PERIOD_CLOSES'
+          AND opened_at = '$PREVIOUS_PERIOD_OPENS'
+          AND closed_at = '$PREVIOUS_PERIOD_CLOSES'
+          AND finalized_at = '$PREVIOUS_PERIOD_FINALIZED_AT'
+          AND notes =
+            'Canonical TEST previous finalized period'
+      ) = 1
+        AS previous_finalized_period,
+
+      (
+        SELECT COUNT(*)
+        FROM water_reporting_periods
+        WHERE id = 2
+          AND period_year = $CURRENT_PERIOD_YEAR
+          AND period_month = $CURRENT_PERIOD_MONTH
+          AND status = 'open'
+          AND collection_opens_at = '$CURRENT_PERIOD_OPENS'
+          AND collection_closes_at = '$CURRENT_PERIOD_CLOSES'
+          AND opened_at = '$CURRENT_PERIOD_OPENS'
           AND closed_at IS NULL
           AND finalized_at IS NULL
-          AND notes = 'Synthetic TEST reset baseline'
+          AND notes =
+            'Canonical TEST current open period'
       ) = 1
-        AS dynamic_period,
+        AS current_open_period,
 
       (SELECT COUNT(*) FROM auth_sessions) = 0
         AS sessions,
