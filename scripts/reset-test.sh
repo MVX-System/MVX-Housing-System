@@ -397,7 +397,20 @@ r2_object_state() {
 }
 
 # ---------------------------------------------------------
-# Dynamic reporting-period calculation
+# Canonical TEST reporting-period calculation
+#
+# PR-8 contract:
+#
+# - previous calendar month is FINALIZED;
+# - current calendar month is always OPEN in TEST;
+# - current collection window is reset-time -1 day
+#   through reset-time +14 days;
+# - reading dates remain inside their calendar months;
+# - an older initial-reading date is provided for meters
+#   that intentionally use an initial baseline.
+#
+# Compatibility aliases PERIOD_* remain temporarily until
+# PR-8D.4B2 replaces the old single-period reset SQL.
 # ---------------------------------------------------------
 
 PERIOD_VALUES="$(
@@ -407,77 +420,16 @@ from zoneinfo import ZoneInfo
 import calendar
 
 tz = ZoneInfo("Europe/Riga")
+
 now_local = datetime.now(tz)
 now_utc = now_local.astimezone(timezone.utc)
 
-days_before = 5
-days_after = 5
 
 def previous_month(year, month):
     if month == 1:
         return year - 1, 12
     return year, month - 1
 
-def calculate(year, month):
-    last_day = calendar.monthrange(year, month)[1]
-
-    month_end = datetime(
-        year,
-        month,
-        last_day,
-        0,
-        0,
-        0,
-        tzinfo=tz,
-    )
-
-    open_local = (
-        month_end
-        - timedelta(days=days_before)
-    ).replace(
-        hour=0,
-        minute=0,
-        second=0,
-        microsecond=0,
-    )
-
-    close_local = (
-        month_end
-        + timedelta(days=days_after)
-    ).replace(
-        hour=23,
-        minute=59,
-        second=59,
-        microsecond=0,
-    )
-
-    return (
-        open_local.astimezone(timezone.utc),
-        close_local.astimezone(timezone.utc),
-    )
-
-py, pm = previous_month(
-    now_local.year,
-    now_local.month,
-)
-
-prev_open, prev_close = calculate(py, pm)
-
-if prev_open <= now_utc <= prev_close:
-    year = py
-    month = pm
-    opens = prev_open
-    closes = prev_close
-    status = "open"
-else:
-    year = now_local.year
-    month = now_local.month
-    opens, closes = calculate(year, month)
-
-    if now_utc < opens:
-        status = "scheduled"
-    else:
-        status = "open"
 
 def iso_z(value):
     return (
@@ -487,19 +439,91 @@ def iso_z(value):
         .replace("+00:00", "Z")
     )
 
-iy, im = previous_month(year, month)
 
-initial_date = f"{iy:04d}-{im:02d}-01"
+current_year = now_local.year
+current_month = now_local.month
+
+previous_year, previous_month_number = previous_month(
+    current_year,
+    current_month,
+)
+
+initial_year, initial_month_number = previous_month(
+    previous_year,
+    previous_month_number,
+)
+
+previous_last_day = calendar.monthrange(
+    previous_year,
+    previous_month_number,
+)[1]
+
+previous_open_local = datetime(
+    previous_year,
+    previous_month_number,
+    1,
+    0,
+    0,
+    0,
+    tzinfo=tz,
+)
+
+previous_close_local = datetime(
+    previous_year,
+    previous_month_number,
+    previous_last_day,
+    23,
+    59,
+    59,
+    tzinfo=tz,
+)
+
+previous_open_utc = previous_open_local.astimezone(
+    timezone.utc
+)
+
+previous_close_utc = previous_close_local.astimezone(
+    timezone.utc
+)
+
+previous_finalized_utc = (
+    previous_close_utc
+    + timedelta(minutes=1)
+)
+
+current_open_utc = now_utc - timedelta(days=1)
+current_close_utc = now_utc + timedelta(days=14)
+
+current_reading_date = (
+    f"{current_year:04d}-"
+    f"{current_month:02d}-01"
+)
+
+previous_reading_date = (
+    f"{previous_year:04d}-"
+    f"{previous_month_number:02d}-01"
+)
+
+initial_reading_date = (
+    f"{initial_year:04d}-"
+    f"{initial_month_number:02d}-01"
+)
 
 print(
     "|".join(
         [
-            str(year),
-            str(month),
-            status,
-            iso_z(opens),
-            iso_z(closes),
-            initial_date,
+            str(current_year),
+            str(current_month),
+            str(previous_year),
+            str(previous_month_number),
+            iso_z(current_open_utc),
+            iso_z(current_close_utc),
+            iso_z(previous_open_utc),
+            iso_z(previous_close_utc),
+            iso_z(previous_finalized_utc),
+            current_reading_date,
+            previous_reading_date,
+            initial_reading_date,
             iso_z(now_utc),
         ]
     )
@@ -508,29 +532,46 @@ PY_PERIOD_CALC
 )"
 
 IFS='|' read -r \
-  PERIOD_YEAR \
-  PERIOD_MONTH \
-  PERIOD_STATUS \
-  PERIOD_OPENS \
-  PERIOD_CLOSES \
+  CURRENT_PERIOD_YEAR \
+  CURRENT_PERIOD_MONTH \
+  PREVIOUS_PERIOD_YEAR \
+  PREVIOUS_PERIOD_MONTH \
+  CURRENT_PERIOD_OPENS \
+  CURRENT_PERIOD_CLOSES \
+  PREVIOUS_PERIOD_OPENS \
+  PREVIOUS_PERIOD_CLOSES \
+  PREVIOUS_PERIOD_FINALIZED_AT \
+  CURRENT_READING_DATE \
+  PREVIOUS_READING_DATE \
   INITIAL_READING_DATE \
   NOW_ISO \
   <<< "$PERIOD_VALUES"
 
-case "$PERIOD_STATUS" in
-  scheduled|open)
-    ;;
-  *)
-    fail "Unexpected calculated period status"
-    ;;
-esac
+# Temporary compatibility with the existing
+# single-period reset SQL. PR-8D.4B2 removes this alias
+# dependency and inserts both canonical periods explicitly.
+
+PERIOD_YEAR="$CURRENT_PERIOD_YEAR"
+PERIOD_MONTH="$CURRENT_PERIOD_MONTH"
+PERIOD_STATUS="open"
+PERIOD_OPENS="$CURRENT_PERIOD_OPENS"
+PERIOD_CLOSES="$CURRENT_PERIOD_CLOSES"
 
 echo "===== CALCULATED TEST BASELINE ====="
-echo "Reporting month:      ${PERIOD_YEAR}-$(printf '%02d' "$PERIOD_MONTH")"
-echo "Status:               $PERIOD_STATUS"
-echo "Collection opens:     $PERIOD_OPENS"
-echo "Collection closes:    $PERIOD_CLOSES"
-echo "Initial reading date: $INITIAL_READING_DATE"
+echo "Previous reporting month: ${PREVIOUS_PERIOD_YEAR}-$(printf '%02d' "$PREVIOUS_PERIOD_MONTH")"
+echo "Previous status:          finalized"
+echo "Previous opens:           $PREVIOUS_PERIOD_OPENS"
+echo "Previous closes:          $PREVIOUS_PERIOD_CLOSES"
+echo "Previous finalized:       $PREVIOUS_PERIOD_FINALIZED_AT"
+echo
+echo "Current reporting month:  ${CURRENT_PERIOD_YEAR}-$(printf '%02d' "$CURRENT_PERIOD_MONTH")"
+echo "Current status:            open"
+echo "Current opens:             $CURRENT_PERIOD_OPENS"
+echo "Current closes:            $CURRENT_PERIOD_CLOSES"
+echo
+echo "Initial reading date:      $INITIAL_READING_DATE"
+echo "Previous reading date:     $PREVIOUS_READING_DATE"
+echo "Current reading date:      $CURRENT_READING_DATE"
 echo
 
 # ---------------------------------------------------------
