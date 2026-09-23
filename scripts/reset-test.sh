@@ -1129,23 +1129,44 @@ INSERT INTO apartments (
   alternative_heating_area,
   hot_water_riser_count
 )
-VALUES (
-  1,
-  '901',
-  '9',
-  '1',
-  50,
-  10,
-  60,
-  1,
-  1,
-  'Synthetic TEST apartment',
-  60,
-  2,
-  0,
-  0,
-  1
-);
+VALUES
+  (
+    1, '901', '9', '1',
+    50, 10, 60, 1, 1,
+    'Synthetic TEST apartment 901',
+    60, 2, 0, 0, 1
+  ),
+  (
+    2, '101', '1', '1',
+    42, 3, 45, 2, 1,
+    'Synthetic TEST apartment 101',
+    45, 2, 0, 0, 2
+  ),
+  (
+    3, '102', '1', '2',
+    48, 2, 50, 2, 1,
+    'Synthetic TEST apartment 102',
+    50, 3, 0, 0, 1
+  ),
+  (
+    4, '201', '2', '1',
+    55, 5, 60, 3, 1,
+    'Synthetic TEST apartment 201',
+    60, 3, 0, 0, 2
+  ),
+  (
+    5, '202', '2', '2',
+    40, 4, 44, 1, 1,
+    'Synthetic TEST apartment 202',
+    44, 2, 0, 0, 1
+  ),
+  (
+    6, '203', '2', '3',
+    35, 0, 35, 0, 1,
+    'Synthetic TEST empty-state apartment 203',
+    35, 1, 0, 0, 0
+  );
+
 
 INSERT INTO user_apartments (
   user_id,
@@ -1154,12 +1175,103 @@ INSERT INTO user_apartments (
   is_primary
 )
 SELECT
-  u.id,
+  id,
   1,
   'owner',
   1
-FROM users u
-WHERE LOWER(u.nick) = 'test-owner';
+FROM users
+WHERE LOWER(nick) = 'test-owner';
+
+
+INSERT INTO user_apartments (
+  user_id,
+  apartment_id,
+  relation_type,
+  is_primary
+)
+SELECT
+  id,
+  2,
+  'owner',
+  1
+FROM users
+WHERE LOWER(nick) = 'tst-01';
+
+
+INSERT INTO user_apartments (
+  user_id,
+  apartment_id,
+  relation_type,
+  is_primary
+)
+SELECT
+  id,
+  3,
+  'owner',
+  1
+FROM users
+WHERE LOWER(nick) = 'tst-02';
+
+
+INSERT INTO user_apartments (
+  user_id,
+  apartment_id,
+  relation_type,
+  is_primary
+)
+SELECT
+  id,
+  2,
+  'resident',
+  1
+FROM users
+WHERE LOWER(nick) = 'tst-03';
+
+
+INSERT INTO user_apartments (
+  user_id,
+  apartment_id,
+  relation_type,
+  is_primary
+)
+SELECT
+  id,
+  4,
+  'resident',
+  0
+FROM users
+WHERE LOWER(nick) = 'tst-03';
+
+
+INSERT INTO user_apartments (
+  user_id,
+  apartment_id,
+  relation_type,
+  is_primary
+)
+SELECT
+  id,
+  4,
+  'owner',
+  1
+FROM users
+WHERE LOWER(nick) = 'tst-04';
+
+
+INSERT INTO user_apartments (
+  user_id,
+  apartment_id,
+  relation_type,
+  is_primary
+)
+SELECT
+  id,
+  5,
+  'owner',
+  0
+FROM users
+WHERE LOWER(nick) = 'tst-04';
+
 
 INSERT INTO risers (
   id,
@@ -1169,20 +1281,36 @@ INSERT INTO risers (
   active
 )
 VALUES
-  (
-    1,
-    'CW-E9-1R-K',
-    'cold_water',
-    'Synthetic TEST cold-water riser',
-    1
-  ),
-  (
-    2,
-    'HW-E9-1R-K',
-    'hot_water',
-    'Synthetic TEST hot-water riser',
-    1
-  );
+  (1, 'CW-E9-1R-K', 'cold_water',
+   'Synthetic TEST E9 Kitchen cold-water riser', 1),
+
+  (2, 'HW-E9-1R-K', 'hot_water',
+   'Synthetic TEST E9 Kitchen hot-water riser', 1),
+
+  (3, 'CW-E1-1R-K', 'cold_water',
+   'Synthetic TEST E1 Kitchen cold-water riser', 1),
+
+  (4, 'HW-E1-1R-K', 'hot_water',
+   'Synthetic TEST E1 Kitchen hot-water riser', 1),
+
+  (5, 'CW-E1-2R-B', 'cold_water',
+   'Synthetic TEST E1 Bathroom cold-water riser', 1),
+
+  (6, 'HW-E1-2R-B', 'hot_water',
+   'Synthetic TEST E1 Bathroom hot-water riser', 1),
+
+  (7, 'CW-E2-1R-K', 'cold_water',
+   'Synthetic TEST E2 Kitchen cold-water riser', 1),
+
+  (8, 'HW-E2-1R-K', 'hot_water',
+   'Synthetic TEST E2 Kitchen hot-water riser', 1),
+
+  (9, 'CW-E2-2R-B', 'cold_water',
+   'Synthetic TEST E2 Bathroom cold-water riser', 1),
+
+  (10, 'HW-E2-2R-B', 'hot_water',
+   'Synthetic TEST E2 Bathroom hot-water riser', 1);
+
 
 INSERT INTO apartment_risers (
   id,
@@ -1193,22 +1321,25 @@ INSERT INTO apartment_risers (
   active
 )
 VALUES
-  (
-    1,
-    1,
-    1,
-    'Kitchen',
-    NULL,
-    1
-  ),
-  (
-    2,
-    1,
-    2,
-    'Kitchen',
-    NULL,
-    1
-  );
+  (1, 1, 1, 'Kitchen', NULL, 1),
+  (2, 1, 2, 'Kitchen', NULL, 1),
+
+  (3, 2, 3, 'Kitchen', NULL, 1),
+  (4, 2, 4, 'Kitchen', NULL, 1),
+  (5, 2, 5, 'Bathroom', NULL, 1),
+  (6, 2, 6, 'Bathroom', NULL, 1),
+
+  (7, 3, 3, 'Kitchen', NULL, 1),
+  (8, 3, 4, 'Kitchen', NULL, 1),
+
+  (9, 4, 7, 'Kitchen', NULL, 1),
+  (10, 4, 8, 'Kitchen', NULL, 1),
+  (11, 4, 9, 'Bathroom', NULL, 1),
+  (12, 4, 10, 'Bathroom', NULL, 1),
+
+  (13, 5, 9, 'Bathroom', NULL, 1),
+  (14, 5, 10, 'Bathroom', NULL, 1);
+
 
 INSERT INTO water_meters (
   id,
@@ -1225,30 +1356,106 @@ INSERT INTO water_meters (
 )
 VALUES
   (
-    1,
-    1,
-    'cold',
+    1, 1, 'cold',
     'TEST-CW-901-K-001',
-    '2026-09-01',
-    1,
-    NULL,
-    NULL,
-    1,
-    'TEST',
-    'SYNTH-CW'
+    '2026-01-01',
+    1, NULL, NULL, 1,
+    'TEST', 'SYNTH-CW'
   ),
   (
-    2,
-    1,
-    'hot',
+    2, 1, 'hot',
     'TEST-HW-901-K-001',
-    '2026-09-01',
-    1,
-    NULL,
-    NULL,
-    2,
-    'TEST',
-    'SYNTH-HW'
+    '2026-01-01',
+    1, NULL, NULL, 2,
+    'TEST', 'SYNTH-HW'
+  ),
+
+  (
+    3, 2, 'cold',
+    'TEST-CW-101-K-001',
+    '2026-01-01',
+    1, NULL, NULL, 3,
+    'TEST', 'SYNTH-CW'
+  ),
+  (
+    4, 2, 'hot',
+    'TEST-HW-101-K-001',
+    '2026-01-01',
+    1, NULL, NULL, 4,
+    'TEST', 'SYNTH-HW'
+  ),
+  (
+    5, 2, 'cold',
+    'TEST-CW-101-B-001',
+    '2026-01-01',
+    1, NULL, NULL, 5,
+    'TEST', 'SYNTH-CW'
+  ),
+  (
+    6, 2, 'hot',
+    'TEST-HW-101-B-001',
+    '2026-01-01',
+    1, NULL, NULL, 6,
+    'TEST', 'SYNTH-HW'
+  ),
+
+  (
+    7, 3, 'cold',
+    'TEST-CW-102-K-001',
+    '2026-01-01',
+    1, NULL, NULL, 7,
+    'TEST', 'SYNTH-CW'
+  ),
+  (
+    8, 3, 'hot',
+    'TEST-HW-102-K-001',
+    '2026-01-01',
+    1, NULL, NULL, 8,
+    'TEST', 'SYNTH-HW'
+  ),
+
+  (
+    9, 4, 'cold',
+    'TEST-CW-201-K-001',
+    '2026-01-01',
+    1, NULL, NULL, 9,
+    'TEST', 'SYNTH-CW'
+  ),
+  (
+    10, 4, 'hot',
+    'TEST-HW-201-K-001',
+    '2026-01-01',
+    1, NULL, NULL, 10,
+    'TEST', 'SYNTH-HW'
+  ),
+  (
+    11, 4, 'cold',
+    'TEST-CW-201-B-001',
+    '2026-01-01',
+    1, NULL, NULL, 11,
+    'TEST', 'SYNTH-CW'
+  ),
+  (
+    12, 4, 'hot',
+    'TEST-HW-201-B-001',
+    '2026-01-01',
+    1, NULL, NULL, 12,
+    'TEST', 'SYNTH-HW'
+  ),
+
+  (
+    13, 5, 'cold',
+    'TEST-CW-202-B-001',
+    '2026-01-01',
+    1, NULL, NULL, 13,
+    'TEST', 'SYNTH-CW'
+  ),
+  (
+    14, 5, 'hot',
+    'TEST-HW-202-B-001',
+    '2026-01-01',
+    1, NULL, NULL, 14,
+    'TEST', 'SYNTH-HW'
   );
 
 DELETE FROM facility_profile;
@@ -1625,35 +1832,148 @@ POST_MAIN_JSON="$(
       (
         SELECT COUNT(*)
         FROM apartments
-      ) = 1
+      ) = 6
         AS apartments_count,
 
       (
         SELECT COUNT(*)
         FROM apartments
-        WHERE id = 1
-          AND number = '901'
-          AND section = '9'
-          AND floor = '1'
-          AND room_count = 2
-          AND living_area = 50
-          AND non_living_area = 10
-          AND heated_area = 60
-          AND land_tax_area = 60
-          AND residents_count = 1
-          AND level_count = 1
-          AND alternative_heating = 0
-          AND alternative_heating_area = 0
-          AND hot_water_riser_count = 1
-          AND notes = 'Synthetic TEST apartment'
-      ) = 1
-        AS apartment_901,
+        WHERE
+          (
+            id = 1
+            AND number = '901'
+            AND section = '9'
+            AND floor = '1'
+            AND hot_water_riser_count = 1
+          )
+          OR
+          (
+            id = 2
+            AND number = '101'
+            AND section = '1'
+            AND floor = '1'
+            AND hot_water_riser_count = 2
+          )
+          OR
+          (
+            id = 3
+            AND number = '102'
+            AND section = '1'
+            AND floor = '2'
+            AND hot_water_riser_count = 1
+          )
+          OR
+          (
+            id = 4
+            AND number = '201'
+            AND section = '2'
+            AND floor = '1'
+            AND hot_water_riser_count = 2
+          )
+          OR
+          (
+            id = 5
+            AND number = '202'
+            AND section = '2'
+            AND floor = '2'
+            AND hot_water_riser_count = 1
+          )
+          OR
+          (
+            id = 6
+            AND number = '203'
+            AND section = '2'
+            AND floor = '3'
+            AND hot_water_riser_count = 0
+          )
+      ) = 6
+        AS canonical_apartments,
 
       (
         SELECT COUNT(*)
         FROM user_apartments
-      ) = 1
+      ) = (
+        1
+        + (
+          SELECT COUNT(*)
+          FROM users
+          WHERE LOWER(nick) = 'tst-01'
+        )
+        + (
+          SELECT COUNT(*)
+          FROM users
+          WHERE LOWER(nick) = 'tst-02'
+        )
+        + 2 * (
+          SELECT COUNT(*)
+          FROM users
+          WHERE LOWER(nick) = 'tst-03'
+        )
+        + 2 * (
+          SELECT COUNT(*)
+          FROM users
+          WHERE LOWER(nick) = 'tst-04'
+        )
+      )
         AS user_apartments_count,
+
+      NOT EXISTS (
+        SELECT 1
+        FROM user_apartments ua
+        JOIN users u
+          ON u.id = ua.user_id
+        WHERE NOT (
+          (
+            LOWER(u.nick) = 'test-owner'
+            AND ua.apartment_id = 1
+            AND ua.relation_type = 'owner'
+            AND ua.is_primary = 1
+          )
+          OR
+          (
+            LOWER(u.nick) = 'tst-01'
+            AND ua.apartment_id = 2
+            AND ua.relation_type = 'owner'
+            AND ua.is_primary = 1
+          )
+          OR
+          (
+            LOWER(u.nick) = 'tst-02'
+            AND ua.apartment_id = 3
+            AND ua.relation_type = 'owner'
+            AND ua.is_primary = 1
+          )
+          OR
+          (
+            LOWER(u.nick) = 'tst-03'
+            AND ua.apartment_id = 2
+            AND ua.relation_type = 'resident'
+            AND ua.is_primary = 1
+          )
+          OR
+          (
+            LOWER(u.nick) = 'tst-03'
+            AND ua.apartment_id = 4
+            AND ua.relation_type = 'resident'
+            AND ua.is_primary = 0
+          )
+          OR
+          (
+            LOWER(u.nick) = 'tst-04'
+            AND ua.apartment_id = 4
+            AND ua.relation_type = 'owner'
+            AND ua.is_primary = 1
+          )
+          OR
+          (
+            LOWER(u.nick) = 'tst-04'
+            AND ua.apartment_id = 5
+            AND ua.relation_type = 'owner'
+            AND ua.is_primary = 0
+          )
+        )
+      )
+        AS canonical_user_apartments_only,
 
       (
         SELECT COUNT(*)
@@ -1665,95 +1985,281 @@ POST_MAIN_JSON="$(
           AND ua.relation_type = 'owner'
           AND ua.is_primary = 1
       ) = 1
-        AS owner_apartment,
+        AS test_owner_apartment,
+
+      NOT EXISTS (
+        SELECT 1
+        FROM users u
+        WHERE LOWER(u.nick) = 'tst-01'
+          AND NOT EXISTS (
+            SELECT 1
+            FROM user_apartments ua
+            WHERE ua.user_id = u.id
+              AND ua.apartment_id = 2
+              AND ua.relation_type = 'owner'
+              AND ua.is_primary = 1
+          )
+      )
+        AS tst01_apartment,
+
+      NOT EXISTS (
+        SELECT 1
+        FROM users u
+        WHERE LOWER(u.nick) = 'tst-02'
+          AND NOT EXISTS (
+            SELECT 1
+            FROM user_apartments ua
+            WHERE ua.user_id = u.id
+              AND ua.apartment_id = 3
+              AND ua.relation_type = 'owner'
+              AND ua.is_primary = 1
+          )
+      )
+        AS tst02_apartment,
+
+      NOT EXISTS (
+        SELECT 1
+        FROM users u
+        WHERE LOWER(u.nick) = 'tst-03'
+          AND (
+            NOT EXISTS (
+              SELECT 1
+              FROM user_apartments ua
+              WHERE ua.user_id = u.id
+                AND ua.apartment_id = 2
+                AND ua.relation_type = 'resident'
+                AND ua.is_primary = 1
+            )
+            OR
+            NOT EXISTS (
+              SELECT 1
+              FROM user_apartments ua
+              WHERE ua.user_id = u.id
+                AND ua.apartment_id = 4
+                AND ua.relation_type = 'resident'
+                AND ua.is_primary = 0
+            )
+          )
+      )
+        AS tst03_apartments,
+
+      NOT EXISTS (
+        SELECT 1
+        FROM users u
+        WHERE LOWER(u.nick) = 'tst-04'
+          AND (
+            NOT EXISTS (
+              SELECT 1
+              FROM user_apartments ua
+              WHERE ua.user_id = u.id
+                AND ua.apartment_id = 4
+                AND ua.relation_type = 'owner'
+                AND ua.is_primary = 1
+            )
+            OR
+            NOT EXISTS (
+              SELECT 1
+              FROM user_apartments ua
+              WHERE ua.user_id = u.id
+                AND ua.apartment_id = 5
+                AND ua.relation_type = 'owner'
+                AND ua.is_primary = 0
+            )
+          )
+      )
+        AS tst04_apartments,
 
       (
         SELECT COUNT(*)
         FROM risers
-      ) = 2
+      ) = 10
         AS risers_count,
 
       (
         SELECT COUNT(*)
         FROM risers
-        WHERE id = 1
-          AND code = 'CW-E9-1R-K'
-          AND system_type = 'cold_water'
-          AND active = 1
-      ) = 1
-        AS cold_riser,
-
-      (
-        SELECT COUNT(*)
-        FROM risers
-        WHERE id = 2
-          AND code = 'HW-E9-1R-K'
-          AND system_type = 'hot_water'
-          AND active = 1
-      ) = 1
-        AS hot_riser,
+        WHERE
+          (id = 1 AND code = 'CW-E9-1R-K'
+            AND system_type = 'cold_water' AND active = 1)
+          OR
+          (id = 2 AND code = 'HW-E9-1R-K'
+            AND system_type = 'hot_water' AND active = 1)
+          OR
+          (id = 3 AND code = 'CW-E1-1R-K'
+            AND system_type = 'cold_water' AND active = 1)
+          OR
+          (id = 4 AND code = 'HW-E1-1R-K'
+            AND system_type = 'hot_water' AND active = 1)
+          OR
+          (id = 5 AND code = 'CW-E1-2R-B'
+            AND system_type = 'cold_water' AND active = 1)
+          OR
+          (id = 6 AND code = 'HW-E1-2R-B'
+            AND system_type = 'hot_water' AND active = 1)
+          OR
+          (id = 7 AND code = 'CW-E2-1R-K'
+            AND system_type = 'cold_water' AND active = 1)
+          OR
+          (id = 8 AND code = 'HW-E2-1R-K'
+            AND system_type = 'hot_water' AND active = 1)
+          OR
+          (id = 9 AND code = 'CW-E2-2R-B'
+            AND system_type = 'cold_water' AND active = 1)
+          OR
+          (id = 10 AND code = 'HW-E2-2R-B'
+            AND system_type = 'hot_water' AND active = 1)
+      ) = 10
+        AS canonical_risers,
 
       (
         SELECT COUNT(*)
         FROM apartment_risers
-      ) = 2
+      ) = 14
         AS apartment_risers_count,
 
       (
         SELECT COUNT(*)
         FROM apartment_risers
         WHERE
-          (
-            id = 1
-            AND apartment_id = 1
-            AND riser_id = 1
-            AND local_label = 'Kitchen'
-            AND active = 1
-          )
+          (id = 1 AND apartment_id = 1
+            AND riser_id = 1 AND local_label = 'Kitchen'
+            AND active = 1)
           OR
-          (
-            id = 2
-            AND apartment_id = 1
-            AND riser_id = 2
-            AND local_label = 'Kitchen'
-            AND active = 1
-          )
-      ) = 2
-        AS apartment_risers,
+          (id = 2 AND apartment_id = 1
+            AND riser_id = 2 AND local_label = 'Kitchen'
+            AND active = 1)
+          OR
+          (id = 3 AND apartment_id = 2
+            AND riser_id = 3 AND local_label = 'Kitchen'
+            AND active = 1)
+          OR
+          (id = 4 AND apartment_id = 2
+            AND riser_id = 4 AND local_label = 'Kitchen'
+            AND active = 1)
+          OR
+          (id = 5 AND apartment_id = 2
+            AND riser_id = 5 AND local_label = 'Bathroom'
+            AND active = 1)
+          OR
+          (id = 6 AND apartment_id = 2
+            AND riser_id = 6 AND local_label = 'Bathroom'
+            AND active = 1)
+          OR
+          (id = 7 AND apartment_id = 3
+            AND riser_id = 3 AND local_label = 'Kitchen'
+            AND active = 1)
+          OR
+          (id = 8 AND apartment_id = 3
+            AND riser_id = 4 AND local_label = 'Kitchen'
+            AND active = 1)
+          OR
+          (id = 9 AND apartment_id = 4
+            AND riser_id = 7 AND local_label = 'Kitchen'
+            AND active = 1)
+          OR
+          (id = 10 AND apartment_id = 4
+            AND riser_id = 8 AND local_label = 'Kitchen'
+            AND active = 1)
+          OR
+          (id = 11 AND apartment_id = 4
+            AND riser_id = 9 AND local_label = 'Bathroom'
+            AND active = 1)
+          OR
+          (id = 12 AND apartment_id = 4
+            AND riser_id = 10 AND local_label = 'Bathroom'
+            AND active = 1)
+          OR
+          (id = 13 AND apartment_id = 5
+            AND riser_id = 9 AND local_label = 'Bathroom'
+            AND active = 1)
+          OR
+          (id = 14 AND apartment_id = 5
+            AND riser_id = 10 AND local_label = 'Bathroom'
+            AND active = 1)
+      ) = 14
+        AS canonical_apartment_risers,
 
       (
         SELECT COUNT(*)
         FROM water_meters
-      ) = 2
+      ) = 14
         AS water_meters_count,
 
       (
         SELECT COUNT(*)
         FROM water_meters
-        WHERE id = 1
-          AND apartment_id = 1
-          AND type = 'cold'
-          AND serial_number = 'TEST-CW-901-K-001'
-          AND apartment_riser_id = 1
-          AND manufacturer = 'TEST'
-          AND model = 'SYNTH-CW'
-          AND active = 1
-      ) = 1
-        AS cold_meter,
-
-      (
-        SELECT COUNT(*)
-        FROM water_meters
-        WHERE id = 2
-          AND apartment_id = 1
-          AND type = 'hot'
-          AND serial_number = 'TEST-HW-901-K-001'
-          AND apartment_riser_id = 2
-          AND manufacturer = 'TEST'
-          AND model = 'SYNTH-HW'
-          AND active = 1
-      ) = 1
-        AS hot_meter,
+        WHERE
+          (id = 1 AND apartment_id = 1
+            AND type = 'cold'
+            AND serial_number = 'TEST-CW-901-K-001'
+            AND apartment_riser_id = 1 AND active = 1)
+          OR
+          (id = 2 AND apartment_id = 1
+            AND type = 'hot'
+            AND serial_number = 'TEST-HW-901-K-001'
+            AND apartment_riser_id = 2 AND active = 1)
+          OR
+          (id = 3 AND apartment_id = 2
+            AND type = 'cold'
+            AND serial_number = 'TEST-CW-101-K-001'
+            AND apartment_riser_id = 3 AND active = 1)
+          OR
+          (id = 4 AND apartment_id = 2
+            AND type = 'hot'
+            AND serial_number = 'TEST-HW-101-K-001'
+            AND apartment_riser_id = 4 AND active = 1)
+          OR
+          (id = 5 AND apartment_id = 2
+            AND type = 'cold'
+            AND serial_number = 'TEST-CW-101-B-001'
+            AND apartment_riser_id = 5 AND active = 1)
+          OR
+          (id = 6 AND apartment_id = 2
+            AND type = 'hot'
+            AND serial_number = 'TEST-HW-101-B-001'
+            AND apartment_riser_id = 6 AND active = 1)
+          OR
+          (id = 7 AND apartment_id = 3
+            AND type = 'cold'
+            AND serial_number = 'TEST-CW-102-K-001'
+            AND apartment_riser_id = 7 AND active = 1)
+          OR
+          (id = 8 AND apartment_id = 3
+            AND type = 'hot'
+            AND serial_number = 'TEST-HW-102-K-001'
+            AND apartment_riser_id = 8 AND active = 1)
+          OR
+          (id = 9 AND apartment_id = 4
+            AND type = 'cold'
+            AND serial_number = 'TEST-CW-201-K-001'
+            AND apartment_riser_id = 9 AND active = 1)
+          OR
+          (id = 10 AND apartment_id = 4
+            AND type = 'hot'
+            AND serial_number = 'TEST-HW-201-K-001'
+            AND apartment_riser_id = 10 AND active = 1)
+          OR
+          (id = 11 AND apartment_id = 4
+            AND type = 'cold'
+            AND serial_number = 'TEST-CW-201-B-001'
+            AND apartment_riser_id = 11 AND active = 1)
+          OR
+          (id = 12 AND apartment_id = 4
+            AND type = 'hot'
+            AND serial_number = 'TEST-HW-201-B-001'
+            AND apartment_riser_id = 12 AND active = 1)
+          OR
+          (id = 13 AND apartment_id = 5
+            AND type = 'cold'
+            AND serial_number = 'TEST-CW-202-B-001'
+            AND apartment_riser_id = 13 AND active = 1)
+          OR
+          (id = 14 AND apartment_id = 5
+            AND type = 'hot'
+            AND serial_number = 'TEST-HW-202-B-001'
+            AND apartment_riser_id = 14 AND active = 1)
+      ) = 14
+        AS canonical_water_meters,
 
       (
         SELECT COUNT(*)
