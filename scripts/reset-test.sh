@@ -1002,27 +1002,37 @@ UPDATE water_reporting_settings
 SET updated_by = NULL;
 
 DELETE FROM users
-WHERE id NOT IN (1, 2);
+WHERE nick IS NULL
+   OR LOWER(nick) NOT IN (
+  $CANONICAL_NICKS_LOWER_SQL
+);
 
 UPDATE users
 SET
   personal_code = NULL,
   email = 'test-admin@mvx.invalid',
   is_active = 1,
-  must_change_password = 0,
   nick = 'TEST-Admin',
   updated_at = '$NOW_ISO'
-WHERE id = 1;
+WHERE LOWER(nick) = 'test-admin';
 
 UPDATE users
 SET
   personal_code = NULL,
   email = 'test-owner@mvx.invalid',
   is_active = 1,
-  must_change_password = 0,
   nick = 'TEST-Owner',
   updated_at = '$NOW_ISO'
-WHERE id = 2;
+WHERE LOWER(nick) = 'test-owner';
+
+UPDATE users
+SET
+  personal_code = NULL,
+  is_active = 1,
+  updated_at = '$NOW_ISO'
+WHERE LOWER(nick) IN (
+  $TST_NICKS_LOWER_SQL
+);
 
 DELETE FROM roles;
 
@@ -1036,10 +1046,30 @@ INSERT INTO roles (id, name) VALUES
   (7, 'admin'),
   (8, 'worker');
 
-INSERT INTO user_roles (user_id, role_id)
-VALUES
-  (1, 7),
-  (2, 2);
+INSERT INTO user_roles (
+  user_id,
+  role_id
+)
+SELECT
+  u.id,
+  r.id
+FROM users u
+JOIN roles r
+  ON r.name =
+    CASE LOWER(u.nick)
+      WHEN 'test-admin' THEN 'admin'
+      WHEN 'test-owner' THEN 'owner'
+      WHEN 'tst-01' THEN 'owner'
+      WHEN 'tst-02' THEN 'owner'
+      WHEN 'tst-03' THEN 'resident'
+      WHEN 'tst-04' THEN 'owner'
+      WHEN 'tst-05' THEN 'admin'
+      WHEN 'tst-06' THEN 'resident'
+      ELSE NULL
+    END
+WHERE LOWER(u.nick) IN (
+  $CANONICAL_NICKS_LOWER_SQL
+);
 
 INSERT INTO apartments (
   id,
@@ -1082,12 +1112,13 @@ INSERT INTO user_apartments (
   relation_type,
   is_primary
 )
-VALUES (
-  2,
+SELECT
+  u.id,
   1,
   'owner',
   1
-);
+FROM users u
+WHERE LOWER(u.nick) = 'test-owner';
 
 INSERT INTO risers (
   id,
@@ -1374,10 +1405,14 @@ d1_json \
   DELETE FROM pii_access_audit;
 
   DELETE FROM pii_search_tokens
-  WHERE user_id <> 2;
+  WHERE user_id NOT IN (
+    $PRESERVED_USER_IDS_CSV
+  );
 
   DELETE FROM user_pii
-  WHERE user_id <> 2;
+  WHERE user_id NOT IN (
+    $PRESERVED_USER_IDS_CSV
+  );
   " \
   >/dev/null
 
@@ -1427,17 +1462,26 @@ POST_MAIN_JSON="$(
       (
         SELECT COUNT(*)
         FROM users
-      ) = 2
+      ) = $CANONICAL_USER_COUNT
         AS users_count,
+
+      NOT EXISTS (
+        SELECT 1
+        FROM users
+        WHERE nick IS NULL
+           OR LOWER(nick) NOT IN (
+             $CANONICAL_NICKS_LOWER_SQL
+           )
+      )
+        AS canonical_users_only,
 
       (
         SELECT COUNT(*)
         FROM users
-        WHERE id = 1
+        WHERE LOWER(nick) = 'test-admin'
           AND nick = 'TEST-Admin'
           AND email = 'test-admin@mvx.invalid'
           AND is_active = 1
-          AND must_change_password = 0
           AND password_hash IS NOT NULL
           AND LENGTH(TRIM(password_hash)) > 0
       ) = 1
@@ -1446,15 +1490,26 @@ POST_MAIN_JSON="$(
       (
         SELECT COUNT(*)
         FROM users
-        WHERE id = 2
+        WHERE LOWER(nick) = 'test-owner'
           AND nick = 'TEST-Owner'
           AND email = 'test-owner@mvx.invalid'
           AND is_active = 1
-          AND must_change_password = 0
           AND password_hash IS NOT NULL
           AND LENGTH(TRIM(password_hash)) > 0
       ) = 1
         AS test_owner,
+
+      (
+        SELECT COUNT(*)
+        FROM users
+        WHERE LOWER(nick) IN (
+          $TST_NICKS_LOWER_SQL
+        )
+          AND is_active = 1
+          AND password_hash IS NOT NULL
+          AND LENGTH(TRIM(password_hash)) > 0
+      ) = $TST_USER_COUNT
+        AS present_tst_accounts,
 
       (
         SELECT COUNT(*)
@@ -1480,16 +1535,50 @@ POST_MAIN_JSON="$(
       (
         SELECT COUNT(*)
         FROM user_roles
-      ) = 2
+      ) = $CANONICAL_USER_COUNT
         AS user_roles_count,
 
       (
         SELECT COUNT(*)
-        FROM user_roles
+        FROM user_roles ur
+        JOIN users u
+          ON u.id = ur.user_id
+        JOIN roles r
+          ON r.id = ur.role_id
         WHERE
-          (user_id = 1 AND role_id = 7)
-          OR (user_id = 2 AND role_id = 2)
-      ) = 2
+          (
+            LOWER(u.nick) = 'test-admin'
+            AND r.name = 'admin'
+          )
+          OR (
+            LOWER(u.nick) = 'test-owner'
+            AND r.name = 'owner'
+          )
+          OR (
+            LOWER(u.nick) = 'tst-01'
+            AND r.name = 'owner'
+          )
+          OR (
+            LOWER(u.nick) = 'tst-02'
+            AND r.name = 'owner'
+          )
+          OR (
+            LOWER(u.nick) = 'tst-03'
+            AND r.name = 'resident'
+          )
+          OR (
+            LOWER(u.nick) = 'tst-04'
+            AND r.name = 'owner'
+          )
+          OR (
+            LOWER(u.nick) = 'tst-05'
+            AND r.name = 'admin'
+          )
+          OR (
+            LOWER(u.nick) = 'tst-06'
+            AND r.name = 'resident'
+          )
+      ) = $CANONICAL_USER_COUNT
         AS user_roles,
 
       (
@@ -1527,11 +1616,13 @@ POST_MAIN_JSON="$(
 
       (
         SELECT COUNT(*)
-        FROM user_apartments
-        WHERE user_id = 2
-          AND apartment_id = 1
-          AND relation_type = 'owner'
-          AND is_primary = 1
+        FROM user_apartments ua
+        JOIN users u
+          ON u.id = ua.user_id
+        WHERE LOWER(u.nick) = 'test-owner'
+          AND ua.apartment_id = 1
+          AND ua.relation_type = 'owner'
+          AND ua.is_primary = 1
       ) = 1
         AS owner_apartment,
 
@@ -1760,22 +1851,54 @@ POST_PII_JSON="$(
       (
         SELECT COUNT(*)
         FROM user_pii
-        WHERE user_id = 2
+        WHERE user_id = $TEST_OWNER_USER_ID
       ) = 1
         AS owner_pii,
 
       (
         SELECT COUNT(*)
-        FROM user_pii
-      ) = 1
-        AS only_owner_pii,
+        FROM pii_search_tokens
+        WHERE user_id = $TEST_OWNER_USER_ID
+      ) > 0
+        AS owner_search_tokens,
 
       (
         SELECT COUNT(*)
+        FROM user_pii
+        WHERE user_id IN (
+          $TST_IDS_FOR_SQL
+        )
+      ) = $TST_USER_COUNT
+        AS present_tst_pii,
+
+      (
+        SELECT COUNT(DISTINCT user_id)
         FROM pii_search_tokens
-        WHERE user_id = 2
-      ) > 0
-        AS owner_search_tokens,
+        WHERE user_id IN (
+          $TST_IDS_FOR_SQL
+        )
+      ) = $TST_USER_COUNT
+        AS present_tst_search_tokens,
+
+      NOT EXISTS (
+        SELECT 1
+        FROM user_pii
+        WHERE user_id IS NULL
+           OR user_id NOT IN (
+             $PRESERVED_USER_IDS_CSV
+           )
+      )
+        AS canonical_pii_only,
+
+      NOT EXISTS (
+        SELECT 1
+        FROM pii_search_tokens
+        WHERE user_id IS NULL
+           OR user_id NOT IN (
+             $PRESERVED_USER_IDS_CSV
+           )
+      )
+        AS canonical_search_tokens_only,
 
       (
         SELECT COUNT(*)
