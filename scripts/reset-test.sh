@@ -534,14 +534,31 @@ echo "Initial reading date: $INITIAL_READING_DATE"
 echo
 
 # ---------------------------------------------------------
-# Protected TEST anchors
+# Protected TEST credential / PII anchors
 #
-# Mutable TEST data is deliberately NOT required to match
-# the baseline before reset. Reset is supposed to restore it.
+# PR-8D transition contract:
 #
-# Only data that cannot safely be recreated without existing
-# credentials / encryption state is protected here.
+# - TEST-Admin and TEST-Owner are mandatory technical
+#   credential anchors.
+#
+# - TST-01 ... TST-06 are canonical external tester
+#   identities. During provisioning they are optional.
+#
+# - If a TST-* account exists, its password, PII row and
+#   PII search-token anchors must already be complete.
+#
+# - Matching is by canonical Nick, not historical user ID.
+#
+# - --check never changes password_hash,
+#   must_change_password, encrypted PII or search tokens.
+#
+# A later stage makes all eight accounts mandatory after
+# controlled TST-* provisioning is complete.
 # ---------------------------------------------------------
+
+CANONICAL_NICKS_LOWER_SQL="'test-admin','test-owner','tst-01','tst-02','tst-03','tst-04','tst-05','tst-06'"
+
+TST_NICKS_LOWER_SQL="'tst-01','tst-02','tst-03','tst-04','tst-05','tst-06'"
 
 echo "===== PROTECTED TEST ANCHORS CHECK ====="
 
@@ -553,25 +570,185 @@ MAIN_ANCHORS_JSON="$(
       (
         SELECT COUNT(*)
         FROM users
-        WHERE id = 1
+        WHERE LOWER(nick) = 'test-admin'
           AND password_hash IS NOT NULL
           AND LENGTH(TRIM(password_hash)) > 0
-      ) = 1 AS admin_password_anchor,
+      ) = 1
+        AS admin_password_anchor,
 
       (
         SELECT COUNT(*)
         FROM users
-        WHERE id = 2
+        WHERE LOWER(nick) = 'test-owner'
           AND password_hash IS NOT NULL
           AND LENGTH(TRIM(password_hash)) > 0
-      ) = 1 AS owner_password_anchor;
+      ) = 1
+        AS owner_password_anchor,
+
+      NOT EXISTS (
+        SELECT 1
+        FROM users
+        WHERE LOWER(nick) IN (
+          $CANONICAL_NICKS_LOWER_SQL
+        )
+        GROUP BY LOWER(nick)
+        HAVING COUNT(*) <> 1
+      )
+        AS canonical_nick_uniqueness,
+
+      NOT EXISTS (
+        SELECT 1
+        FROM users
+        WHERE LOWER(nick) IN (
+          $CANONICAL_NICKS_LOWER_SQL
+        )
+          AND (
+            password_hash IS NULL
+            OR LENGTH(TRIM(password_hash)) = 0
+          )
+      )
+        AS present_canonical_password_anchors;
     "
 )"
 
 printf '%s' "$MAIN_ANCHORS_JSON" \
   | json_first_row \
   | assert_boolean_row \
-      "Main D1 protected user anchors"
+      "Main D1 protected credential anchors"
+
+
+CANONICAL_STATE_JSON="$(
+  d1_json \
+    "$MAIN_DB" \
+    "
+    SELECT
+      COUNT(*) AS canonical_users_present,
+
+      COALESCE(
+        GROUP_CONCAT(id, ','),
+        ''
+      ) AS canonical_user_ids_csv,
+
+      (
+        SELECT COUNT(*)
+        FROM users
+        WHERE LOWER(nick) IN (
+          $TST_NICKS_LOWER_SQL
+        )
+      ) AS tst_users_present,
+
+      COALESCE(
+        (
+          SELECT GROUP_CONCAT(id, ',')
+          FROM users
+          WHERE LOWER(nick) IN (
+            $TST_NICKS_LOWER_SQL
+          )
+        ),
+        ''
+      ) AS tst_user_ids_csv,
+
+      (
+        SELECT id
+        FROM users
+        WHERE LOWER(nick) = 'test-owner'
+        LIMIT 1
+      ) AS test_owner_user_id
+
+    FROM users
+    WHERE LOWER(nick) IN (
+      $CANONICAL_NICKS_LOWER_SQL
+    );
+    "
+)"
+
+CANONICAL_STATE_ROW="$(
+  printf '%s' "$CANONICAL_STATE_JSON" \
+    | json_first_row
+)"
+
+CANONICAL_USER_COUNT="$(
+  printf '%s' "$CANONICAL_STATE_ROW" \
+    | python3 -c '
+import json
+import sys
+
+row = json.load(sys.stdin)
+print(int(row["canonical_users_present"]))
+'
+)"
+
+PRESERVED_USER_IDS_CSV="$(
+  printf '%s' "$CANONICAL_STATE_ROW" \
+    | python3 -c '
+import json
+import sys
+
+row = json.load(sys.stdin)
+print(str(row["canonical_user_ids_csv"] or ""))
+'
+)"
+
+TST_USER_COUNT="$(
+  printf '%s' "$CANONICAL_STATE_ROW" \
+    | python3 -c '
+import json
+import sys
+
+row = json.load(sys.stdin)
+print(int(row["tst_users_present"]))
+'
+)"
+
+TST_USER_IDS_CSV="$(
+  printf '%s' "$CANONICAL_STATE_ROW" \
+    | python3 -c '
+import json
+import sys
+
+row = json.load(sys.stdin)
+print(str(row["tst_user_ids_csv"] or ""))
+'
+)"
+
+TEST_OWNER_USER_ID="$(
+  printf '%s' "$CANONICAL_STATE_ROW" \
+    | python3 -c '
+import json
+import sys
+
+row = json.load(sys.stdin)
+value = row.get("test_owner_user_id")
+
+if value is None:
+    raise SystemExit(
+        "TEST-Owner user ID is unavailable"
+    )
+
+print(int(value))
+'
+)"
+
+if (( CANONICAL_USER_COUNT < 2 || CANONICAL_USER_COUNT > 8 )); then
+  fail \
+    "Unexpected number of canonical TEST users: $CANONICAL_USER_COUNT"
+fi
+
+if (( TST_USER_COUNT < 0 || TST_USER_COUNT > 6 )); then
+  fail \
+    "Unexpected number of TST-* users: $TST_USER_COUNT"
+fi
+
+echo "Canonical users present: $CANONICAL_USER_COUNT / 8"
+echo "TST users present:       $TST_USER_COUNT / 6"
+echo "Canonical user IDs:      $PRESERVED_USER_IDS_CSV"
+
+TST_IDS_FOR_SQL="$TST_USER_IDS_CSV"
+
+if [[ -z "$TST_IDS_FOR_SQL" ]]; then
+  TST_IDS_FOR_SQL="0"
+fi
+
 
 PII_ANCHORS_JSON="$(
   d1_json \
@@ -581,22 +758,43 @@ PII_ANCHORS_JSON="$(
       (
         SELECT COUNT(*)
         FROM user_pii
-        WHERE user_id = 2
-      ) = 1 AS owner_pii_anchor,
+        WHERE user_id = $TEST_OWNER_USER_ID
+      ) = 1
+        AS owner_pii_anchor,
 
       (
         SELECT COUNT(*)
         FROM pii_search_tokens
-        WHERE user_id = 2
-      ) > 0 AS owner_search_tokens_anchor;
+        WHERE user_id = $TEST_OWNER_USER_ID
+      ) > 0
+        AS owner_search_tokens_anchor,
+
+      (
+        SELECT COUNT(*)
+        FROM user_pii
+        WHERE user_id IN (
+          $TST_IDS_FOR_SQL
+        )
+      ) = $TST_USER_COUNT
+        AS present_tst_pii_anchors,
+
+      (
+        SELECT COUNT(DISTINCT user_id)
+        FROM pii_search_tokens
+        WHERE user_id IN (
+          $TST_IDS_FOR_SQL
+        )
+      ) = $TST_USER_COUNT
+        AS present_tst_search_token_anchors;
     "
 )"
 
 printf '%s' "$PII_ANCHORS_JSON" \
   | json_first_row \
   | assert_boolean_row \
-      "PII D1 protected owner anchor"
+      "PII D1 protected canonical anchors"
 
+echo "PASS: transition-safe canonical credential discovery"
 echo
 
 echo "===== TEST R2 CONSISTENCY ====="
