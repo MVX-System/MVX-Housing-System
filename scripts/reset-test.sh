@@ -575,6 +575,156 @@ echo "Current reading date:      $CURRENT_READING_DATE"
 echo
 
 # ---------------------------------------------------------
+# Canonical TEST calibration fixtures
+#
+# One committed synthetic PDF is uploaded as three separate
+# TEST R2 objects during a REAL reset.
+#
+# Scenarios:
+# - expired calibration
+# - near-expiry calibration
+# - valid calibration
+#
+# --check verifies the local fixture and calculates metadata,
+# but performs no R2 or D1 mutation.
+# ---------------------------------------------------------
+
+CALIBRATION_FIXTURE_FILE="$(
+  git rev-parse --show-toplevel
+)/fixtures/test/water-meter-certificates/MVX-TEST-CALIBRATION.pdf"
+
+[[ -f "$CALIBRATION_FIXTURE_FILE" ]] \
+  || fail "Canonical TEST calibration fixture is missing"
+
+CALIBRATION_FIXTURE_SIZE_BYTES="$(
+  python3 - "$CALIBRATION_FIXTURE_FILE" <<'PY_CAL_FILE'
+import os
+import sys
+
+path = sys.argv[1]
+
+with open(path, "rb") as handle:
+    data = handle.read()
+
+if not data.startswith(b"%PDF-1.4"):
+    raise SystemExit(
+        "Canonical TEST calibration fixture has invalid PDF header"
+    )
+
+if not data.rstrip().endswith(b"%%EOF"):
+    raise SystemExit(
+        "Canonical TEST calibration fixture has invalid PDF EOF"
+    )
+
+size = os.path.getsize(path)
+
+if size <= 0:
+    raise SystemExit(
+        "Canonical TEST calibration fixture is empty"
+    )
+
+print(size)
+PY_CAL_FILE
+)"
+
+CALIBRATION_VALUES="$(
+python3 <<'PY_CAL_DATES'
+from datetime import datetime
+from zoneinfo import ZoneInfo
+import calendar
+
+
+def add_months(value, months):
+    total = (
+        value.year * 12
+        + value.month
+        - 1
+        + months
+    )
+
+    year, month_zero = divmod(total, 12)
+    month = month_zero + 1
+
+    day = min(
+        value.day,
+        calendar.monthrange(
+            year,
+            month,
+        )[1],
+    )
+
+    return value.replace(
+        year=year,
+        month=month,
+        day=day,
+    )
+
+
+today = datetime.now(
+    ZoneInfo("Europe/Riga")
+).date()
+
+expired_date = add_months(today, -18)
+near_expiry_date = add_months(today, -11)
+valid_date = add_months(today, -2)
+
+expired_expires = add_months(
+    expired_date,
+    12,
+)
+
+near_expiry_expires = add_months(
+    near_expiry_date,
+    12,
+)
+
+valid_expires = add_months(
+    valid_date,
+    12,
+)
+
+print(
+    "|".join(
+        [
+            expired_date.isoformat(),
+            expired_expires.isoformat(),
+            near_expiry_date.isoformat(),
+            near_expiry_expires.isoformat(),
+            valid_date.isoformat(),
+            valid_expires.isoformat(),
+        ]
+    )
+)
+PY_CAL_DATES
+)"
+
+IFS='|' read -r \
+  CAL_EXPIRED_DATE \
+  CAL_EXPIRED_EXPIRES \
+  CAL_NEAR_EXPIRY_DATE \
+  CAL_NEAR_EXPIRY_EXPIRES \
+  CAL_VALID_DATE \
+  CAL_VALID_EXPIRES \
+  <<< "$CALIBRATION_VALUES"
+
+CAL_KEY_EXPIRED="water-meters/apartment-2/meter-3/calibrations/${CAL_EXPIRED_DATE}-00000000-0000-4000-8000-000000000001-MVX-TEST-CALIBRATION.pdf"
+
+CAL_KEY_NEAR_EXPIRY="water-meters/apartment-3/meter-7/calibrations/${CAL_NEAR_EXPIRY_DATE}-00000000-0000-4000-8000-000000000002-MVX-TEST-CALIBRATION.pdf"
+
+CAL_KEY_VALID="water-meters/apartment-5/meter-13/calibrations/${CAL_VALID_DATE}-00000000-0000-4000-8000-000000000003-MVX-TEST-CALIBRATION.pdf"
+
+echo "===== CALCULATED TEST CALIBRATION FIXTURES ====="
+echo "Fixture size:            $CALIBRATION_FIXTURE_SIZE_BYTES bytes"
+echo "Expired calibration:     $CAL_EXPIRED_DATE"
+echo "Expired until:           $CAL_EXPIRED_EXPIRES"
+echo "Near-expiry calibration: $CAL_NEAR_EXPIRY_DATE"
+echo "Near-expiry until:       $CAL_NEAR_EXPIRY_EXPIRES"
+echo "Valid calibration:       $CAL_VALID_DATE"
+echo "Valid until:             $CAL_VALID_EXPIRES"
+echo
+
+
+# ---------------------------------------------------------
 # Protected TEST credential / PII anchors
 #
 # PR-8D transition contract:
@@ -2117,6 +2267,169 @@ d1_json \
 echo "PASS: TEST Main D1 reset"
 echo
 
+echo "===== INSTALL CANONICAL TEST CALIBRATION FIXTURES ====="
+
+UPLOADED_CALIBRATION_KEYS=()
+
+cleanup_uploaded_calibration_fixtures() {
+  local key
+
+  for key in "${UPLOADED_CALIBRATION_KEYS[@]}"; do
+    [[ -n "$key" ]] || continue
+
+    echo \
+      "Cleanup TEST R2 object after calibration failure: $key"
+
+    "${WRANGLER_CMD[@]}" r2 object delete \
+      "${R2_BUCKET}/${key}" \
+      --remote \
+      --jurisdiction "$R2_JURISDICTION" \
+      "${WRANGLER_AUTH_ARGS[@]}" \
+      --force \
+      >/dev/null 2>&1 \
+      || true
+  done
+}
+
+
+upload_calibration_fixture() {
+  local key="$1"
+
+  echo \
+    "Uploading TEST R2 calibration object: $key"
+
+  "${WRANGLER_CMD[@]}" r2 object put \
+    "${R2_BUCKET}/${key}" \
+    --file "$CALIBRATION_FIXTURE_FILE" \
+    --content-type "application/pdf" \
+    --content-disposition \
+      'inline; filename="MVX-TEST-CALIBRATION.pdf"' \
+    --remote \
+    --jurisdiction "$R2_JURISDICTION" \
+    "${WRANGLER_AUTH_ARGS[@]}" \
+    --force
+}
+
+
+for object_key in \
+  "$CAL_KEY_EXPIRED" \
+  "$CAL_KEY_NEAR_EXPIRY" \
+  "$CAL_KEY_VALID"
+do
+  if ! upload_calibration_fixture "$object_key"; then
+    cleanup_uploaded_calibration_fixtures
+
+    fail \
+      "Unable to upload canonical TEST calibration fixture"
+  fi
+
+  UPLOADED_CALIBRATION_KEYS+=(
+    "$object_key"
+  )
+done
+
+echo \
+  "PASS: 3 canonical TEST R2 calibration objects uploaded"
+
+
+CALIBRATION_RESET_SQL="
+INSERT INTO water_meter_calibrations (
+  id,
+  meter_id,
+  calibration_date,
+  validity_months,
+  expires_at,
+  certificate_file_key,
+  certificate_file_name,
+  certificate_mime_type,
+  certificate_size_bytes,
+  uploaded_by,
+  created_at,
+  notes,
+  certificate_number,
+  calibration_laboratory
+)
+VALUES
+  (
+    1,
+    3,
+    '$CAL_EXPIRED_DATE',
+    12,
+    '$CAL_EXPIRED_EXPIRES',
+    '$CAL_KEY_EXPIRED',
+    'MVX-TEST-CALIBRATION.pdf',
+    'application/pdf',
+    $CALIBRATION_FIXTURE_SIZE_BYTES,
+    (
+      SELECT id
+      FROM users
+      WHERE LOWER(nick) = 'test-admin'
+    ),
+    '$NOW_ISO',
+    'Canonical TEST expired calibration fixture',
+    'TEST-CAL-0001',
+    'MVX TEST Calibration Laboratory'
+  ),
+
+  (
+    2,
+    7,
+    '$CAL_NEAR_EXPIRY_DATE',
+    12,
+    '$CAL_NEAR_EXPIRY_EXPIRES',
+    '$CAL_KEY_NEAR_EXPIRY',
+    'MVX-TEST-CALIBRATION.pdf',
+    'application/pdf',
+    $CALIBRATION_FIXTURE_SIZE_BYTES,
+    (
+      SELECT id
+      FROM users
+      WHERE LOWER(nick) = 'test-admin'
+    ),
+    '$NOW_ISO',
+    'Canonical TEST near-expiry calibration fixture',
+    'TEST-CAL-0002',
+    'MVX TEST Calibration Laboratory'
+  ),
+
+  (
+    3,
+    13,
+    '$CAL_VALID_DATE',
+    12,
+    '$CAL_VALID_EXPIRES',
+    '$CAL_KEY_VALID',
+    'MVX-TEST-CALIBRATION.pdf',
+    'application/pdf',
+    $CALIBRATION_FIXTURE_SIZE_BYTES,
+    (
+      SELECT id
+      FROM users
+      WHERE LOWER(nick) = 'test-admin'
+    ),
+    '$NOW_ISO',
+    'Canonical TEST valid calibration fixture',
+    'TEST-CAL-0003',
+    'MVX TEST Calibration Laboratory'
+  );
+"
+
+if ! d1_json \
+  "$MAIN_DB" \
+  "$CALIBRATION_RESET_SQL" \
+  >/dev/null
+then
+  cleanup_uploaded_calibration_fixtures
+
+  fail \
+    "Unable to insert canonical TEST calibration rows"
+fi
+
+echo \
+  "PASS: 3 canonical TEST calibration rows inserted"
+
+echo
+
 echo "===== RESET TEST PII D1 ====="
 
 d1_json \
@@ -2825,8 +3138,78 @@ POST_MAIN_JSON="$(
       (
         SELECT COUNT(*)
         FROM water_meter_calibrations
-      ) = 0
-        AS calibrations,
+      ) = 3
+        AS calibrations_count,
+
+      (
+        SELECT COUNT(*)
+        FROM water_meter_calibrations
+        WHERE
+          (
+            id = 1
+            AND meter_id = 3
+            AND calibration_date = '$CAL_EXPIRED_DATE'
+            AND validity_months = 12
+            AND expires_at = '$CAL_EXPIRED_EXPIRES'
+            AND certificate_file_key =
+              '$CAL_KEY_EXPIRED'
+            AND certificate_file_name =
+              'MVX-TEST-CALIBRATION.pdf'
+            AND certificate_mime_type =
+              'application/pdf'
+            AND certificate_size_bytes =
+              $CALIBRATION_FIXTURE_SIZE_BYTES
+            AND certificate_number =
+              'TEST-CAL-0001'
+            AND calibration_laboratory =
+              'MVX TEST Calibration Laboratory'
+          )
+          OR
+          (
+            id = 2
+            AND meter_id = 7
+            AND calibration_date =
+              '$CAL_NEAR_EXPIRY_DATE'
+            AND validity_months = 12
+            AND expires_at =
+              '$CAL_NEAR_EXPIRY_EXPIRES'
+            AND certificate_file_key =
+              '$CAL_KEY_NEAR_EXPIRY'
+            AND certificate_file_name =
+              'MVX-TEST-CALIBRATION.pdf'
+            AND certificate_mime_type =
+              'application/pdf'
+            AND certificate_size_bytes =
+              $CALIBRATION_FIXTURE_SIZE_BYTES
+            AND certificate_number =
+              'TEST-CAL-0002'
+            AND calibration_laboratory =
+              'MVX TEST Calibration Laboratory'
+          )
+          OR
+          (
+            id = 3
+            AND meter_id = 13
+            AND calibration_date =
+              '$CAL_VALID_DATE'
+            AND validity_months = 12
+            AND expires_at =
+              '$CAL_VALID_EXPIRES'
+            AND certificate_file_key =
+              '$CAL_KEY_VALID'
+            AND certificate_file_name =
+              'MVX-TEST-CALIBRATION.pdf'
+            AND certificate_mime_type =
+              'application/pdf'
+            AND certificate_size_bytes =
+              $CALIBRATION_FIXTURE_SIZE_BYTES
+            AND certificate_number =
+              'TEST-CAL-0003'
+            AND calibration_laboratory =
+              'MVX TEST Calibration Laboratory'
+          )
+      ) = 3
+        AS canonical_calibrations,
 
       (
         SELECT COUNT(*)
@@ -3101,6 +3484,31 @@ printf '%s' "$POST_MAIN_JSON" \
   | json_first_row \
   | assert_boolean_row \
       "Main D1 exact post-reset baseline"
+
+echo
+echo "===== POST-RESET TEST R2 CALIBRATION VERIFICATION ====="
+
+for object_key in \
+  "$CAL_KEY_EXPIRED" \
+  "$CAL_KEY_NEAR_EXPIRY" \
+  "$CAL_KEY_VALID"
+do
+  echo \
+    "Checking canonical TEST R2 object: $object_key"
+
+  if r2_object_state "$object_key"; then
+    echo \
+      "PASS: canonical TEST R2 object exists"
+  else
+    fail \
+      "Canonical TEST calibration R2 object is missing: $object_key"
+  fi
+done
+
+echo \
+  "PASS: all 3 canonical TEST calibration objects verified"
+
+echo
 
 POST_PII_JSON="$(
   d1_json \
