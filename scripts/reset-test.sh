@@ -3868,9 +3868,7 @@ while IFS= read -r object_key; do
         "Unable to delete stale TEST R2 object: $object_key"
     fi
 
-    STALE_DELETED_OBJECTS=$(
-      (STALE_DELETED_OBJECTS + 1)
-    )
+    STALE_DELETED_OBJECTS=$((STALE_DELETED_OBJECTS + 1))
 
   else
     probe_status=$?
