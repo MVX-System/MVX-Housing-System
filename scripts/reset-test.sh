@@ -1104,42 +1104,315 @@ echo "PASS: tracked Git state is clean"
 echo "PASS: explicit --confirm-test-reset received"
 echo
 
-echo "===== DELETE TEST CERTIFICATE OBJECTS ====="
+echo "===== ARM TEST MAINTENANCE GUARD ====="
 
-# Reuse the certificate-key inventory verified above.
+RESET_GUARD_REASON="test_dataset_reset"
 
-DELETED_OBJECTS=0
+RESET_MAINTENANCE_ARMED=0
+RESET_DESTRUCTIVE_STARTED=0
+RESET_GUARD_PREEXISTING=0
 
-while IFS= read -r object_key; do
-  [[ -n "$object_key" ]] || continue
+RESET_NEWLY_STAGED_KEYS=()
 
-  case "$object_key" in
-    water-meters/*)
-      ;;
-    *)
-      fail \
-        "Unexpected TEST R2 object key prefix: $object_key"
-      ;;
-  esac
 
-  echo "Deleting TEST R2 object: $object_key"
+reset_exit_guard() {
+  local status="$1"
+  local object_key
 
-  "${WRANGLER_CMD[@]}" r2 object delete \
-    "${R2_BUCKET}/${object_key}" \
+  if [[ "$status" -eq 0 ]]; then
+    return 0
+  fi
+
+  echo >&2
+  echo \
+    "FAIL-CLOSED: TEST reset exited with status $status" \
+    >&2
+
+  if [[ "${RESET_MAINTENANCE_ARMED:-0}" -ne 1 ]]; then
+    return 0
+  fi
+
+  if [[ "${RESET_DESTRUCTIVE_STARTED:-0}" -eq 1 ]]; then
+    echo \
+      "FAIL-CLOSED: destructive reset phase may have started." \
+      >&2
+
+    echo \
+      "FAIL-CLOSED: TEST maintenance remains enabled." \
+      >&2
+
+    echo \
+      "ACTION: inspect state and rerun/repair the TEST reset before releasing maintenance." \
+      >&2
+
+    return 0
+  fi
+
+  if [[ "${RESET_GUARD_PREEXISTING:-0}" -eq 1 ]]; then
+    echo \
+      "FAIL-CLOSED: maintenance guard existed before this run." \
+      >&2
+
+    echo \
+      "FAIL-CLOSED: TEST maintenance remains enabled." \
+      >&2
+
+    return 0
+  fi
+
+  echo \
+    "Pre-destructive failure: removing newly staged TEST R2 objects." \
+    >&2
+
+  for object_key in "${RESET_NEWLY_STAGED_KEYS[@]}"; do
+    [[ -n "$object_key" ]] || continue
+
+    "${WRANGLER_CMD[@]}" r2 object delete \
+      "${R2_BUCKET}/${object_key}" \
+      --remote \
+      --jurisdiction "$R2_JURISDICTION" \
+      "${WRANGLER_AUTH_ARGS[@]}" \
+      --force \
+      >/dev/null 2>&1 \
+      || true
+  done
+
+  echo \
+    "Pre-destructive failure: releasing TEST maintenance guard." \
+    >&2
+
+  d1_json \
+    "$OPS_DB" \
+    "
+    UPDATE system_operations_control
+    SET
+      maintenance_enabled = 0,
+      maintenance_reason = NULL,
+      restore_execution_id = NULL,
+      disabled_at = '$NOW_ISO',
+      updated_at = '$NOW_ISO'
+    WHERE id = 1
+      AND maintenance_enabled = 1
+      AND maintenance_reason = '$RESET_GUARD_REASON'
+      AND restore_execution_id IS NULL;
+    " \
+    >/dev/null 2>&1 \
+    || true
+
+  return 0
+}
+
+
+trap 'reset_exit_guard "$?"' EXIT
+
+
+OPS_GUARD_ELIGIBLE_JSON="$(
+  d1_json \
+    "$OPS_DB" \
+    "
+    SELECT
+      (
+        SELECT COUNT(*)
+        FROM system_operations_control
+        WHERE id = 1
+          AND restore_execution_id IS NULL
+          AND (
+            maintenance_enabled = 0
+            OR (
+              maintenance_enabled = 1
+              AND maintenance_reason =
+                '$RESET_GUARD_REASON'
+            )
+          )
+      ) = 1
+        AS operations_guard_eligible;
+    "
+)"
+
+printf '%s' "$OPS_GUARD_ELIGIBLE_JSON" \
+  | json_first_row \
+  | assert_boolean_row \
+      "TEST maintenance guard eligibility"
+
+
+RESET_GUARD_PREEXISTING="$(
+  d1_json \
+    "$OPS_DB" \
+    "
+    SELECT
+      CASE
+        WHEN maintenance_enabled = 1
+          AND maintenance_reason =
+            '$RESET_GUARD_REASON'
+          AND restore_execution_id IS NULL
+        THEN 1
+        ELSE 0
+      END
+        AS existing_guard
+    FROM system_operations_control
+    WHERE id = 1;
+    " \
+  | json_first_row \
+  | python3 -c '
+import json
+import sys
+
+row = json.load(sys.stdin)
+
+print(
+    int(
+        row.get(
+            "existing_guard",
+            0,
+        )
+        or 0
+    )
+)
+'
+)"
+
+echo \
+  "Existing TEST reset maintenance guard: $RESET_GUARD_PREEXISTING"
+
+
+d1_json \
+  "$OPS_DB" \
+  "
+  UPDATE system_operations_control
+  SET
+    maintenance_enabled = 1,
+    maintenance_reason =
+      '$RESET_GUARD_REASON',
+    restore_execution_id = NULL,
+    enabled_at =
+      CASE
+        WHEN maintenance_enabled = 1
+          AND maintenance_reason =
+            '$RESET_GUARD_REASON'
+        THEN COALESCE(
+          enabled_at,
+          '$NOW_ISO'
+        )
+        ELSE '$NOW_ISO'
+      END,
+    disabled_at = NULL,
+    updated_at = '$NOW_ISO'
+  WHERE id = 1
+    AND restore_execution_id IS NULL
+    AND (
+      maintenance_enabled = 0
+      OR (
+        maintenance_enabled = 1
+        AND maintenance_reason =
+          '$RESET_GUARD_REASON'
+      )
+    );
+  " \
+  >/dev/null
+
+RESET_MAINTENANCE_ARMED=1
+
+
+OPS_GUARD_VERIFY_JSON="$(
+  d1_json \
+    "$OPS_DB" \
+    "
+    SELECT
+      (
+        SELECT COUNT(*)
+        FROM system_operations_control
+        WHERE id = 1
+          AND maintenance_enabled = 1
+          AND maintenance_reason =
+            '$RESET_GUARD_REASON'
+          AND restore_execution_id IS NULL
+      ) = 1
+        AS maintenance_guard_armed;
+    "
+)"
+
+printf '%s' "$OPS_GUARD_VERIFY_JSON" \
+  | json_first_row \
+  | assert_boolean_row \
+      "TEST maintenance guard armed"
+
+echo "PASS: TEST maintenance guard armed"
+echo
+
+
+echo "===== PRE-STAGE CANONICAL TEST CALIBRATION R2 OBJECTS ====="
+
+
+prestage_calibration_fixture() {
+  local key="$1"
+  local probe_status
+  local existed=0
+
+  if r2_object_state "$key"; then
+    existed=1
+
+    echo \
+      "NOTICE: canonical TEST R2 object already exists and will be refreshed: $key"
+  else
+    probe_status=$?
+
+    case "$probe_status" in
+      1)
+        RESET_NEWLY_STAGED_KEYS+=(
+          "$key"
+        )
+        ;;
+      *)
+        fail \
+          "Unable to determine pre-stage R2 object state: $key"
+        ;;
+    esac
+  fi
+
+  echo \
+    "Pre-staging TEST R2 calibration object: $key"
+
+  if ! "${WRANGLER_CMD[@]}" r2 object put \
+    "${R2_BUCKET}/${key}" \
+    --file "$CALIBRATION_FIXTURE_FILE" \
+    --content-type "application/pdf" \
+    --content-disposition \
+      'inline; filename="MVX-TEST-CALIBRATION.pdf"' \
     --remote \
     --jurisdiction "$R2_JURISDICTION" \
     "${WRANGLER_AUTH_ARGS[@]}" \
     --force
+  then
+    fail \
+      "Unable to pre-stage canonical TEST calibration fixture: $key"
+  fi
 
-  DELETED_OBJECTS=$((DELETED_OBJECTS + 1))
-done < <(
-  printf '%s' \
-    "$CERTIFICATE_KEYS_JSON" \
-    | certificate_keys_from_json
-)
+  if [[ "$existed" -eq 1 ]]; then
+    echo \
+      "PASS: existing canonical TEST R2 object refreshed"
+  else
+    echo \
+      "PASS: new canonical TEST R2 object staged"
+  fi
+}
 
-echo "Deleted TEST R2 objects: $DELETED_OBJECTS"
+
+for object_key in \
+  "$CAL_KEY_EXPIRED" \
+  "$CAL_KEY_NEAR_EXPIRY" \
+  "$CAL_KEY_VALID"
+do
+  prestage_calibration_fixture \
+    "$object_key"
+done
+
+echo \
+  "PASS: all 3 canonical TEST calibration objects pre-staged"
+
 echo
+
+
+RESET_DESTRUCTIVE_STARTED=1
 
 echo "===== RESET TEST MAIN D1 ====="
 
@@ -2267,70 +2540,12 @@ d1_json \
 echo "PASS: TEST Main D1 reset"
 echo
 
-echo "===== INSTALL CANONICAL TEST CALIBRATION FIXTURES ====="
-
-UPLOADED_CALIBRATION_KEYS=()
-
-cleanup_uploaded_calibration_fixtures() {
-  local key
-
-  for key in "${UPLOADED_CALIBRATION_KEYS[@]}"; do
-    [[ -n "$key" ]] || continue
-
-    echo \
-      "Cleanup TEST R2 object after calibration failure: $key"
-
-    "${WRANGLER_CMD[@]}" r2 object delete \
-      "${R2_BUCKET}/${key}" \
-      --remote \
-      --jurisdiction "$R2_JURISDICTION" \
-      "${WRANGLER_AUTH_ARGS[@]}" \
-      --force \
-      >/dev/null 2>&1 \
-      || true
-  done
-}
-
-
-upload_calibration_fixture() {
-  local key="$1"
-
-  echo \
-    "Uploading TEST R2 calibration object: $key"
-
-  "${WRANGLER_CMD[@]}" r2 object put \
-    "${R2_BUCKET}/${key}" \
-    --file "$CALIBRATION_FIXTURE_FILE" \
-    --content-type "application/pdf" \
-    --content-disposition \
-      'inline; filename="MVX-TEST-CALIBRATION.pdf"' \
-    --remote \
-    --jurisdiction "$R2_JURISDICTION" \
-    "${WRANGLER_AUTH_ARGS[@]}" \
-    --force
-}
-
-
-for object_key in \
-  "$CAL_KEY_EXPIRED" \
-  "$CAL_KEY_NEAR_EXPIRY" \
-  "$CAL_KEY_VALID"
-do
-  if ! upload_calibration_fixture "$object_key"; then
-    cleanup_uploaded_calibration_fixtures
-
-    fail \
-      "Unable to upload canonical TEST calibration fixture"
-  fi
-
-  UPLOADED_CALIBRATION_KEYS+=(
-    "$object_key"
-  )
-done
+echo "===== INSTALL CANONICAL TEST CALIBRATION D1 ROWS ====="
 
 echo \
-  "PASS: 3 canonical TEST R2 calibration objects uploaded"
+  "Canonical TEST calibration R2 objects were pre-staged before destructive reset."
 
+echo
 
 CALIBRATION_RESET_SQL="
 INSERT INTO water_meter_calibrations (
@@ -2419,8 +2634,6 @@ if ! d1_json \
   "$CALIBRATION_RESET_SQL" \
   >/dev/null
 then
-  cleanup_uploaded_calibration_fixtures
-
   fail \
     "Unable to insert canonical TEST calibration rows"
 fi
@@ -2452,37 +2665,32 @@ d1_json \
 echo "PASS: TEST PII runtime state reset"
 echo
 
-echo "===== RESET TEST OPS D1 ====="
+echo "===== RESET TEST OPS D1 — MAINTENANCE REMAINS ON ====="
 
 d1_json \
   "$OPS_DB" \
   "
   DELETE FROM restore_execution_journal;
 
-  DELETE FROM system_operations_control;
-
-  INSERT INTO system_operations_control (
-    id,
-    maintenance_enabled,
-    maintenance_reason,
-    restore_execution_id,
-    enabled_at,
-    disabled_at,
-    updated_at
-  )
-  VALUES (
-    1,
-    0,
-    NULL,
-    NULL,
-    NULL,
-    NULL,
-    '$NOW_ISO'
-  );
+  UPDATE system_operations_control
+  SET
+    maintenance_enabled = 1,
+    maintenance_reason =
+      '$RESET_GUARD_REASON',
+    restore_execution_id = NULL,
+    enabled_at =
+      COALESCE(
+        enabled_at,
+        '$NOW_ISO'
+      ),
+    disabled_at = NULL,
+    updated_at = '$NOW_ISO'
+  WHERE id = 1;
   " \
   >/dev/null
 
-echo "PASS: TEST OPS D1 reset"
+echo \
+  "PASS: TEST OPS D1 reset; maintenance remains ON"
 echo
 
 echo "===== POST-RESET VERIFICATION ====="
@@ -3595,7 +3803,9 @@ POST_OPS_JSON="$(
         SELECT COUNT(*)
         FROM system_operations_control
         WHERE id = 1
-          AND maintenance_enabled = 0
+          AND maintenance_enabled = 1
+          AND maintenance_reason =
+            '$RESET_GUARD_REASON'
           AND restore_execution_id IS NULL
       ) = 1
         AS operations_control;
@@ -3605,7 +3815,7 @@ POST_OPS_JSON="$(
 printf '%s' "$POST_OPS_JSON" \
   | json_first_row \
   | assert_boolean_row \
-      "OPS D1 post-reset state"
+      "OPS D1 guarded post-reset state"
 
 POST_R2_COUNT="$(
   r2_object_count 2>/dev/null \
@@ -3613,36 +3823,85 @@ POST_R2_COUNT="$(
 )"
 
 echo \
-  "R2 object_count after reset (advisory): $POST_R2_COUNT"
+  "R2 object_count before stale cleanup (advisory): $POST_R2_COUNT"
 
-if [[ "$POST_R2_COUNT" != "0" ]]; then
-  echo \
-    "WARN: aggregate R2 object_count is non-zero or unavailable after reset."
+echo
 
-  echo \
-    "WARN: direct absence probes are authoritative for reset-managed certificate objects."
-fi
+
+echo "===== CLEANUP STALE TEST R2 CERTIFICATE OBJECTS ====="
+
+STALE_DELETED_OBJECTS=0
 
 while IFS= read -r object_key; do
   [[ -n "$object_key" ]] || continue
 
+  case "$object_key" in
+    water-meters/*)
+      ;;
+    *)
+      fail \
+        "Unexpected TEST R2 object key prefix during stale cleanup: $object_key"
+      ;;
+  esac
+
+  case "$object_key" in
+    "$CAL_KEY_EXPIRED"|"$CAL_KEY_NEAR_EXPIRY"|"$CAL_KEY_VALID")
+      echo \
+        "Keeping current canonical TEST R2 object: $object_key"
+      continue
+      ;;
+  esac
+
   echo \
-    "Checking deleted TEST R2 object: $object_key"
+    "Removing stale TEST R2 certificate object: $object_key"
 
   if r2_object_state "$object_key"; then
-    fail \
-      "TEST R2 certificate object still exists after reset: $object_key"
+
+    if ! "${WRANGLER_CMD[@]}" r2 object delete \
+      "${R2_BUCKET}/${object_key}" \
+      --remote \
+      --jurisdiction "$R2_JURISDICTION" \
+      "${WRANGLER_AUTH_ARGS[@]}" \
+      --force
+    then
+      fail \
+        "Unable to delete stale TEST R2 object: $object_key"
+    fi
+
+    STALE_DELETED_OBJECTS=$(
+      (STALE_DELETED_OBJECTS + 1)
+    )
+
   else
     probe_status=$?
 
     case "$probe_status" in
       1)
         echo \
-          "PASS: TEST R2 certificate object is absent"
+          "NOTICE: stale TEST R2 object was already absent"
         ;;
       *)
         fail \
-          "Unable to verify TEST R2 object absence because the direct R2 probe failed: $object_key"
+          "Unable to probe stale TEST R2 object: $object_key"
+        ;;
+    esac
+  fi
+
+
+  if r2_object_state "$object_key"; then
+    fail \
+      "Stale TEST R2 object still exists after deletion: $object_key"
+  else
+    probe_status=$?
+
+    case "$probe_status" in
+      1)
+        echo \
+          "PASS: stale TEST R2 object is absent"
+        ;;
+      *)
+        fail \
+          "Unable to verify stale TEST R2 object deletion: $object_key"
         ;;
     esac
   fi
@@ -3654,9 +3913,90 @@ done < <(
 )
 
 echo \
-  "PASS: all reset-managed TEST R2 certificate objects are absent"
+  "Deleted stale TEST R2 objects: $STALE_DELETED_OBJECTS"
+
+echo "PASS: stale reset-managed TEST R2 cleanup"
 echo
 
+
+echo "===== RELEASE TEST MAINTENANCE GUARD ====="
+
+
+OPS_RELEASE_ELIGIBLE_JSON="$(
+  d1_json \
+    "$OPS_DB" \
+    "
+    SELECT
+      (
+        SELECT COUNT(*)
+        FROM system_operations_control
+        WHERE id = 1
+          AND maintenance_enabled = 1
+          AND maintenance_reason =
+            '$RESET_GUARD_REASON'
+          AND restore_execution_id IS NULL
+      ) = 1
+        AS maintenance_release_eligible;
+    "
+)"
+
+printf '%s' "$OPS_RELEASE_ELIGIBLE_JSON" \
+  | json_first_row \
+  | assert_boolean_row \
+      "TEST maintenance release eligibility"
+
+
+d1_json \
+  "$OPS_DB" \
+  "
+  UPDATE system_operations_control
+  SET
+    maintenance_enabled = 0,
+    maintenance_reason = NULL,
+    restore_execution_id = NULL,
+    disabled_at = '$NOW_ISO',
+    updated_at = '$NOW_ISO'
+  WHERE id = 1
+    AND maintenance_enabled = 1
+    AND maintenance_reason =
+      '$RESET_GUARD_REASON'
+    AND restore_execution_id IS NULL;
+  " \
+  >/dev/null
+
+
+FINAL_OPS_JSON="$(
+  d1_json \
+    "$OPS_DB" \
+    "
+    SELECT
+      (
+        SELECT COUNT(*)
+        FROM system_operations_control
+        WHERE id = 1
+          AND maintenance_enabled = 0
+          AND maintenance_reason IS NULL
+          AND restore_execution_id IS NULL
+          AND disabled_at IS NOT NULL
+      ) = 1
+        AS maintenance_guard_released;
+    "
+)"
+
+printf '%s' "$FINAL_OPS_JSON" \
+  | json_first_row \
+  | assert_boolean_row \
+      "TEST maintenance guard released"
+
+echo "PASS: TEST maintenance guard released"
+
+
+RESET_MAINTENANCE_ARMED=0
+RESET_DESTRUCTIVE_STARTED=0
+
+trap - EXIT
+
+echo
 echo "============================================"
 echo "PASS: MVX TEST ENVIRONMENT RESET COMPLETED"
 echo "============================================"
