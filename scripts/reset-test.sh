@@ -4,6 +4,7 @@ set -euo pipefail
 
 PROFILE="mvx-system"
 CI_MODE="${MVX_TEST_RESET_CI:-false}"
+LOCAL_WRANGLER_VERSION="4.136.3"
 CI_WRANGLER_VERSION="4.130.0"
 
 MAIN_DB="housing-test-db"
@@ -90,7 +91,8 @@ require_command npx
 
 WRANGLER_CMD=(
   npx
-  wrangler
+  --yes
+  "wrangler@${LOCAL_WRANGLER_VERSION}"
 )
 
 WRANGLER_AUTH_ARGS=(
