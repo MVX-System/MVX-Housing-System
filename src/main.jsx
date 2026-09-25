@@ -94,16 +94,16 @@ createRoot(
       <FacilityProvider>
         <EnvironmentThemeBridge>
           <EnvironmentPwaBridge>
-            <AppInstallPrompt />
             <PublicContactProvider>
-            <AuthProvider>
-            <ModeProvider>
-              <RouterProvider
-                router={router}
-              />
-            </ModeProvider>
-            </AuthProvider>
-          </PublicContactProvider>
+              <AuthProvider>
+                <AppInstallPrompt />
+                <ModeProvider>
+                  <RouterProvider
+                    router={router}
+                  />
+                </ModeProvider>
+              </AuthProvider>
+            </PublicContactProvider>
           </EnvironmentPwaBridge>
         </EnvironmentThemeBridge>
       </FacilityProvider>

@@ -9,6 +9,10 @@ import {
 } from "../context/FacilityContext";
 
 import {
+  useAuth,
+} from "../context/AuthContext";
+
+import {
   useTranslation,
 } from "../i18n";
 
@@ -84,8 +88,25 @@ export default function AppInstallPrompt() {
   } = useFacility();
 
   const {
+    token,
+    me,
+    loading: authLoading,
+  } = useAuth();
+
+  const {
     t,
   } = useTranslation();
+
+  const canOfferInstall =
+    !authLoading &&
+    Boolean(
+      token &&
+      me?.user
+    ) &&
+    Number(
+      me?.user
+        ?.must_change_password
+    ) !== 1;
 
   const resolvedEnvironment =
     resolvePwaEnvironment(
@@ -126,6 +147,10 @@ export default function AppInstallPrompt() {
     );
 
   useEffect(() => {
+    if (!canOfferInstall) {
+      return undefined;
+    }
+
     const completeKey =
       completedKey(
         resolvedEnvironment
@@ -206,11 +231,17 @@ export default function AppInstallPrompt() {
       );
       unsubscribe();
     };
-  }, [resolvedEnvironment]);
+  }, [
+    resolvedEnvironment,
+    canOfferInstall,
+  ]);
 
   if (
-    !visible &&
-    !guideOpen
+    !canOfferInstall ||
+    (
+      !visible &&
+      !guideOpen
+    )
   ) {
     return null;
   }
