@@ -1997,7 +1997,7 @@ export default function SettingsPage() {
     accessEnvironment === "production";
 
   const accessUrl =
-    "https://mvx-housing-system-test.pages.dev";
+    "https://mvx-housing-system.pages.dev";
 
   const {
     saving,
