@@ -27,6 +27,10 @@ import {
   api,
 } from "../services/api";
 
+import {
+  resolvePwaEnvironment,
+} from "../services/pwaEnvironment";
+
 
 const TEXT = {
   en: {
@@ -164,6 +168,19 @@ const TEXT = {
       "Notification settings could not be updated.",
     notificationsIosHint:
       "On iPhone or iPad, add MVX to the Home Screen and open it from there before enabling notifications.",
+
+    accessSection:
+      "Access from another device",
+    accessTitle:
+      "Open MVX on another device",
+    accessHint:
+      "Scan the QR code with a smartphone camera to open MVX. The QR code contains only the MVX address; it does not contain a Nick, password, or Recovery Code.",
+    accessShow:
+      "Show QR code",
+    accessHide:
+      "Hide QR code",
+    accessQrAlt:
+      "QR code for opening MVX",
 
     backupSection:
       "Backup management",
@@ -658,6 +675,19 @@ const TEXT = {
     notificationsIosHint:
       "iPhone vai iPad ierīcē vispirms pievienojiet MVX sākuma ekrānam un atveriet to no sākuma ekrāna.",
 
+    accessSection:
+      "Piekļuve no citas ierīces",
+    accessTitle:
+      "Atvērt MVX citā ierīcē",
+    accessHint:
+      "Noskenējiet QR kodu ar viedtālruņa kameru, lai atvērtu MVX. QR kods satur tikai MVX adresi; tajā nav Nick, paroles vai Recovery Code.",
+    accessShow:
+      "Rādīt QR kodu",
+    accessHide:
+      "Paslēpt QR kodu",
+    accessQrAlt:
+      "QR kods MVX atvēršanai",
+
     backupSection:
       "Rezerves kopiju pārvaldība",
     backupTitle:
@@ -1150,6 +1180,19 @@ const TEXT = {
       "Не удалось изменить настройки уведомлений.",
     notificationsIosHint:
       "На iPhone или iPad сначала добавьте MVX на экран «Домой» и откройте приложение с этого экрана.",
+
+    accessSection:
+      "Доступ с другого устройства",
+    accessTitle:
+      "Открыть MVX на другом устройстве",
+    accessHint:
+      "Отсканируйте QR-код камерой смартфона, чтобы открыть MVX. QR-код содержит только адрес MVX; Nick, пароль и Recovery Code в него не входят.",
+    accessShow:
+      "Показать QR-код",
+    accessHide:
+      "Скрыть QR-код",
+    accessQrAlt:
+      "QR-код для открытия MVX",
 
     backupSection:
       "Резервное копирование",
@@ -1941,6 +1984,20 @@ export default function SettingsPage() {
         TEXT.en,
       [language]
     );
+
+  const [
+    accessQrOpen,
+    setAccessQrOpen,
+  ] = useState(false);
+
+  const accessEnvironment =
+    resolvePwaEnvironment();
+
+  const showAccessQr =
+    accessEnvironment === "production";
+
+  const accessUrl =
+    "https://mvx-housing-system-test.pages.dev";
 
   const {
     saving,
@@ -6465,6 +6522,123 @@ export default function SettingsPage() {
                 </div>
               </div>
             )}
+          </section>
+        )}
+
+      {!mustChangePassword &&
+        showAccessQr && (
+          <section
+            style={{
+              ...sectionStyle,
+              marginBottom: 18,
+            }}
+          >
+            <SectionHeader
+              eyebrow={
+                text.accessSection
+              }
+              title={
+                text.accessTitle
+              }
+              hint={
+                text.accessHint
+              }
+            />
+
+            <div
+              style={{
+                display: "grid",
+                gap: 12,
+              }}
+            >
+              <div
+                style={{
+                  ...noticeStyle,
+                  wordBreak:
+                    "break-all",
+                }}
+              >
+                <strong>
+                  MVX TEST
+                </strong>
+                <br />
+                {accessUrl}
+              </div>
+
+              <button
+                type="button"
+                aria-expanded={
+                  accessQrOpen
+                }
+                onClick={() =>
+                  setAccessQrOpen(
+                    (current) =>
+                      !current
+                  )
+                }
+                style={
+                  primaryButtonStyle(
+                    false
+                  )
+                }
+              >
+                {accessQrOpen
+                  ? text.accessHide
+                  : text.accessShow}
+              </button>
+
+              {accessQrOpen && (
+                <div
+                  style={{
+                    display: "grid",
+                    justifyItems:
+                      "center",
+                    gap: 12,
+                    padding: 16,
+                    border:
+                      "1px solid var(--border)",
+                    borderRadius: 14,
+                    background:
+                      "var(--surface-soft)",
+                  }}
+                >
+                  <img
+                    src="/qr/mvx-prod.png"
+                    alt={
+                      text.accessQrAlt
+                    }
+                    style={{
+                      display: "block",
+                      width:
+                        "min(320px, 100%)",
+                      height: "auto",
+                      padding: 10,
+                      boxSizing:
+                        "border-box",
+                      borderRadius: 12,
+                      background:
+                        "#ffffff",
+                    }}
+                  />
+
+                  <div
+                    style={{
+                      maxWidth: 420,
+                      color:
+                        "var(--text)",
+                      fontSize: 12,
+                      lineHeight: 1.45,
+                      textAlign:
+                        "center",
+                      wordBreak:
+                        "break-all",
+                    }}
+                  >
+                    {accessUrl}
+                  </div>
+                </div>
+              )}
+            </div>
           </section>
         )}
 
