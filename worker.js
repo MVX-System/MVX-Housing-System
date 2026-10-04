@@ -17243,6 +17243,267 @@ Router.register(
 );
 
 // =========================
+// CHANGE NICK
+// PR-9H.1:
+// Self-service account identifier change.
+//
+// Security properties:
+// - authenticated active user only;
+// - unavailable while temporary password change is pending;
+// - current password confirmation required;
+// - failed password confirmations are rate-limited;
+// - Nick uses an ASCII-safe login identifier contract;
+// - Nick uniqueness is case-insensitive;
+// - all active sessions are revoked after success;
+// - Nick values are not written into security-audit details.
+// =========================
+Router.register(
+  "POST",
+  "/api/account/change-nick",
+  async (ctx) => {
+    const authenticatedUser =
+      await Auth.requireUser(ctx);
+
+    if (!authenticatedUser) {
+      return {
+        error:
+          "unauthorized"
+      };
+    }
+
+    const body =
+      await ctx.request
+        .json()
+        .catch(() => ({}));
+
+    const newNick =
+      String(
+        body.new_nick || ""
+      ).trim();
+
+    const currentPassword =
+      String(
+        body.current_password || ""
+      );
+
+    if (
+      !newNick ||
+      !currentPassword
+    ) {
+      return {
+        error:
+          "missing_nick_fields"
+      };
+    }
+
+    if (
+      !/^[A-Za-z0-9._-]{3,40}$/
+        .test(newNick)
+    ) {
+      return {
+        error:
+          "invalid_nick_format"
+      };
+    }
+
+    const user =
+      await ctx.env.DB.prepare(`
+        SELECT
+          id,
+          nick,
+          password_hash,
+          is_active,
+          must_change_password
+        FROM users
+        WHERE id = ?
+        LIMIT 1
+      `)
+        .bind(
+          authenticatedUser.user_id
+        )
+        .first();
+
+    if (
+      !user ||
+      Number(user.is_active) !== 1
+    ) {
+      return {
+        error:
+          "user_not_found_or_inactive"
+      };
+    }
+
+    if (
+      Number(
+        user.must_change_password
+      ) === 1
+    ) {
+      return {
+        error:
+          "password_change_required"
+      };
+    }
+
+    if (
+      String(
+        user.nick || ""
+      ).toLowerCase() ===
+      newNick.toLowerCase()
+    ) {
+      return {
+        error:
+          "new_nick_same_as_current"
+      };
+    }
+
+    const nickLimitKey =
+      `user:${authenticatedUser.user_id}`;
+
+    const nickLimitCheck =
+      await SecurityRateLimit.check({
+        env: ctx.env,
+        scope:
+          "change-nick-failure",
+        key:
+          nickLimitKey,
+        windowSeconds:
+          PASSWORD_CHANGE_FAILURE_LIMIT
+            .windowSeconds,
+      });
+
+    if (!nickLimitCheck.allowed) {
+      return SecurityRateLimit.response(
+        nickLimitCheck
+      );
+    }
+
+    const currentPasswordCheck =
+      await verifyPassword(
+        currentPassword,
+        user.password_hash || ""
+      );
+
+    if (!currentPasswordCheck.ok) {
+      const failureResult =
+        await SecurityRateLimit.recordFailure({
+          env: ctx.env,
+          scope:
+            "change-nick-failure",
+          key:
+            nickLimitKey,
+          ...PASSWORD_CHANGE_FAILURE_LIMIT,
+        });
+
+      if (!failureResult.allowed) {
+        return SecurityRateLimit.response(
+          failureResult
+        );
+      }
+
+      return {
+        error:
+          "current_password_incorrect"
+      };
+    }
+
+    await SecurityRateLimit.clear({
+      env: ctx.env,
+      scope:
+        "change-nick-failure",
+      key:
+        nickLimitKey,
+    });
+
+    const duplicateNick =
+      await ctx.env.DB.prepare(`
+        SELECT id
+        FROM users
+        WHERE nick = ? COLLATE NOCASE
+          AND id <> ?
+        LIMIT 1
+      `)
+        .bind(
+          newNick,
+          user.id
+        )
+        .first();
+
+    if (duplicateNick) {
+      return {
+        error:
+          "user_nick_exists"
+      };
+    }
+
+    const nowIso =
+      new Date().toISOString();
+
+    const mutationResults =
+      await ctx.env.DB.batch([
+        ctx.env.DB.prepare(`
+          UPDATE users
+          SET
+            nick = ?,
+            updated_at = ?
+          WHERE id = ?
+            AND is_active = 1
+        `)
+          .bind(
+            newNick,
+            nowIso,
+            user.id
+          ),
+
+        ctx.env.DB.prepare(`
+          UPDATE auth_sessions
+          SET revoked_at = ?
+          WHERE user_id = ?
+            AND revoked_at IS NULL
+        `)
+          .bind(
+            nowIso,
+            user.id
+          ),
+      ]);
+
+    if (
+      Number(
+        mutationResults?.[0]
+          ?.meta
+          ?.changes || 0
+      ) !== 1
+    ) {
+      return {
+        error:
+          "nick_change_failed"
+      };
+    }
+
+    await SecurityAudit.recordSafe(
+      ctx,
+      {
+        actorUserId:
+          authenticatedUser.user_id,
+        action:
+          "auth.nick_change",
+        targetType:
+          "user",
+        targetId:
+          String(user.id),
+        details: {
+          sessions_revoked: true,
+        },
+      }
+    );
+
+    return {
+      ok: true,
+      sessions_revoked: true
+    };
+  }
+);
+
+// =========================
 // ACCOUNT RECOVERY RESET
 // PR-1D.3:
 //

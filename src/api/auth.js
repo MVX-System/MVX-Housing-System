@@ -52,6 +52,25 @@ export function changePassword(
   );
 }
 
+export function changeNick(
+  newNick,
+  currentPassword
+) {
+  return api(
+    "/api/account/change-nick",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        new_nick:
+          newNick,
+        current_password:
+          currentPassword,
+      }),
+    }
+  );
+}
+
+
 export function accountRecoveryReset(
   nick,
   recoveryCode,
