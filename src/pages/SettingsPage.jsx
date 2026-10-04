@@ -12,6 +12,10 @@ import useChangePassword
   from "../hooks/useChangePassword";
 
 import {
+  changeNick,
+} from "../api/auth";
+
+import {
   useTranslation,
 } from "../i18n";
 
@@ -69,6 +73,39 @@ const TEXT = {
       "Temporary password",
     mandatoryMessage:
       "For security, replace the temporary password before using the rest of MVX System.",
+
+    accountSection:
+      "Account",
+    nickTitle:
+      "Nick",
+    nickHint:
+      "Use 3–40 Latin letters, numbers, dot, underscore or hyphen. Changing Nick signs you out on all devices.",
+    currentNick:
+      "Current Nick",
+    newNick:
+      "New Nick",
+    nickPassword:
+      "Current password",
+    changeNick:
+      "Change Nick",
+    changingNick:
+      "Changing Nick...",
+    nickRequired:
+      "Enter a new Nick and your current password.",
+    nickInvalid:
+      "Nick must contain 3–40 characters: A–Z, a–z, 0–9, dot, underscore or hyphen.",
+    nickExists:
+      "This Nick is already in use.",
+    nickSame:
+      "The new Nick must be different from the current Nick.",
+    nickIncorrectPassword:
+      "The current password is incorrect.",
+    nickPasswordFirst:
+      "Change the temporary password before changing Nick.",
+    nickChangeFailed:
+      "The Nick could not be changed.",
+    nickChanged:
+      "Nick changed successfully. Sign in again using the new Nick.",
 
     contactSection:
       "Public contact",
@@ -576,6 +613,39 @@ const TEXT = {
     mandatoryMessage:
       "Drošības nolūkā pirms pārējās MVX System izmantošanas nomainiet pagaidu paroli.",
 
+    accountSection:
+      "Konts",
+    nickTitle:
+      "Nick",
+    nickHint:
+      "Izmantojiet 3–40 latīņu burtus, ciparus, punktu, pasvītrojumu vai defisi. Mainot Nick, tiks pārtrauktas sesijas visās ierīcēs.",
+    currentNick:
+      "Pašreizējais Nick",
+    newNick:
+      "Jaunais Nick",
+    nickPassword:
+      "Pašreizējā parole",
+    changeNick:
+      "Mainīt Nick",
+    changingNick:
+      "Nick tiek mainīts...",
+    nickRequired:
+      "Ievadiet jauno Nick un pašreizējo paroli.",
+    nickInvalid:
+      "Nick jābūt 3–40 rakstzīmes garam un drīkst saturēt tikai latīņu burtus, ciparus, punktu, pasvītrojumu vai defisi.",
+    nickExists:
+      "Šis Nick jau tiek izmantots.",
+    nickSame:
+      "Jaunajam Nick jāatšķiras no pašreizējā.",
+    nickIncorrectPassword:
+      "Pašreizējā parole nav pareiza.",
+    nickPasswordFirst:
+      "Pirms Nick maiņas nomainiet pagaidu paroli.",
+    nickChangeFailed:
+      "Nick neizdevās nomainīt.",
+    nickChanged:
+      "Nick ir veiksmīgi nomainīts. Piesakieties vēlreiz, izmantojot jauno Nick.",
+
     contactSection:
       "Publiskā kontaktinformācija",
     contactTitle:
@@ -1081,6 +1151,39 @@ const TEXT = {
       "Временный пароль",
     mandatoryMessage:
       "В целях безопасности замените временный пароль до использования остальных разделов MVX System.",
+
+    accountSection:
+      "Учётная запись",
+    nickTitle:
+      "Nick",
+    nickHint:
+      "Используйте 3–40 латинских букв, цифр, точку, подчёркивание или дефис. После смены Nick все сеансы будут завершены.",
+    currentNick:
+      "Текущий Nick",
+    newNick:
+      "Новый Nick",
+    nickPassword:
+      "Текущий пароль",
+    changeNick:
+      "Изменить Nick",
+    changingNick:
+      "Изменение Nick...",
+    nickRequired:
+      "Введите новый Nick и текущий пароль.",
+    nickInvalid:
+      "Nick должен содержать 3–40 символов: A–Z, a–z, 0–9, точку, подчёркивание или дефис.",
+    nickExists:
+      "Этот Nick уже используется.",
+    nickSame:
+      "Новый Nick должен отличаться от текущего.",
+    nickIncorrectPassword:
+      "Текущий пароль указан неверно.",
+    nickPasswordFirst:
+      "Сначала замените временный пароль, затем измените Nick.",
+    nickChangeFailed:
+      "Не удалось изменить Nick.",
+    nickChanged:
+      "Nick успешно изменён. Войдите снова, используя новый Nick.",
 
     contactSection:
       "Публичные контакты",
@@ -1956,6 +2059,7 @@ export default function SettingsPage() {
   const {
     me,
     refreshMe,
+    logout,
   } = useAuth();
 
   const {
@@ -2027,6 +2131,36 @@ export default function SettingsPage() {
     validationError,
     setValidationError,
   ] = useState("");
+
+  const [
+    newNick,
+    setNewNick,
+  ] = useState(
+    me?.user?.nick || ""
+  );
+
+  const [
+    nickPassword,
+    setNickPassword,
+  ] = useState("");
+
+  const [
+    nickSaving,
+    setNickSaving,
+  ] = useState(false);
+
+  const [
+    nickError,
+    setNickError,
+  ] = useState("");
+
+  useEffect(() => {
+    setNewNick(
+      me?.user?.nick || ""
+    );
+  }, [
+    me?.user?.nick,
+  ]);
 
   const [
     contactLoading,
@@ -3034,6 +3168,104 @@ export default function SettingsPage() {
         );
       } finally {
         setContactSaving(false);
+      }
+    };
+
+
+  const handleNickSubmit =
+    async (event) => {
+      event.preventDefault();
+
+      setNickError("");
+
+      const normalizedNick =
+        String(newNick || "")
+          .trim();
+
+      if (
+        !normalizedNick ||
+        !nickPassword
+      ) {
+        setNickError(
+          text.nickRequired
+        );
+        return;
+      }
+
+      if (
+        !/^[A-Za-z0-9._-]{3,40}$/
+          .test(normalizedNick)
+      ) {
+        setNickError(
+          text.nickInvalid
+        );
+        return;
+      }
+
+      if (
+        normalizedNick
+          .toLowerCase() ===
+        String(
+          me?.user?.nick || ""
+        ).toLowerCase()
+      ) {
+        setNickError(
+          text.nickSame
+        );
+        return;
+      }
+
+      setNickSaving(true);
+
+      try {
+        const result =
+          await changeNick(
+            normalizedNick,
+            nickPassword
+          );
+
+        if (
+          !result ||
+          result.error ||
+          result.ok === false
+        ) {
+          const messages = {
+            missing_nick_fields:
+              text.nickRequired,
+            invalid_nick_format:
+              text.nickInvalid,
+            user_nick_exists:
+              text.nickExists,
+            new_nick_same_as_current:
+              text.nickSame,
+            current_password_incorrect:
+              text.nickIncorrectPassword,
+            password_change_required:
+              text.nickPasswordFirst,
+          };
+
+          throw new Error(
+            messages[
+              result?.error
+            ] ||
+            text.nickChangeFailed
+          );
+        }
+
+        setNickPassword("");
+
+        window.alert(
+          text.nickChanged
+        );
+
+        await logout();
+      } catch (changeError) {
+        setNickError(
+          changeError?.message ||
+          text.nickChangeFailed
+        );
+      } finally {
+        setNickSaving(false);
       }
     };
 
@@ -6743,6 +6975,135 @@ export default function SettingsPage() {
               </button>
             </div>
           )}
+        </section>
+      )}
+
+      {!mustChangePassword && (
+        <section
+          style={{
+            ...sectionStyle,
+            marginBottom: 18,
+          }}
+        >
+          <SectionHeader
+            eyebrow={
+              text.accountSection
+            }
+            title={
+              text.nickTitle
+            }
+            hint={
+              text.nickHint
+            }
+          />
+
+          <form
+            onSubmit={
+              handleNickSubmit
+            }
+            style={{
+              display: "grid",
+              gap: 14,
+            }}
+          >
+            <label
+              style={{
+                display: "grid",
+                gap: 6,
+              }}
+            >
+              <span>
+                {text.currentNick}
+              </span>
+
+              <input
+                type="text"
+                value={
+                  me?.user?.nick || ""
+                }
+                readOnly
+                style={{
+                  ...inputStyle,
+                  opacity: 0.75,
+                }}
+              />
+            </label>
+
+            <label
+              style={{
+                display: "grid",
+                gap: 6,
+              }}
+            >
+              <span>
+                {text.newNick}
+              </span>
+
+              <input
+                type="text"
+                value={newNick}
+                onChange={(event) => {
+                  setNewNick(
+                    event.target.value
+                  );
+                  setNickError("");
+                }}
+                autoComplete="username"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                maxLength={40}
+                style={inputStyle}
+              />
+            </label>
+
+            <label
+              style={{
+                display: "grid",
+                gap: 6,
+              }}
+            >
+              <span>
+                {text.nickPassword}
+              </span>
+
+              <input
+                type="password"
+                value={nickPassword}
+                onChange={(event) => {
+                  setNickPassword(
+                    event.target.value
+                  );
+                  setNickError("");
+                }}
+                autoComplete="current-password"
+                style={inputStyle}
+              />
+            </label>
+
+            {nickError && (
+              <div
+                role="alert"
+                style={errorStyle}
+              >
+                {nickError}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={nickSaving}
+              style={
+                primaryButtonStyle(
+                  nickSaving
+                )
+              }
+            >
+              {nickSaving
+                ? text.changingNick
+                : text.changeNick}
+            </button>
+          </form>
         </section>
       )}
 
