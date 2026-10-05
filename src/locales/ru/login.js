@@ -1,12 +1,12 @@
 const login = {
   title: "MVX System",
-  nick: "Nick",
+  nick: "Имя для входа (Nick)",
   facilityFallback: "Объект",
   email: "Электронная почта",
   password: "Пароль",
   login: "Войти",
   recoverAccess: "Восстановить доступ",
-  forgotCredentials: "Забыли Ник или пароль?",
+  forgotCredentials: "Забыли имя для входа (Nick) или пароль?",
   haveRecoveryCode: "У меня есть Recovery Code",
 
   landing: {
@@ -23,8 +23,8 @@ const login = {
   },
 
   help: {
-    title: "Забыли Ник или пароль?",
-    message: "Если Вы забыли Ник или пароль, обратитесь к Администратору MVX.",
+    title: "Забыли имя для входа (Nick) или пароль?",
+    message: "Если Вы забыли имя для входа (Nick) или пароль, обратитесь к Администратору MVX.",
     email: "Электронная почта",
     phone: "Телефон",
     close: "Закрыть",
@@ -47,8 +47,8 @@ const login = {
   },
   recovery: {
     title: "Восстановление доступа",
-    description: "Введите свой Nick, Recovery Code, выданный администратором, и новый пароль.",
-    nick: "Nick",
+    description: "Введите своё имя для входа (Nick), Recovery Code, выданный администратором, и новый пароль.",
+    nick: "Имя для входа (Nick)",
     code: "Recovery Code",
     newPassword: "Новый пароль",
     confirmPassword: "Повторите новый пароль",
