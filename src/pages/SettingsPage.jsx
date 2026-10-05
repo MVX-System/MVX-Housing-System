@@ -77,13 +77,13 @@ const TEXT = {
     accountSection:
       "Account",
     nickTitle:
-      "Nick",
+      "Sign-in name (Nick)",
     nickHint:
       "Use 3–40 Latin letters, numbers, dot, underscore or hyphen. Changing Nick signs you out on all devices.",
     currentNick:
-      "Current Nick",
+      "Current sign-in name (Nick)",
     newNick:
-      "New Nick",
+      "New sign-in name (Nick)",
     nickPassword:
       "Current password",
     changeNick:
@@ -616,13 +616,13 @@ const TEXT = {
     accountSection:
       "Konts",
     nickTitle:
-      "Nick",
+      "Pieslēgšanās vārds (Nick)",
     nickHint:
       "Izmantojiet 3–40 latīņu burtus, ciparus, punktu, pasvītrojumu vai defisi. Mainot Nick, tiks pārtrauktas sesijas visās ierīcēs.",
     currentNick:
-      "Pašreizējais Nick",
+      "Pašreizējais pieslēgšanās vārds (Nick)",
     newNick:
-      "Jaunais Nick",
+      "Jaunais pieslēgšanās vārds (Nick)",
     nickPassword:
       "Pašreizējā parole",
     changeNick:
@@ -1155,13 +1155,13 @@ const TEXT = {
     accountSection:
       "Учётная запись",
     nickTitle:
-      "Nick",
+      "Имя для входа (Nick)",
     nickHint:
       "Используйте 3–40 латинских букв, цифр, точку, подчёркивание или дефис. После смены Nick все сеансы будут завершены.",
     currentNick:
-      "Текущий Nick",
+      "Текущее имя для входа (Nick)",
     newNick:
-      "Новый Nick",
+      "Новое имя для входа (Nick)",
     nickPassword:
       "Текущий пароль",
     changeNick:

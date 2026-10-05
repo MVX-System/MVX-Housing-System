@@ -1,12 +1,12 @@
 const login = {
   title: "MVX System",
-  nick: "Nick",
+  nick: "Pieslēgšanās vārds (Nick)",
   facilityFallback: "Objekts",
   email: "E-pasts",
   password: "Parole",
   login: "Pieslēgties",
   recoverAccess: "Atjaunot piekļuvi",
-  forgotCredentials: "Aizmirsāt Nick vai paroli?",
+  forgotCredentials: "Aizmirsāt pieslēgšanās vārdu (Nick) vai paroli?",
   haveRecoveryCode: "Man ir Recovery Code",
 
   landing: {
@@ -23,8 +23,8 @@ const login = {
   },
 
   help: {
-    title: "Aizmirsāt Nick vai paroli?",
-    message: "Ja esat aizmirsis Nick vai paroli, sazinieties ar MVX administratoru.",
+    title: "Aizmirsāt pieslēgšanās vārdu (Nick) vai paroli?",
+    message: "Ja esat aizmirsis pieslēgšanās vārdu (Nick) vai paroli, sazinieties ar MVX administratoru.",
     email: "E-pasts",
     phone: "Tālrunis",
     close: "Aizvērt",
@@ -47,8 +47,8 @@ const login = {
   },
   recovery: {
     title: "Piekļuves atjaunošana",
-    description: "Ievadiet savu Nick, administratora izsniegto Recovery Code un jauno paroli.",
-    nick: "Nick",
+    description: "Ievadiet savu pieslēgšanās vārdu (Nick), administratora izsniegto Recovery Code un jauno paroli.",
+    nick: "Pieslēgšanās vārds (Nick)",
     code: "Recovery Code",
     newPassword: "Jaunā parole",
     confirmPassword: "Atkārtojiet jauno paroli",

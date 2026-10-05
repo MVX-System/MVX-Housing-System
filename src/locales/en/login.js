@@ -1,12 +1,12 @@
 const login = {
   title: "MVX System",
-  nick: "Nick",
+  nick: "Sign-in name (Nick)",
   facilityFallback: "Facility",
   email: "Email",
   password: "Password",
   login: "Login",
   recoverAccess: "Recover access",
-  forgotCredentials: "Forgot your Nick or password?",
+  forgotCredentials: "Forgot your sign-in name (Nick) or password?",
   haveRecoveryCode: "I have a Recovery Code",
 
   landing: {
@@ -23,8 +23,8 @@ const login = {
   },
 
   help: {
-    title: "Forgot your Nick or password?",
-    message: "If you have forgotten your Nick or password, please contact the MVX Administrator.",
+    title: "Forgot your sign-in name (Nick) or password?",
+    message: "If you have forgotten your sign-in name (Nick) or password, please contact the MVX Administrator.",
     email: "Email",
     phone: "Phone",
     close: "Close",
@@ -47,8 +47,8 @@ const login = {
   },
   recovery: {
     title: "Account recovery",
-    description: "Enter your Nick, the Recovery Code provided by the administrator, and a new password.",
-    nick: "Nick",
+    description: "Enter your sign-in name (Nick), the Recovery Code provided by the administrator, and a new password.",
+    nick: "Sign-in name (Nick)",
     code: "Recovery Code",
     newPassword: "New password",
     confirmPassword: "Confirm new password",
