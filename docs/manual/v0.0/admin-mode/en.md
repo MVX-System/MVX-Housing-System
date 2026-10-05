@@ -26,6 +26,8 @@ The manual describes only user-visible actions in MVX V0.0. It does not replace 
 
 > **Important:** administrative actions can affect multiple users and historical data. Before saving, always check the selected facility, user, apartment, meter, period, and environment.
 
+A local manual search is available at the top of the **User Manual** page. Enter at least two characters or briefly describe what you want to do, for example **forgot password**, **create user**, or **change Nick**. The search runs inside MVX without sending the query to external services. Select a result to open the relevant section.
+
 ## 2. Opening MVX and selecting a language
 
 Open the MVX address provided for the facility being administered. On the login page, check:
@@ -42,7 +44,9 @@ The language can be selected in the **Language** field. MVX V0.0 is available in
 
 ### 3.1. Signing in
 
-1. In the login form, enter your user identifier in the **Nick** field.
+**Nick — a nickname (sign-in name)** used together with the password to sign in to MVX. Nick is not the user's first or last name.
+
+1. In the login form, enter your **Nick**.
 2. Enter your password in the **Password** field.
 3. Select **Login**.
 
@@ -353,11 +357,37 @@ To enable them, select **Enable urgent notifications**, allow notifications in t
 
 The permission applies to the specific browser and device. If notifications are blocked in browser or operating-system settings, MVX cannot enable them itself.
 
+### 15.3. Changing Nick
+
+An administrator can change the Nick of their own account in **Settings**, under **Account**.
+
+1. Enter the new **Nick**.
+2. Enter the **Current password**.
+3. Select **Change Nick**.
+
+Nick must contain 3–40 characters and may use only Latin letters A–Z/a–z, numbers, a dot, underscore, or hyphen. The new Nick must differ from the current Nick and cannot be the same as another user's Nick.
+
+After a successful Nick change, MVX ends all active sessions on all devices. Sign in again using the new Nick and the current password.
+
+If the account still requires the temporary password to be changed, complete that step first. Nick change becomes available afterwards.
+
+> This function changes only the current administrator account's Nick. It does not replace administrative actions for other users in **Users**.
+
+### 15.4. Opening MVX on another device with a QR code
+
+In **Settings**, open the **Access from another device** section.
+
+1. Select **Show QR code**.
+2. On the other smartphone, open the camera and scan the QR code.
+3. Open the suggested MVX link and sign in with your Nick and password.
+
+The QR code contains only the MVX address. It does not contain a Nick, password, or Recovery Code.
+
 ## 16. Mobile use, PWA installation, and push notifications
 
 MVX can be used in a browser. On a supported device, it can also be installed as a PWA for faster access.
 
-If the login page displays **Install MVX on this device?**, select **Install** and follow the displayed instructions. Selecting **Not now** postpones installation.
+After signing in to MVX and, when required, completing the mandatory temporary-password change, the system may display **Install MVX on this device?**. Select **Install** and follow the displayed instructions. Selecting **Not now** postpones installation. The installation offer is not shown before sign-in or while the mandatory temporary-password change is still pending.
 
 ### 16.1. iPhone or iPad
 

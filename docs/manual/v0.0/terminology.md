@@ -12,7 +12,7 @@ It records approved user-facing terms and their active UI sources. It does not r
 - Preserve capitalization used by the active UI when quoting a label.
 - Use natural grammatical forms in explanatory prose when the term is not being quoted as a UI label.
 - Keep code identifiers and routes in backticks.
-- Keep `Nick` and `Recovery Code` unchanged when referring to the corresponding input labels or credential names.
+- Keep `Nick` and `Recovery Code` unchanged when referring to the corresponding input labels or credential names. In explanatory prose, define `Nick` on first use with the localized wording from the terminology table below.
 - Do not derive terminology from `.bak`, `.OLD`, or `.copy` files.
 - Latvian is the controlling language for explanatory meaning; active UI labels remain controlling for click-by-click instructions.
 
@@ -57,6 +57,7 @@ The Resident navigation label and Resident page title for water are intentionall
 | Sign-in form title | Pieslēgšanās | Login | Вход | `login.form.title` |
 | Sign-in action | Pieslēgties | Login | Войти | `login.login` |
 | User credential label | Nick | Nick | Nick | `login.nick`; preserve exactly |
+| Nick in explanatory prose | Nick — pseidonīms (pieslēgšanās vārds) | Nick — nickname (sign-in name) | Nick — псевдоним (имя для входа) | Use on the first explanatory mention; when quoting the UI, preserve the displayed UI text exactly |
 | Password | Parole | Password | Пароль | `login.password` |
 | Temporary password | Pagaidu parole | Temporary password | Временный пароль | `SettingsPage.jsx` page-local `TEXT` |
 | Recover access | Atjaunot piekļuvi | Recover access | Восстановить доступ | `login.recoverAccess` |

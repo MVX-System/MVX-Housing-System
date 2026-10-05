@@ -93,8 +93,8 @@ const CONCEPTS = [
   {
     key: "nick-change",
     targets: {
-      resident: "manual-section-10",
-      admin: "manual-section-15",
+      resident: "manual-section-10-3",
+      admin: "manual-section-15-3",
     },
     aliases: {
       lv: [
