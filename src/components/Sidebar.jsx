@@ -288,7 +288,16 @@ export default function Sidebar({
             ? 0
             : -280,
           height: "100dvh",
-          overflow: "hidden",
+          overflowX: "hidden",
+          overflowY: isMobile
+            ? "auto"
+            : "hidden",
+          WebkitOverflowScrolling:
+            isMobile
+              ? "touch"
+              : "auto",
+          overscrollBehaviorY:
+            "contain",
           zIndex: 1800,
           transition:
             "left 0.25s ease",
