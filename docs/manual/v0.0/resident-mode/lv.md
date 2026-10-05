@@ -22,6 +22,8 @@ MVX palīdz apskatīt ar lietotāja dzīvokli saistīto informāciju, iesniegt �
 
 Rokasgrāmata apraksta tikai MVX V0.0 redzamās lietotāja darbības. Tā neaizstāj juridiskos dokumentus un neapraksta plānotas nākamo versiju funkcijas.
 
+Rokasgrāmatas lapas augšdaļā ir pieejama lokāla meklēšana. Ievadiet vismaz divas rakstzīmes vai īsi aprakstiet uzdevumu, piemēram, **aizmirsu paroli**, **mainīt Nick** vai **ūdens rādījumi**. Meklēšana notiek MVX iekšienē, nenosūtot vaicājumu ārējiem servisiem. Izvēlieties atrasto rezultātu, lai pārietu uz atbilstošo sadaļu.
+
 ## 2. MVX atvēršana un valodas izvēle
 
 Atveriet savam objektam paredzēto MVX adresi. Pieslēgšanās lapā pārbaudiet:
@@ -38,7 +40,9 @@ Valodu var izvēlēties laukā **Valoda**. MVX V0.0 ir pieejama latviešu, angļ
 
 ### 3.1. Pieslēgšanās
 
-1. Pieslēgšanās formā laukā **Nick** ievadiet savu lietotāja identifikatoru.
+**Nick — pseidonīms (pieslēgšanās vārds)**, ko kopā ar paroli izmanto, lai pieslēgtos MVX. Nick nav lietotāja vārds vai uzvārds.
+
+1. Pieslēgšanās formā ievadiet savu **Nick**.
 2. Laukā **Parole** ievadiet paroli.
 3. Izvēlieties **Pieslēgties**.
 
@@ -201,11 +205,35 @@ Lai tos ieslēgtu:
 
 Atļauja attiecas uz konkrēto pārlūkprogrammu un ierīci. Ja paziņojumi ir bloķēti pārlūkprogrammas vai operētājsistēmas iestatījumos, MVX tos nevar ieslēgt pats.
 
+### 10.3. Nick maiņa
+
+Lietotājs var patstāvīgi mainīt savu Nick sadaļas **Iestatījumi** blokā **Konts**.
+
+1. Ievadiet jauno **Nick**.
+2. Ievadiet **Pašreizējo paroli**.
+3. Izvēlieties **Mainīt Nick**.
+
+Nick jābūt 3–40 rakstzīmes garam un drīkst saturēt tikai latīņu burtus A–Z/a–z, ciparus, punktu, pasvītrojumu vai defisi. Jaunajam Nick jāatšķiras no pašreizējā, un tas nedrīkst sakrist ar cita lietotāja Nick.
+
+Pēc sekmīgas Nick maiņas MVX pārtrauc visas aktīvās sesijas visās ierīcēs. Pieslēdzieties vēlreiz, izmantojot jauno Nick un pašreizējo paroli.
+
+Ja kontam vēl ir spēkā obligātā pagaidu paroles nomaiņa, vispirms pabeidziet to. Pēc tam Nick maiņa kļūs pieejama.
+
+### 10.4. MVX atvēršana citā ierīcē ar QR kodu
+
+Sadaļā **Iestatījumi** atveriet bloku **Piekļuve no citas ierīces**.
+
+1. Izvēlieties **Rādīt QR kodu**.
+2. Otrā viedtālrunī atveriet kameru un noskenējiet QR kodu.
+3. Atveriet piedāvāto MVX saiti un pieslēdzieties ar savu Nick un paroli.
+
+QR kods satur tikai MVX adresi. Tajā nav Nick, paroles vai Recovery Code.
+
 ## 11. Mobilā lietošana, PWA instalēšana un push paziņojumi
 
 MVX var izmantot pārlūkprogrammā. Atbalstītā ierīcē to var pievienot arī kā PWA ātrākai piekļuvei.
 
-Ja pieslēgšanās lapā parādās piedāvājums **Instalēt MVX šajā ierīcē?**, izvēlieties **Instalēt** un izpildiet parādīto instrukciju. Izvēloties **Ne tagad**, instalēšanu var atlikt.
+Pēc pieslēgšanās MVX un, ja nepieciešams, obligātās pagaidu paroles nomaiņas pabeigšanas sistēma var parādīt piedāvājumu **Instalēt MVX šajā ierīcē?**. Izvēlieties **Instalēt** un izpildiet parādīto instrukciju. Izvēloties **Ne tagad**, instalēšanu var atlikt. Pirms pieslēgšanās un obligātās pagaidu paroles nomaiņas laikā instalēšanas piedāvājums netiek rādīts.
 
 ### 11.1. iPhone vai iPad
 
