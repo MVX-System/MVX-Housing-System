@@ -57,7 +57,7 @@ The Resident navigation label and Resident page title for water are intentionall
 | Sign-in form title | Pieslēgšanās | Login | Вход | `login.form.title` |
 | Sign-in action | Pieslēgties | Login | Войти | `login.login` |
 | User credential label | Pieslēgšanās vārds (Nick) | Sign-in name (Nick) | Имя для входа (Nick) | `login.nick`; localized user-facing label; technical credential name remains `Nick` |
-| Nick in explanatory prose | Nick — pseidonīms (pieslēgšanās vārds) | Nick — nickname (sign-in name) | Nick — псевдоним (имя для входа) | Use on the first explanatory mention; when quoting the UI, preserve the displayed UI text exactly |
+| Nick in explanatory prose | Nick — pseidonīms (pieslēgšanās vārds), ko kopā ar paroli izmanto, lai pieslēgtos MVX. Nick nav lietotāja vārds vai uzvārds, un lietotājs to var mainīt personīgajos iestatījumos. | Nick — a nickname (sign-in name) used together with the password to sign in to MVX. Nick is not the user’s first or last name and can be changed by the user in Personal Settings. | Nick — псевдоним (имя для входа), который используется вместе с паролем для входа в MVX. Nick не является именем или фамилией пользователя и может быть изменён пользователем в личных настройках. | Use the complete definition on the first explanatory mention; when quoting the UI, preserve the displayed UI text exactly |
 | Password | Parole | Password | Пароль | `login.password` |
 | Temporary password | Pagaidu parole | Temporary password | Временный пароль | `SettingsPage.jsx` page-local `TEXT` |
 | Recover access | Atjaunot piekļuvi | Recover access | Восстановить доступ | `login.recoverAccess` |
