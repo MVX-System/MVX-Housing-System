@@ -1883,6 +1883,8 @@ VALUES
     'TEST', 'SYNTH-HW'
   );
 
+DELETE FROM facility_administration_contacts;
+
 DELETE FROM facility_profile;
 
 INSERT INTO facility_profile (
@@ -1915,6 +1917,48 @@ VALUES (
   '$NOW_ISO',
   '$NOW_ISO'
 );
+
+INSERT INTO facility_administration_contacts (
+  facility_id,
+  role_key,
+  display_name,
+  phone,
+  email,
+  updated_by,
+  created_at,
+  updated_at
+)
+VALUES
+  (
+    1,
+    'manager',
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    '$NOW_ISO',
+    '$NOW_ISO'
+  ),
+  (
+    1,
+    'accountant',
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    '$NOW_ISO',
+    '$NOW_ISO'
+  ),
+  (
+    1,
+    'heating_technician',
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    '$NOW_ISO',
+    '$NOW_ISO'
+  );
 
 DELETE FROM public_contact_settings;
 
@@ -3436,6 +3480,30 @@ POST_MAIN_JSON="$(
           AND country = 'Latvia'
       ) = 1
         AS facility,
+
+      (
+        SELECT COUNT(*)
+        FROM facility_administration_contacts
+      ) = 3
+        AS administration_contacts_count,
+
+      (
+        SELECT COUNT(*)
+        FROM facility_administration_contacts
+        WHERE facility_id = 1
+          AND role_key IN (
+            'manager',
+            'accountant',
+            'heating_technician'
+          )
+          AND display_name IS NULL
+          AND phone IS NULL
+          AND email IS NULL
+          AND updated_by IS NULL
+          AND created_at IS NOT NULL
+          AND updated_at IS NOT NULL
+      ) = 3
+        AS administration_contacts_baseline,
 
       (
         SELECT COUNT(*)
