@@ -17,6 +17,8 @@ const LOCALE_MAP = {
   ru: "ru-RU",
 };
 
+import { localizeMeterLocation } from "../utils/meterLocation";
+
 const TEXT = {
   lv: {
     title: "Ūdens rādījumu vēsture",
@@ -524,8 +526,7 @@ export default function WaterReadingsPage() {
               "",
 
             [text.exportLocation]:
-              row.local_label ||
-              "",
+              localizeMeterLocation(row.local_label, language),
 
             [text.exportReading]:
               formatReadingNumber(

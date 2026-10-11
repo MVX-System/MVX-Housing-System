@@ -23,6 +23,8 @@ const LOCALE_MAP = {
   ru: "ru-RU",
 };
 
+import { localizeMeterLocation } from "../utils/meterLocation";
+
 const TEXT = {
   lv: {
     title: "Ūdens skaitītāju pārvaldība",
@@ -2063,6 +2065,7 @@ export default function WaterMetersPage() {
                             meter.id
                           }
                           meter={meter}
+                          language={language}
                           formatType={
                             formatType
                           }
@@ -2208,7 +2211,7 @@ export default function WaterMetersPage() {
                           fontSize: 11,
                         }}
                       >
-                        {meter.location}
+                        {localizeMeterLocation(meter.location, language)}
                       </div>
                     </td>
 
@@ -4122,6 +4125,7 @@ function StatusBadge({
 
 function MeterCard({
   meter,
+  language,
   formatType,
   formatDate,
   formatReading,
@@ -4180,7 +4184,7 @@ function MeterCard({
               fontWeight: 600,
             }}
           >
-            {meter.location}
+            {localizeMeterLocation(meter.location, language)}
           </div>
 
         </div>
