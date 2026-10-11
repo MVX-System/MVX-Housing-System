@@ -60,13 +60,13 @@ jobs:
       - name: Check out immutable TEST reset source
         uses: actions/checkout@v4
         with:
-          ref: 8973d5221aad6509fda69908a751907e4676799b
+          ref: 53d554bc23439c12ea98bd4134a0269031b61803
           fetch-depth: 1
 
       - name: Verify immutable TEST reset source
         shell: bash
         env:
-          EXPECTED_RESET_COMMIT: 8973d5221aad6509fda69908a751907e4676799b
+          EXPECTED_RESET_COMMIT: 53d554bc23439c12ea98bd4134a0269031b61803
         run: |
           set -euo pipefail
 
