@@ -36,6 +36,83 @@ import {
 } from "../services/pwaEnvironment";
 
 
+const ADMINISTRATION_CONTACT_ROLE_KEYS =
+  Object.freeze([
+    "manager",
+    "accountant",
+    "heating_technician",
+  ]);
+
+function createEmptyAdministrationContacts() {
+  return ADMINISTRATION_CONTACT_ROLE_KEYS.map(
+    (roleKey) => ({
+      role_key:
+        roleKey,
+      display_name:
+        "",
+      phone:
+        "",
+      email:
+        "",
+    })
+  );
+}
+
+function normalizeAdministrationContactsForForm(
+  rows
+) {
+  const sourceRows =
+    Array.isArray(rows)
+      ? rows
+      : [];
+
+  const byRole =
+    new Map(
+      sourceRows.map(
+        (row) => [
+          String(
+            row?.role_key ||
+            ""
+          ).trim(),
+          row,
+        ]
+      )
+    );
+
+  return ADMINISTRATION_CONTACT_ROLE_KEYS.map(
+    (roleKey) => {
+      const row =
+        byRole.get(
+          roleKey
+        );
+
+      return {
+        role_key:
+          roleKey,
+
+        display_name:
+          String(
+            row?.display_name ||
+            ""
+          ),
+
+        phone:
+          String(
+            row?.phone ||
+            ""
+          ),
+
+        email:
+          String(
+            row?.email ||
+            ""
+          ),
+      };
+    }
+  );
+}
+
+
 const TEXT = {
   en: {
     title: "Settings",
@@ -133,6 +210,43 @@ const TEXT = {
       "Enter a valid e-mail address.",
     invalidContactPhone:
       "Enter a valid phone number.",
+
+    administrationSection:
+      "Administration contacts",
+    administrationTitle:
+      "Resident Dashboard contacts",
+    administrationHint:
+      "These contacts are shown to signed-in residents in Contact Administration. Leave optional fields empty when they are not used.",
+    administrationManager:
+      "Manager",
+    administrationAccountant:
+      "Accountant",
+    administrationHeatingTechnician:
+      "Heating Technician",
+    administrationName:
+      "Name",
+    administrationPhone:
+      "Phone",
+    administrationEmail:
+      "E-mail",
+    saveAdministrationContacts:
+      "Save administration contacts",
+    savingAdministrationContacts:
+      "Saving administration contacts...",
+    loadingAdministrationContacts:
+      "Loading administration contacts...",
+    administrationContactsSaved:
+      "Administration contacts saved.",
+    administrationContactsLoadFailed:
+      "Administration contacts could not be loaded.",
+    administrationContactsSaveFailed:
+      "Administration contacts could not be saved.",
+    invalidAdministrationName:
+      "A contact name must not exceed 120 characters.",
+    invalidAdministrationPhone:
+      "Enter a valid phone number or leave the field empty.",
+    invalidAdministrationEmail:
+      "Enter a valid e-mail address or leave the field empty.",
 
     waterSection:
       "Water readings",
@@ -673,6 +787,43 @@ const TEXT = {
     invalidContactPhone:
       "Ievadiet derīgu tālruņa numuru.",
 
+    administrationSection:
+      "Administrācijas kontakti",
+    administrationTitle:
+      "Kontakti iedzīvotāju galvenajā lapā",
+    administrationHint:
+      "Šie kontakti tiek rādīti autorizētiem iedzīvotājiem sadaļā Sazināties ar administrāciju. Neizmantotos izvēles laukus var atstāt tukšus.",
+    administrationManager:
+      "Pārvaldnieks",
+    administrationAccountant:
+      "Grāmatvede",
+    administrationHeatingTechnician:
+      "Siltumtehniķis",
+    administrationName:
+      "Vārds, uzvārds",
+    administrationPhone:
+      "Tālrunis",
+    administrationEmail:
+      "E-pasts",
+    saveAdministrationContacts:
+      "Saglabāt administrācijas kontaktus",
+    savingAdministrationContacts:
+      "Administrācijas kontakti tiek saglabāti...",
+    loadingAdministrationContacts:
+      "Tiek ielādēti administrācijas kontakti...",
+    administrationContactsSaved:
+      "Administrācijas kontakti ir saglabāti.",
+    administrationContactsLoadFailed:
+      "Neizdevās ielādēt administrācijas kontaktus.",
+    administrationContactsSaveFailed:
+      "Neizdevās saglabāt administrācijas kontaktus.",
+    invalidAdministrationName:
+      "Kontaktpersonas vārds nedrīkst pārsniegt 120 rakstzīmes.",
+    invalidAdministrationPhone:
+      "Ievadiet derīgu tālruņa numuru vai atstājiet lauku tukšu.",
+    invalidAdministrationEmail:
+      "Ievadiet derīgu e-pasta adresi vai atstājiet lauku tukšu.",
+
     waterSection:
       "Ūdens skaitītāju rādījumi",
     waterTitle:
@@ -1211,6 +1362,43 @@ const TEXT = {
       "Введите корректный e-mail.",
     invalidContactPhone:
       "Введите корректный номер телефона.",
+
+    administrationSection:
+      "Контакты администрации",
+    administrationTitle:
+      "Контакты на главной странице жильца",
+    administrationHint:
+      "Эти контакты отображаются авторизованным жильцам в блоке «Связаться с администрацией». Неиспользуемые необязательные поля можно оставить пустыми.",
+    administrationManager:
+      "Управляющий",
+    administrationAccountant:
+      "Бухгалтер",
+    administrationHeatingTechnician:
+      "Теплотехник",
+    administrationName:
+      "Имя и фамилия",
+    administrationPhone:
+      "Телефон",
+    administrationEmail:
+      "E-mail",
+    saveAdministrationContacts:
+      "Сохранить контакты администрации",
+    savingAdministrationContacts:
+      "Сохранение контактов администрации...",
+    loadingAdministrationContacts:
+      "Загрузка контактов администрации...",
+    administrationContactsSaved:
+      "Контакты администрации сохранены.",
+    administrationContactsLoadFailed:
+      "Не удалось загрузить контакты администрации.",
+    administrationContactsSaveFailed:
+      "Не удалось сохранить контакты администрации.",
+    invalidAdministrationName:
+      "Имя контактного лица не должно превышать 120 символов.",
+    invalidAdministrationPhone:
+      "Введите корректный номер телефона или оставьте поле пустым.",
+    invalidAdministrationEmail:
+      "Введите корректный e-mail или оставьте поле пустым.",
 
     waterSection:
       "Показания воды",
@@ -2193,6 +2381,62 @@ export default function SettingsPage() {
   ] = useState("");
 
   const [
+    administrationContacts,
+    setAdministrationContacts,
+  ] = useState(
+    createEmptyAdministrationContacts
+  );
+
+  const [
+    administrationContactsLoading,
+    setAdministrationContactsLoading,
+  ] = useState(false);
+
+  const [
+    administrationContactsSaving,
+    setAdministrationContactsSaving,
+  ] = useState(false);
+
+  const [
+    administrationContactsError,
+    setAdministrationContactsError,
+  ] = useState("");
+
+  const [
+    administrationContactsSuccess,
+    setAdministrationContactsSuccess,
+  ] = useState("");
+
+  const updateAdministrationContact =
+    (
+      roleKey,
+      field,
+      value
+    ) => {
+      setAdministrationContacts(
+        (current) =>
+          current.map(
+            (contact) =>
+              contact.role_key ===
+              roleKey
+                ? {
+                    ...contact,
+                    [field]: value,
+                  }
+                : contact
+          )
+      );
+
+      setAdministrationContactsError(
+        ""
+      );
+
+      setAdministrationContactsSuccess(
+        ""
+      );
+    };
+
+  const [
     waterLoading,
     setWaterLoading,
   ] = useState(false);
@@ -2696,6 +2940,72 @@ export default function SettingsPage() {
   useEffect(() => {
     if (
       !isAdmin ||
+      mode !== "admin" ||
+      mustChangePassword
+    ) {
+      return;
+    }
+
+    const loadAdministrationContacts =
+      async () => {
+        setAdministrationContactsLoading(
+          true
+        );
+
+        setAdministrationContactsError(
+          ""
+        );
+
+        try {
+          const result =
+            await api(
+              "/api/admin/administration-contacts"
+            );
+
+          if (
+            !result ||
+            result.error ||
+            result.ok === false
+          ) {
+            throw new Error(
+              result?.error ||
+              "administration_contacts_load_failed"
+            );
+          }
+
+          setAdministrationContacts(
+            normalizeAdministrationContactsForForm(
+              result.contacts
+            )
+          );
+        } catch (loadError) {
+          console.error(
+            "LOAD ADMINISTRATION CONTACTS ERROR:",
+            loadError
+          );
+
+          setAdministrationContactsError(
+            text.administrationContactsLoadFailed
+          );
+        } finally {
+          setAdministrationContactsLoading(
+            false
+          );
+        }
+      };
+
+    loadAdministrationContacts();
+  }, [
+    isAdmin,
+    mode,
+    mustChangePassword,
+    text.administrationContactsLoadFailed,
+  ]);
+
+
+  useEffect(() => {
+    if (
+      !isAdmin ||
       mustChangePassword
     ) {
       return;
@@ -3168,6 +3478,152 @@ export default function SettingsPage() {
         );
       } finally {
         setContactSaving(false);
+      }
+    };
+
+
+  const handleAdministrationContactsSubmit =
+    async (event) => {
+      event.preventDefault();
+
+      setAdministrationContactsError(
+        ""
+      );
+
+      setAdministrationContactsSuccess(
+        ""
+      );
+
+      const normalized =
+        administrationContacts.map(
+          (contact) => ({
+            role_key:
+              contact.role_key,
+
+            display_name:
+              String(
+                contact.display_name ||
+                ""
+              ).trim(),
+
+            phone:
+              String(
+                contact.phone ||
+                ""
+              ).trim(),
+
+            email:
+              String(
+                contact.email ||
+                ""
+              ).trim(),
+          })
+        );
+
+      for (
+        const contact
+        of normalized
+      ) {
+        if (
+          contact.display_name.length >
+          120
+        ) {
+          setAdministrationContactsError(
+            text.invalidAdministrationName
+          );
+          return;
+        }
+
+        if (contact.phone) {
+          const digitCount =
+            contact.phone
+              .replace(
+                /\D/g,
+                ""
+              )
+              .length;
+
+          if (
+            contact.phone.length > 40 ||
+            !/^[+0-9\s().-]+$/.test(
+              contact.phone
+            ) ||
+            digitCount < 5 ||
+            digitCount > 20
+          ) {
+            setAdministrationContactsError(
+              text.invalidAdministrationPhone
+            );
+            return;
+          }
+        }
+
+        if (
+          contact.email &&
+          (
+            contact.email.length > 254 ||
+            !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
+              contact.email
+            )
+          )
+        ) {
+          setAdministrationContactsError(
+            text.invalidAdministrationEmail
+          );
+          return;
+        }
+      }
+
+      setAdministrationContactsSaving(
+        true
+      );
+
+      try {
+        const result =
+          await api(
+            "/api/admin/administration-contacts",
+            {
+              method: "POST",
+              body: JSON.stringify({
+                contacts:
+                  normalized,
+              }),
+            }
+          );
+
+        if (
+          !result ||
+          result.error ||
+          result.ok === false
+        ) {
+          throw new Error(
+            result?.error ||
+            "administration_contacts_save_failed"
+          );
+        }
+
+        setAdministrationContacts(
+          normalizeAdministrationContactsForForm(
+            result.contacts
+          )
+        );
+
+        setAdministrationContactsSuccess(
+          text.administrationContactsSaved
+        );
+      } catch (saveError) {
+        console.error(
+          "SAVE ADMINISTRATION CONTACTS ERROR:",
+          saveError
+        );
+
+        setAdministrationContactsError(
+          text.administrationContactsSaveFailed
+        );
+      } finally {
+        setAdministrationContactsSaving(
+          false
+        );
       }
     };
 
@@ -4473,6 +4929,188 @@ export default function SettingsPage() {
                   {contactSaving
                     ? text.savingContact
                     : text.saveContact}
+                </button>
+              </form>
+            )}
+          </section>
+        )}
+
+      {isAdmin &&
+        mode === "admin" &&
+        !mustChangePassword && (
+          <section
+            style={{
+              ...sectionStyle,
+              marginBottom: 18,
+            }}
+          >
+            <SectionHeader
+              eyebrow={
+                text.administrationSection
+              }
+              title={
+                text.administrationTitle
+              }
+              hint={
+                text.administrationHint
+              }
+            />
+
+            {administrationContactsLoading ? (
+              <div
+                style={noticeStyle}
+              >
+                {text.loadingAdministrationContacts}
+              </div>
+            ) : (
+              <form
+                onSubmit={
+                  handleAdministrationContactsSubmit
+                }
+                style={{
+                  display: "grid",
+                  gap: 16,
+                }}
+              >
+                {administrationContacts.map(
+                  (contact) => {
+                    const roleTitle =
+                      contact.role_key ===
+                      "manager"
+                        ? text.administrationManager
+                        : contact.role_key ===
+                            "accountant"
+                          ? text.administrationAccountant
+                          : text.administrationHeatingTechnician;
+
+                    return (
+                      <div
+                        key={
+                          contact.role_key
+                        }
+                        style={{
+                          border:
+                            "1px solid var(--border)",
+                          borderRadius: 12,
+                          padding: 14,
+                        }}
+                      >
+                        <div
+                          style={{
+                            color:
+                              "var(--text-h)",
+                            fontWeight: 800,
+                            fontSize: 13,
+                            marginBottom: 12,
+                          }}
+                        >
+                          {roleTitle}
+                        </div>
+
+                        <div
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns:
+                              "repeat(auto-fit,minmax(210px,1fr))",
+                            gap: 12,
+                          }}
+                        >
+                          <TextField
+                            label={
+                              text.administrationName
+                            }
+                            value={
+                              contact.display_name
+                            }
+                            onChange={(
+                              event
+                            ) =>
+                              updateAdministrationContact(
+                                contact.role_key,
+                                "display_name",
+                                event.target.value
+                              )
+                            }
+                            autoComplete="name"
+                          />
+
+                          <TextField
+                            label={
+                              text.administrationPhone
+                            }
+                            value={
+                              contact.phone
+                            }
+                            onChange={(
+                              event
+                            ) =>
+                              updateAdministrationContact(
+                                contact.role_key,
+                                "phone",
+                                event.target.value
+                              )
+                            }
+                            type="tel"
+                            autoComplete="tel"
+                          />
+
+                          <TextField
+                            label={
+                              text.administrationEmail
+                            }
+                            value={
+                              contact.email
+                            }
+                            onChange={(
+                              event
+                            ) =>
+                              updateAdministrationContact(
+                                contact.role_key,
+                                "email",
+                                event.target.value
+                              )
+                            }
+                            type="email"
+                            autoComplete="email"
+                          />
+                        </div>
+                      </div>
+                    );
+                  }
+                )}
+
+                {administrationContactsError && (
+                  <div
+                    role="alert"
+                    style={errorStyle}
+                  >
+                    {administrationContactsError}
+                  </div>
+                )}
+
+                {administrationContactsSuccess && (
+                  <div
+                    role="status"
+                    style={successStyle}
+                  >
+                    {administrationContactsSuccess}
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={
+                    administrationContactsSaving
+                  }
+                  style={
+                    primaryButtonStyle(
+                      administrationContactsSaving
+                    )
+                  }
+                >
+                  {administrationContactsSaving
+                    ? text.savingAdministrationContacts
+                    : text.saveAdministrationContacts}
                 </button>
               </form>
             )}
