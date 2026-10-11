@@ -24,8 +24,8 @@ import {
 } from "../context/FacilityContext";
 
 import {
-  usePublicContact,
-} from "../context/PublicContactContext";
+  useAdministrationContacts,
+} from "../context/AdministrationContactsContext";
 
 import {
   useTranslation,
@@ -51,12 +51,15 @@ import {
 const CONTACTS = [
   {
     roleKey: "manager",
+    apiRoleKey: "manager",
   },
   {
     roleKey: "accountant",
+    apiRoleKey: "accountant",
   },
   {
     roleKey: "heatingTechnician",
+    apiRoleKey: "heating_technician",
   },
 ];
 
@@ -120,9 +123,10 @@ export default function DashboardPage() {
   ] = useState([]);
 
   const {
-    publicContact,
-    refreshPublicContact,
-  } = usePublicContact();
+    contacts:
+      administrationContactRows,
+    refreshAdministrationContacts,
+  } = useAdministrationContacts();
 
   const [
     residentLoading,
@@ -154,10 +158,10 @@ export default function DashboardPage() {
       return;
     }
 
-    refreshPublicContact();
+    refreshAdministrationContacts();
   }, [
     mode,
-    refreshPublicContact,
+    refreshAdministrationContacts,
   ]);
 
   useEffect(() => {
@@ -289,20 +293,37 @@ export default function DashboardPage() {
     useMemo(
       () =>
         CONTACTS.map(
-          (contact) =>
-            contact.roleKey ===
-            "manager"
-              ? {
-                  ...contact,
-                  phone:
-                    publicContact
-                      .support_phone,
-                }
-              : contact
+          (contact) => {
+            const source =
+              administrationContactRows
+                .find(
+                  (row) =>
+                    row.role_key ===
+                    contact.apiRoleKey
+                );
+
+            return {
+              ...contact,
+
+              name:
+                source
+                  ?.display_name ||
+                "",
+
+              phone:
+                source
+                  ?.phone ||
+                "",
+
+              email:
+                source
+                  ?.email ||
+                "",
+            };
+          }
         ),
       [
-        publicContact
-          .support_phone,
+        administrationContactRows,
       ]
     );
 
@@ -798,39 +819,6 @@ export default function DashboardPage() {
                     {facilityAddress || "—"}
                   </div>
 
-                  {publicContact
-                    .support_email && (
-
-                    <div
-                      style={{
-                        marginTop: 9,
-                      }}
-                    >
-                      <span
-                        style={{
-                          fontWeight: 700,
-                        }}
-                      >
-                        {t("dashboard.contacts.email")}:
-                      </span>{" "}
-
-                      <a
-                        href={`mailto:${publicContact.support_email}`}
-                        onClick={(event) =>
-                          event.stopPropagation()
-                        }
-                        style={{
-                          ...contactLink,
-                          marginTop: 0,
-                        }}
-                      >
-                        {publicContact
-                          .support_email}
-                      </a>
-                    </div>
-
-                  )}
-
                 </div>
 
                 <div
@@ -882,9 +870,39 @@ export default function DashboardPage() {
                             color:
                               "var(--text)",
                             fontSize: 11,
+                            lineHeight: 1.45,
                           }}
                         >
-                          {contact.name || "—"}
+                          {contact.name && (
+                            <div>
+                              {contact.name}
+                            </div>
+                          )}
+
+                          {contact.email && (
+                            <a
+                              href={`mailto:${contact.email}`}
+                              onClick={(event) =>
+                                event.stopPropagation()
+                              }
+                              style={{
+                                ...contactLink,
+                                marginTop:
+                                  contact.name
+                                    ? 3
+                                    : 0,
+                                overflowWrap:
+                                  "anywhere",
+                              }}
+                            >
+                              {contact.email}
+                            </a>
+                          )}
+
+                          {!contact.name &&
+                            !contact.email && (
+                              <span>—</span>
+                            )}
                         </div>
 
                         {contact.phone ? (

@@ -20,6 +20,10 @@ import {
   PublicContactProvider,
 } from "./context/PublicContactContext";
 
+import {
+  AdministrationContactsProvider,
+} from "./context/AdministrationContactsContext";
+
 import EnvironmentThemeBridge
   from "./context/EnvironmentThemeBridge";
 
@@ -96,12 +100,14 @@ createRoot(
           <EnvironmentPwaBridge>
             <PublicContactProvider>
               <AuthProvider>
-                <AppInstallPrompt />
-                <ModeProvider>
+                <AdministrationContactsProvider>
+                  <AppInstallPrompt />
+                  <ModeProvider>
                   <RouterProvider
                     router={router}
                   />
-                </ModeProvider>
+                  </ModeProvider>
+                </AdministrationContactsProvider>
               </AuthProvider>
             </PublicContactProvider>
           </EnvironmentPwaBridge>

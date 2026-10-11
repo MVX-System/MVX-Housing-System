@@ -11658,6 +11658,196 @@ async function getPublicContactSettings(env) {
 
 
 // =========================
+// FACILITY ADMINISTRATION CONTACTS
+// PR-9K:
+//
+// Operational contacts displayed only to authenticated MVX users.
+// These contacts are deliberately separate from public login/recovery
+// support contacts and from facility legal identity.
+// =========================
+
+const FACILITY_ADMINISTRATION_CONTACT_ROLES = [
+  "manager",
+  "accountant",
+  "heating_technician",
+];
+
+function normalizeAdministrationContactName(value) {
+  const normalized =
+    String(value ?? "")
+      .trim();
+
+  if (!normalized) {
+    return {
+      valid: true,
+      value: null,
+    };
+  }
+
+  if (normalized.length > 120) {
+    return {
+      valid: false,
+      value: null,
+    };
+  }
+
+  return {
+    valid: true,
+    value: normalized,
+  };
+}
+
+function normalizeAdministrationContactPhone(value) {
+  const normalized =
+    String(value ?? "")
+      .trim();
+
+  if (!normalized) {
+    return {
+      valid: true,
+      value: null,
+    };
+  }
+
+  if (
+    normalized.length > 40 ||
+    !/^[+0-9\s().-]+$/.test(
+      normalized
+    )
+  ) {
+    return {
+      valid: false,
+      value: null,
+    };
+  }
+
+  const digitCount =
+    (
+      normalized.match(
+        /\d/g
+      ) || []
+    ).length;
+
+  if (
+    digitCount < 5 ||
+    digitCount > 20
+  ) {
+    return {
+      valid: false,
+      value: null,
+    };
+  }
+
+  return {
+    valid: true,
+    value: normalized,
+  };
+}
+
+function normalizeAdministrationContactEmail(value) {
+  const normalized =
+    String(value ?? "")
+      .trim();
+
+  if (!normalized) {
+    return {
+      valid: true,
+      value: null,
+    };
+  }
+
+  if (
+    normalized.length > 254 ||
+    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
+      normalized
+    )
+  ) {
+    return {
+      valid: false,
+      value: null,
+    };
+  }
+
+  return {
+    valid: true,
+    value: normalized,
+  };
+}
+
+function emptyAdministrationContact(
+  roleKey
+) {
+  return {
+    role_key: roleKey,
+    display_name: null,
+    phone: null,
+    email: null,
+  };
+}
+
+async function getFacilityAdministrationContacts(
+  env
+) {
+  const result =
+    await env.DB.prepare(`
+      SELECT
+        role_key,
+        display_name,
+        phone,
+        email
+      FROM facility_administration_contacts
+      WHERE facility_id = 1
+      ORDER BY
+        CASE role_key
+          WHEN 'manager' THEN 1
+          WHEN 'accountant' THEN 2
+          WHEN 'heating_technician' THEN 3
+          ELSE 99
+        END
+    `).all();
+
+  const rows =
+    Array.isArray(
+      result?.results
+    )
+      ? result.results
+      : [];
+
+  const byRole =
+    new Map(
+      rows.map(
+        (row) => [
+          row.role_key,
+          {
+            role_key:
+              row.role_key,
+            display_name:
+              row.display_name ||
+              null,
+            phone:
+              row.phone ||
+              null,
+            email:
+              row.email ||
+              null,
+          },
+        ]
+      )
+    );
+
+  return FACILITY_ADMINISTRATION_CONTACT_ROLES.map(
+    (roleKey) =>
+      byRole.get(
+        roleKey
+      ) ||
+      emptyAdministrationContact(
+        roleKey
+      )
+  );
+}
+
+
+// =========================
 // FACILITY PROFILE
 // PR-2I:
 // Public read-only identity of the facility served by this environment.
@@ -14760,6 +14950,271 @@ Router.register(
   }
 );
 
+
+
+// =========================
+// FACILITY ADMINISTRATION CONTACTS
+// PR-9K:
+// - authenticated users may read operational administration contacts;
+// - only administrators may update them;
+// - contact values are intentionally excluded from security-audit details.
+// =========================
+
+Router.register(
+  "GET",
+  "/api/administration-contacts",
+  async (ctx) => {
+    const user =
+      await Auth.requireUser(
+        ctx
+      );
+
+    if (!user) {
+      return {
+        error: "unauthorized"
+      };
+    }
+
+    return {
+      ok: true,
+      contacts:
+        await getFacilityAdministrationContacts(
+          ctx.env
+        ),
+    };
+  }
+);
+
+Router.register(
+  "GET",
+  "/api/admin/administration-contacts",
+  async (ctx) => {
+    const admin =
+      await Auth.requireAdmin(
+        ctx
+      );
+
+    if (!admin) {
+      return {
+        error: "forbidden"
+      };
+    }
+
+    return {
+      ok: true,
+      contacts:
+        await getFacilityAdministrationContacts(
+          ctx.env
+        ),
+    };
+  }
+);
+
+Router.register(
+  "POST",
+  "/api/admin/administration-contacts",
+  async (ctx) => {
+    const admin =
+      await Auth.requireAdmin(
+        ctx
+      );
+
+    if (!admin) {
+      return {
+        error: "forbidden"
+      };
+    }
+
+    const body =
+      await ctx.request
+        .json()
+        .catch(() => ({}));
+
+    if (
+      !Array.isArray(
+        body.contacts
+      )
+    ) {
+      return {
+        error:
+          "invalid_administration_contacts"
+      };
+    }
+
+    if (
+      body.contacts.length !==
+      FACILITY_ADMINISTRATION_CONTACT_ROLES.length
+    ) {
+      return {
+        error:
+          "invalid_administration_contacts"
+      };
+    }
+
+    const seenRoles =
+      new Set();
+
+    const normalizedContacts =
+      [];
+
+    for (
+      const contact
+      of body.contacts
+    ) {
+      const roleKey =
+        String(
+          contact?.role_key ||
+          ""
+        ).trim();
+
+      if (
+        !FACILITY_ADMINISTRATION_CONTACT_ROLES.includes(
+          roleKey
+        ) ||
+        seenRoles.has(
+          roleKey
+        )
+      ) {
+        return {
+          error:
+            "invalid_administration_contact_role"
+        };
+      }
+
+      seenRoles.add(
+        roleKey
+      );
+
+      const displayName =
+        normalizeAdministrationContactName(
+          contact?.display_name
+        );
+
+      if (!displayName.valid) {
+        return {
+          error:
+            "invalid_administration_contact_name"
+        };
+      }
+
+      const phone =
+        normalizeAdministrationContactPhone(
+          contact?.phone
+        );
+
+      if (!phone.valid) {
+        return {
+          error:
+            "invalid_administration_contact_phone"
+        };
+      }
+
+      const email =
+        normalizeAdministrationContactEmail(
+          contact?.email
+        );
+
+      if (!email.valid) {
+        return {
+          error:
+            "invalid_administration_contact_email"
+        };
+      }
+
+      normalizedContacts.push({
+        role_key:
+          roleKey,
+        display_name:
+          displayName.value,
+        phone:
+          phone.value,
+        email:
+          email.value,
+      });
+    }
+
+    const nowIso =
+      new Date()
+        .toISOString();
+
+    const statements =
+      normalizedContacts.map(
+        (contact) =>
+          ctx.env.DB.prepare(`
+            INSERT INTO facility_administration_contacts (
+              facility_id,
+              role_key,
+              display_name,
+              phone,
+              email,
+              updated_by,
+              updated_at
+            )
+            VALUES (
+              1,
+              ?,
+              ?,
+              ?,
+              ?,
+              ?,
+              ?
+            )
+            ON CONFLICT (
+              facility_id,
+              role_key
+            )
+            DO UPDATE SET
+              display_name =
+                excluded.display_name,
+              phone =
+                excluded.phone,
+              email =
+                excluded.email,
+              updated_by =
+                excluded.updated_by,
+              updated_at =
+                excluded.updated_at
+          `).bind(
+            contact.role_key,
+            contact.display_name,
+            contact.phone,
+            contact.email,
+            admin.user_id,
+            nowIso
+          )
+      );
+
+    await ctx.env.DB.batch(
+      statements
+    );
+
+    await SecurityAudit.recordSafe(
+      ctx,
+      {
+        actorUserId:
+          admin.user_id,
+        action:
+          "admin.administration_contacts_update",
+        targetType:
+          "facility_administration_contacts",
+        targetId:
+          "1",
+        details: {
+          contact_roles_updated:
+            FACILITY_ADMINISTRATION_CONTACT_ROLES.length,
+        },
+      }
+    );
+
+    return {
+      ok: true,
+      contacts:
+        await getFacilityAdministrationContacts(
+          ctx.env
+        ),
+    };
+  }
+);
 
 
 // =========================
