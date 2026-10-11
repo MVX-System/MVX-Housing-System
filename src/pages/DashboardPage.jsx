@@ -899,14 +899,9 @@ export default function DashboardPage() {
                             </a>
                           )}
 
-                          {!contact.name &&
-                            !contact.email && (
-                              <span>—</span>
-                            )}
                         </div>
 
-                        {contact.phone ? (
-
+                        {contact.phone && (
                           <a
                             href={`tel:${contact.phone.replace(
                               /[^\d+]/g,
@@ -924,19 +919,6 @@ export default function DashboardPage() {
                           >
                             {contact.phone}
                           </a>
-
-                        ) : (
-
-                          <span
-                            style={{
-                              color:
-                                "var(--text)",
-                              fontSize: 11,
-                            }}
-                          >
-                            —
-                          </span>
-
                         )}
 
                       </div>
