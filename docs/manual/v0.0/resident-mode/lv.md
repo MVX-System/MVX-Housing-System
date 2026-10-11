@@ -40,7 +40,7 @@ Valodu var izvēlēties laukā **Valoda**. MVX V0.0 ir pieejama latviešu, angļ
 
 ### 3.1. Pieslēgšanās
 
-**Nick — pseidonīms (pieslēgšanās vārds)**, ko kopā ar paroli izmanto, lai pieslēgtos MVX. Nick nav lietotāja vārds vai uzvārds.
+**Nick — pseidonīms (pieslēgšanās vārds)**, ko kopā ar paroli izmanto, lai pieslēgtos MVX. Nick nav lietotāja vārds vai uzvārds, un lietotājs to var mainīt personīgajos iestatījumos.
 
 1. Pieslēgšanās formā ievadiet savu **Nick**.
 2. Laukā **Parole** ievadiet paroli.

@@ -149,7 +149,7 @@ The Resident Mode Manual must cover:
 7. water meter readings, collection-period states, submission, validation, and history;
 8. announcements and announcement details;
 9. Documents and the four public legal documents;
-10. Settings available to a resident, including password and urgent notifications;
+10. Settings available to a resident, including password, self-service Nick change, access from another device by QR code, and urgent notifications;
 11. mobile, PWA installation, and push-notification prerequisites;
 12. troubleshooting;
 13. support, contacts, and V0.0 limitations.
@@ -172,7 +172,7 @@ The Admin Mode Manual must cover:
 12. Announcement Management;
 13. Documents and the four public legal documents;
 14. administrative Settings: public contacts, collection period, backup management, and recovery/restore controls;
-15. personal Settings: password and urgent notifications;
+15. personal Settings: password, self-service Nick change, access from another device by QR code, and urgent notifications;
 16. mobile, PWA installation, and push-notification prerequisites;
 17. troubleshooting;
 18. support, contacts, and V0.0 limitations.
@@ -193,9 +193,7 @@ The manual explains how to locate and use legal documents. The legal documents d
 
 ## 13. Runtime integration boundary
 
-PR-6B creates documentation architecture only. It does not add routes, navigation items, loaders, permissions, or deployments.
-
-Later UI integration should provide an authenticated `/manual` entry and mode-appropriate access. It must preserve:
+The MVX V0.0 runtime integration provides an authenticated `/manual` entry, mode-appropriate access, and local manual search. The integrated manual flow must preserve:
 
 - `ProtectedRoute`;
 - the mandatory password-change gate;

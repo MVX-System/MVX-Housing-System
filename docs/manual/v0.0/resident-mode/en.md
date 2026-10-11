@@ -42,7 +42,7 @@ You can select the language in the **Language** field. MVX V0.0 is available in 
 
 ### 3.1. Login
 
-**Nick — a nickname (sign-in name)** used together with the password to sign in to MVX. Nick is not the user's first or last name.
+**Nick — a nickname (sign-in name)** used together with the password to sign in to MVX. Nick is not the user’s first or last name and can be changed by the user in Personal Settings.
 
 1. In the login form, enter your **Nick**.
 2. Enter your password in the **Password** field.
