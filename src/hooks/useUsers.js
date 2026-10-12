@@ -347,6 +347,188 @@ export function useUsers() {
       []
     );
 
+  // PR-9G.6B:
+  // Load the canonical role catalog only when
+  // role management is explicitly opened.
+  const getRoles =
+    useCallback(
+      async () => {
+        const result =
+          await api(
+            "/api/admin/roles"
+          );
+
+        if (
+          result?.error
+        ) {
+          throw new Error(
+            result.error
+          );
+        }
+
+        return Array.isArray(
+          result
+        )
+          ? result
+          : [];
+      },
+      []
+    );
+
+  // PR-9G.6B:
+  // Read the complete role set for one selected user.
+  const getUserRoles =
+    useCallback(
+      async (
+        userId
+      ) => {
+        const normalizedUserId =
+          Number(userId);
+
+        if (
+          !Number.isInteger(
+            normalizedUserId
+          ) ||
+          normalizedUserId <= 0
+        ) {
+          throw new Error(
+            "invalid_user_id"
+          );
+        }
+
+        const result =
+          await api(
+            "/api/admin/user-roles?user_id=" +
+              encodeURIComponent(
+                normalizedUserId
+              )
+          );
+
+        if (
+          result?.error
+        ) {
+          throw new Error(
+            result.error
+          );
+        }
+
+        const roleIds =
+          Array.isArray(
+            result?.roles
+          )
+            ? result.roles
+            : [];
+
+        return roleIds
+          .map(
+            (roleId) =>
+              Number(roleId)
+          )
+          .filter(
+            (roleId) =>
+              Number.isInteger(
+                roleId
+              ) &&
+              roleId > 0
+          );
+      },
+      []
+    );
+
+  // PR-9G.6B:
+  // Replace the complete role set for one user.
+  // Backend remains the authoritative authorization
+  // boundary and this endpoint is full-admin only.
+  const setUserRoles =
+    useCallback(
+      async (
+        userId,
+        roleIds
+      ) => {
+        const normalizedUserId =
+          Number(userId);
+
+        if (
+          !Number.isInteger(
+            normalizedUserId
+          ) ||
+          normalizedUserId <= 0
+        ) {
+          throw new Error(
+            "invalid_user_id"
+          );
+        }
+
+        if (
+          !Array.isArray(
+            roleIds
+          )
+        ) {
+          throw new Error(
+            "invalid_roles"
+          );
+        }
+
+        const normalizedRoleIds =
+          roleIds.map(
+            (roleId) =>
+              Number(roleId)
+          );
+
+        if (
+          normalizedRoleIds.some(
+            (roleId) =>
+              !Number.isInteger(
+                roleId
+              ) ||
+              roleId <= 0
+          )
+        ) {
+          throw new Error(
+            "invalid_roles"
+          );
+        }
+
+        const uniqueRoleIds =
+          [
+            ...new Set(
+              normalizedRoleIds
+            ),
+          ].sort(
+            (a, b) =>
+              a - b
+          );
+
+        const result =
+          await api(
+            "/api/admin/set-roles",
+            {
+              method: "POST",
+              body:
+                JSON.stringify({
+                  user_id:
+                    normalizedUserId,
+                  roles:
+                    uniqueRoleIds,
+                }),
+            }
+          );
+
+        if (
+          result?.error ||
+          result?.ok === false
+        ) {
+          throw new Error(
+            result?.error ||
+            "User roles could not be changed."
+          );
+        }
+
+        return result;
+      },
+      []
+    );
+
   const loadUserAssignments =
     async (
       userId
@@ -619,6 +801,10 @@ export function useUsers() {
     getRecoveryStatus,
     issueRecoveryCode,
     revokeRecoveryCode,
+
+    getRoles,
+    getUserRoles,
+    setUserRoles,
 
     assignmentUser,
     setAssignmentUser,
