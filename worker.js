@@ -3366,6 +3366,46 @@ const Auth = {
     return u || null;
   },
 
+  isFullAdmin(user) {
+    return Boolean(
+      user?.roles?.includes(
+        "admin"
+      )
+    );
+  },
+
+  isBoardReadOnly(user) {
+    return Boolean(
+      user?.roles?.includes(
+        "board_member"
+      ) &&
+      !user?.roles?.includes(
+        "admin"
+      )
+    );
+  },
+
+  async requireAdminReader(ctx) {
+    const u = await Auth.user(ctx);
+
+    if (!u) {
+      return null;
+    }
+
+    if (
+      !u.roles?.includes(
+        "admin"
+      ) &&
+      !u.roles?.includes(
+        "board_member"
+      )
+    ) {
+      return null;
+    }
+
+    return u;
+  },
+
   async requireAdmin(ctx) {
     const u = await Auth.user(ctx);
 
@@ -3374,8 +3414,8 @@ const Auth = {
     }
 
     if (
-      !u.roles.includes(
-        "admin"
+      !Auth.isFullAdmin(
+        u
       )
     ) {
       return null;
@@ -14826,7 +14866,7 @@ Router.register(
   "/api/admin/contact-settings",
   async (ctx) => {
     const admin =
-      await Auth.requireAdmin(ctx);
+      await Auth.requireAdminReader(ctx);
 
     if (!admin) {
       return {
@@ -14990,7 +15030,7 @@ Router.register(
   "/api/admin/administration-contacts",
   async (ctx) => {
     const admin =
-      await Auth.requireAdmin(
+      await Auth.requireAdminReader(
         ctx
       );
 
@@ -16089,7 +16129,7 @@ Router.register(
   "/api/admin/announcement-target-options",
   async (ctx) => {
     const admin =
-      await Auth.requireAdmin(ctx);
+      await Auth.requireAdminReader(ctx);
 
     if (!admin) {
       return {
@@ -18939,7 +18979,7 @@ Router.register("GET", "/api/my-apartments", async (ctx) => {
 // Main list is deliberately non-PII.
 // No bulk PII decrypt is performed here.
 Router.register("GET", "/api/admin/users", async (ctx) => {
-  const admin = await Auth.requireAdmin(ctx);
+  const admin = await Auth.requireAdminReader(ctx);
 
   if (!admin) {
     return {
@@ -18996,7 +19036,7 @@ Router.register(
   "/api/admin/user",
   async (ctx) => {
     const admin =
-      await Auth.requireAdmin(ctx);
+      await Auth.requireAdminReader(ctx);
 
     if (!admin) {
       return {
@@ -19176,7 +19216,7 @@ Router.register(
   "/api/admin/search-users",
   async (ctx) => {
     const admin =
-      await Auth.requireAdmin(ctx);
+      await Auth.requireAdminReader(ctx);
 
     if (!admin) {
       return {
@@ -19824,7 +19864,7 @@ Router.register(
   "/api/admin/account-recovery/status",
   async (ctx) => {
     const admin =
-      await Auth.requireAdmin(ctx);
+      await Auth.requireAdminReader(ctx);
 
     if (!admin) {
       return {
@@ -20166,7 +20206,7 @@ Router.register(
 
 // ADMIN ROLES
 Router.register("GET", "/api/admin/roles", async (ctx) => {
-  const admin = await Auth.requireAdmin(ctx);
+  const admin = await Auth.requireAdminReader(ctx);
   if (!admin) return { error: "forbidden" };
 
   const r = await ctx.env.DB.prepare(
@@ -20952,7 +20992,7 @@ function base64url(input) {
 
 // GET USER ROLES
 Router.register("GET", "/api/admin/user-roles", async (ctx) => {
-  const admin = await Auth.requireAdmin(ctx);
+  const admin = await Auth.requireAdminReader(ctx);
   if (!admin) return { error: "forbidden" };
 
   const userId = ctx.url.searchParams.get("user_id");
@@ -20970,7 +21010,7 @@ Router.register("GET", "/api/admin/user-roles", async (ctx) => {
 
 // GET APARTMENTS
 Router.register("GET", "/api/admin/apartments", async (ctx) => {
-  const admin = await Auth.requireAdmin(ctx);
+  const admin = await Auth.requireAdminReader(ctx);
   if (!admin) return { error: "forbidden" };
 
   const r = await ctx.env.DB.prepare(`
@@ -20997,7 +21037,7 @@ Router.register("GET", "/api/admin/apartments", async (ctx) => {
 // Main D1 returns only pseudonymous user identity (Nick + relation).
 // Personal data is loaded only after explicit navigation to one user.
 Router.register("GET", "/api/admin/apartment-details", async (ctx) => {
-  const admin = await Auth.requireAdmin(ctx);
+  const admin = await Auth.requireAdminReader(ctx);
   if (!admin) return { error: "forbidden" };
 
   const id = ctx.url.searchParams.get("id");
@@ -31473,7 +31513,7 @@ Router.register(
   async (ctx) => {
 
     const admin =
-      await Auth.requireAdmin(ctx);
+      await Auth.requireAdminReader(ctx);
 
     if (!admin) {
       return {
@@ -31582,7 +31622,7 @@ Router.register(
   async (ctx) => {
 
     const admin =
-      await Auth.requireAdmin(ctx);
+      await Auth.requireAdminReader(ctx);
 
     if (!admin) {
       return {
@@ -31650,7 +31690,7 @@ Router.register(
   async (ctx) => {
 
     const admin =
-      await Auth.requireAdmin(ctx);
+      await Auth.requireAdminReader(ctx);
 
     if (!admin) {
       return {
@@ -31862,7 +31902,7 @@ Router.register(
   async (ctx) => {
 
     const admin =
-      await Auth.requireAdmin(ctx);
+      await Auth.requireAdminReader(ctx);
 
     if (!admin) {
       return {
@@ -33801,7 +33841,7 @@ Router.register("POST", "/api/admin/update-apartment", async (ctx) => {
 // =========================
 Router.register("GET", "/api/admin/user-apartments", async (ctx) => {
   const admin =
-    await Auth.requireAdmin(ctx);
+    await Auth.requireAdminReader(ctx);
 
   if (!admin) {
     return {
