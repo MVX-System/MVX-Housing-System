@@ -14,6 +14,10 @@ import {
   useUsers,
 } from "../hooks/useUsers";
 
+import {
+  useAuth,
+} from "../context/AuthContext";
+
 import useApartments
   from "../hooks/useApartments";
 
@@ -70,6 +74,27 @@ const TEXT = {
     remove: "Remove",
     noAssignments: "No assignments",
     userInformation: "User information",
+    roleManagementTitle: "User roles",
+    manageRoles: "Manage roles",
+    rolesLoading: "Loading roles...",
+    rolesHelp: "Select the complete set of roles for this user. Saving replaces the current role set.",
+    rolesEmpty: "At least one role must be selected.",
+    rolesSave: "Save roles",
+    rolesSaving: "Saving...",
+    rolesSelfAdminLocked: "Your own Administrator role cannot be removed here.",
+    rolesLoadError: "User roles could not be loaded.",
+    rolesSaveError: "User roles could not be saved.",
+    rolesRefreshError: "Roles were saved, but the current session could not be refreshed. Reload the page.",
+    roleLabels: {
+      resident: "Resident",
+      owner: "Owner",
+      cooperative_member: "Cooperative member",
+      board_member: "Board member",
+      manager: "Manager",
+      accountant: "Accountant",
+      worker: "Worker",
+      admin: "Administrator",
+    },
     close: "Close",
     confirmInactive: "Set this user to inactive?",
     confirmActive: "Set this user to active?",
@@ -139,6 +164,27 @@ const TEXT = {
     remove: "Noņemt",
     noAssignments: "Piesaistu nav",
     userInformation: "Lietotāja informācija",
+    roleManagementTitle: "Lietotāja lomas",
+    manageRoles: "Pārvaldīt lomas",
+    rolesLoading: "Notiek lomu ielāde...",
+    rolesHelp: "Atlasiet pilnu šī lietotāja lomu kopu. Saglabāšana aizstāj pašreizējo lomu kopu.",
+    rolesEmpty: "Jāizvēlas vismaz viena loma.",
+    rolesSave: "Saglabāt lomas",
+    rolesSaving: "Saglabā...",
+    rolesSelfAdminLocked: "Savu Administratora lomu šeit noņemt nevar.",
+    rolesLoadError: "Lietotāja lomas neizdevās ielādēt.",
+    rolesSaveError: "Lietotāja lomas neizdevās saglabāt.",
+    rolesRefreshError: "Lomas tika saglabātas, bet pašreizējo sesiju neizdevās atjaunināt. Pārlādējiet lapu.",
+    roleLabels: {
+      resident: "Iedzīvotājs",
+      owner: "Dzīvokļa īpašnieks",
+      cooperative_member: "Kooperatīva biedrs",
+      board_member: "Valdes loceklis",
+      manager: "Pārvaldnieks",
+      accountant: "Grāmatvedis",
+      worker: "Darbinieks",
+      admin: "Administrators",
+    },
     close: "Aizvērt",
     confirmInactive: "Iestatīt šo lietotāju kā neaktīvu?",
     confirmActive: "Iestatīt šo lietotāju kā aktīvu?",
@@ -208,6 +254,27 @@ const TEXT = {
     remove: "Удалить связь",
     noAssignments: "Связей нет",
     userInformation: "Информация о пользователе",
+    roleManagementTitle: "Роли пользователя",
+    manageRoles: "Управление ролями",
+    rolesLoading: "Загрузка ролей...",
+    rolesHelp: "Выберите полный набор ролей пользователя. При сохранении текущий набор ролей будет заменён.",
+    rolesEmpty: "Необходимо выбрать хотя бы одну роль.",
+    rolesSave: "Сохранить роли",
+    rolesSaving: "Сохранение...",
+    rolesSelfAdminLocked: "Собственную роль Администратора здесь снять нельзя.",
+    rolesLoadError: "Не удалось загрузить роли пользователя.",
+    rolesSaveError: "Не удалось сохранить роли пользователя.",
+    rolesRefreshError: "Роли сохранены, но не удалось обновить текущую сессию. Перезагрузите страницу.",
+    roleLabels: {
+      resident: "Житель",
+      owner: "Собственник",
+      cooperative_member: "Член кооператива",
+      board_member: "Член правления",
+      manager: "Управляющий",
+      accountant: "Бухгалтер",
+      worker: "Работник",
+      admin: "Администратор",
+    },
     close: "Закрыть",
     confirmInactive: "Перевести этого пользователя в неактивный статус?",
     confirmActive: "Сделать этого пользователя активным?",
@@ -331,6 +398,11 @@ function Field({
 }
 
 export default function UsersPage() {
+  const {
+    me,
+    refreshMe,
+  } = useAuth();
+
   const navigate =
     useNavigate();
 
@@ -453,7 +525,46 @@ export default function UsersPage() {
     loadUserAssignments,
     addAssignment,
     removeAssignment,
+    getRoles,
+    getUserRoles,
+    setUserRoles,
   } = useUsers();
+
+  const [
+    roleUser,
+    setRoleUser,
+  ] = useState(null);
+
+  const [
+    rolesCatalog,
+    setRolesCatalog,
+  ] = useState([]);
+
+  const [
+    selectedRoleIds,
+    setSelectedRoleIds,
+  ] = useState([]);
+
+  const [
+    initialRoleIds,
+    setInitialRoleIds,
+  ] = useState([]);
+
+  const [
+    rolesLoading,
+    setRolesLoading,
+  ] = useState(false);
+
+  const [
+    rolesSaving,
+    setRolesSaving,
+  ] = useState(false);
+
+  const [
+    rolesError,
+    setRolesError,
+  ] = useState("");
+
 
   const {
     apartments,
@@ -899,6 +1010,376 @@ export default function UsersPage() {
     requestedUserId,
     users,
   ]);
+
+  const currentUserId =
+    Number(
+      me?.user?.id || 0
+    );
+
+  const normalizeRoleIds =
+    (roleIds) =>
+      [
+        ...new Set(
+          (
+            Array.isArray(
+              roleIds
+            )
+              ? roleIds
+              : []
+          )
+            .map(
+              (roleId) =>
+                Number(roleId)
+            )
+            .filter(
+              (roleId) =>
+                Number.isInteger(
+                  roleId
+                ) &&
+                roleId > 0
+            )
+        ),
+      ].sort(
+        (a, b) =>
+          a - b
+      );
+
+  const roleSetKey =
+    (roleIds) =>
+      normalizeRoleIds(
+        roleIds
+      ).join(",");
+
+  const openRoleManagement =
+    async (
+      user
+    ) => {
+      if (!user?.id) {
+        return;
+      }
+
+      setRoleUser(
+        user
+      );
+
+      setRolesCatalog(
+        []
+      );
+
+      setSelectedRoleIds(
+        []
+      );
+
+      setInitialRoleIds(
+        []
+      );
+
+      setRolesError(
+        ""
+      );
+
+      setRolesLoading(
+        true
+      );
+
+      // Do not stack the role editor above the
+      // detailed-user modal.
+      closeUserDetails();
+
+      try {
+        const [
+          catalog,
+          currentRoleIds,
+        ] =
+          await Promise.all([
+            getRoles(),
+            getUserRoles(
+              user.id
+            ),
+          ]);
+
+        const normalizedCatalog =
+          (
+            Array.isArray(
+              catalog
+            )
+              ? catalog
+              : []
+          )
+            .map(
+              (role) => ({
+                ...role,
+                id:
+                  Number(
+                    role.id
+                  ),
+              })
+            )
+            .filter(
+              (role) =>
+                Number.isInteger(
+                  role.id
+                ) &&
+                role.id > 0 &&
+                typeof role.name ===
+                  "string"
+            )
+            .sort(
+              (a, b) =>
+                a.id - b.id
+            );
+
+        const normalizedIds =
+          normalizeRoleIds(
+            currentRoleIds
+          );
+
+        setRolesCatalog(
+          normalizedCatalog
+        );
+
+        setSelectedRoleIds(
+          normalizedIds
+        );
+
+        setInitialRoleIds(
+          normalizedIds
+        );
+      } catch (
+        rolesLoadError
+      ) {
+        console.error(
+          "LOAD USER ROLES ERROR:",
+          rolesLoadError
+        );
+
+        setRolesError(
+          rolesLoadError?.message ||
+            text.rolesLoadError
+        );
+      } finally {
+        setRolesLoading(
+          false
+        );
+      }
+    };
+
+  const closeRoleManagement =
+    () => {
+      if (
+        rolesSaving
+      ) {
+        return;
+      }
+
+      setRoleUser(
+        null
+      );
+
+      setRolesCatalog(
+        []
+      );
+
+      setSelectedRoleIds(
+        []
+      );
+
+      setInitialRoleIds(
+        []
+      );
+
+      setRolesError(
+        ""
+      );
+    };
+
+  const toggleRole =
+    (
+      role
+    ) => {
+      const roleId =
+        Number(
+          role?.id
+        );
+
+      if (
+        !Number.isInteger(
+          roleId
+        ) ||
+        roleId <= 0
+      ) {
+        return;
+      }
+
+      const currentlySelected =
+        selectedRoleIds.includes(
+          roleId
+        );
+
+      const selfAdminLocked =
+        Number(
+          roleUser?.id
+        ) ===
+          currentUserId &&
+        role?.name ===
+          "admin" &&
+        currentlySelected;
+
+      if (
+        selfAdminLocked
+      ) {
+        return;
+      }
+
+      setSelectedRoleIds(
+        (current) =>
+          currentlySelected
+            ? current.filter(
+                (currentRoleId) =>
+                  currentRoleId !==
+                  roleId
+              )
+            : normalizeRoleIds([
+                ...current,
+                roleId,
+              ])
+      );
+
+      setRolesError(
+        ""
+      );
+    };
+
+  const handleSaveRoles =
+    async () => {
+      if (
+        !roleUser?.id ||
+        rolesSaving ||
+        rolesLoading
+      ) {
+        return;
+      }
+
+      const normalizedIds =
+        normalizeRoleIds(
+          selectedRoleIds
+        );
+
+      if (
+        normalizedIds.length === 0
+      ) {
+        setRolesError(
+          text.rolesEmpty
+        );
+
+        return;
+      }
+
+      const adminRole =
+        rolesCatalog.find(
+          (role) =>
+            role.name ===
+            "admin"
+        );
+
+      const editingSelf =
+        Number(
+          roleUser.id
+        ) ===
+        currentUserId;
+
+      if (
+        editingSelf &&
+        adminRole &&
+        !normalizedIds.includes(
+          Number(
+            adminRole.id
+          )
+        )
+      ) {
+        setRolesError(
+          text.rolesSelfAdminLocked
+        );
+
+        return;
+      }
+
+      setRolesSaving(
+        true
+      );
+
+      setRolesError(
+        ""
+      );
+
+      try {
+        await setUserRoles(
+          roleUser.id,
+          normalizedIds
+        );
+
+        setInitialRoleIds(
+          normalizedIds
+        );
+
+        if (
+          editingSelf
+        ) {
+          try {
+            await refreshMe();
+          } catch (
+            authRefreshError
+          ) {
+            console.error(
+              "REFRESH AUTH AFTER SELF ROLE UPDATE ERROR:",
+              authRefreshError
+            );
+
+            setRolesError(
+              text.rolesRefreshError
+            );
+
+            return;
+          }
+        }
+
+        setRoleUser(
+          null
+        );
+
+        setRolesCatalog(
+          []
+        );
+
+        setSelectedRoleIds(
+          []
+        );
+      } catch (
+        rolesSaveError
+      ) {
+        console.error(
+          "SAVE USER ROLES ERROR:",
+          rolesSaveError
+        );
+
+        setRolesError(
+          rolesSaveError?.message ||
+            text.rolesSaveError
+        );
+      } finally {
+        setRolesSaving(
+          false
+        );
+      }
+    };
+
+  const rolesChanged =
+    roleSetKey(
+      selectedRoleIds
+    ) !==
+    roleSetKey(
+      initialRoleIds
+    );
 
   const filteredUsers =
     useMemo(() => {
@@ -1995,7 +2476,23 @@ export default function UsersPage() {
               }
             />
 
-            <div
+
+            <button
+              type="button"
+              onClick={() =>
+                openRoleManagement(
+                  selectedUser
+                )
+              }
+              style={{
+                ...secondarySmallButtonStyle,
+                width: "100%",
+              }}
+            >
+              {text.manageRoles}
+            </button>
+
+<div
               style={recoveryPanelStyle}
             >
               <div
@@ -2192,6 +2689,236 @@ export default function UsersPage() {
               </div>
             </div>
 
+          </div>
+        )}
+      </Modal>
+
+      <Modal
+        open={
+          Boolean(
+            roleUser
+          )
+        }
+        title={
+          text.roleManagementTitle
+        }
+        onClose={
+          closeRoleManagement
+        }
+      >
+        {roleUser && (
+          <div
+            style={{
+              display: "grid",
+              gap: 14,
+            }}
+          >
+            <div>
+              <strong>
+                {roleUser.nick ||
+                  `#${roleUser.id}`}
+              </strong>
+            </div>
+
+            <div
+              style={
+                subtleStyle
+              }
+            >
+              {text.rolesHelp}
+            </div>
+
+            {rolesLoading ? (
+              <div
+                style={
+                  noticeStyle
+                }
+              >
+                {text.rolesLoading}
+              </div>
+            ) : (
+              <div
+                style={{
+                  display: "grid",
+                  gap: 8,
+                }}
+              >
+                {rolesCatalog.map(
+                  (role) => {
+                    const roleId =
+                      Number(
+                        role.id
+                      );
+
+                    const checked =
+                      selectedRoleIds.includes(
+                        roleId
+                      );
+
+                    const selfAdminLocked =
+                      Number(
+                        roleUser.id
+                      ) ===
+                        currentUserId &&
+                      role.name ===
+                        "admin" &&
+                      checked;
+
+                    return (
+                      <label
+                        key={role.id}
+                        style={{
+                          display: "flex",
+                          alignItems:
+                            "flex-start",
+                          gap: 10,
+                          padding:
+                            "10px 12px",
+                          border:
+                            "1px solid var(--border)",
+                          borderRadius: 10,
+                          cursor:
+                            selfAdminLocked ||
+                            rolesSaving
+                              ? "default"
+                              : "pointer",
+                          opacity:
+                            selfAdminLocked
+                              ? 0.75
+                              : 1,
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={
+                            checked
+                          }
+                          disabled={
+                            selfAdminLocked ||
+                            rolesSaving
+                          }
+                          onChange={() =>
+                            toggleRole(
+                              role
+                            )
+                          }
+                        />
+
+                        <span
+                          style={{
+                            display:
+                              "grid",
+                            gap: 2,
+                          }}
+                        >
+                          <strong>
+                            {text.roleLabels?.[
+                              role.name
+                            ] ||
+                              role.name}
+                          </strong>
+
+                          <span
+                            style={{
+                              ...subtleStyle,
+                              fontFamily:
+                                "monospace",
+                              fontSize: 12,
+                            }}
+                          >
+                            {role.name}
+                          </span>
+
+                          {selfAdminLocked && (
+                            <span
+                              style={{
+                                ...subtleStyle,
+                                fontSize:
+                                  12,
+                              }}
+                            >
+                              {
+                                text.rolesSelfAdminLocked
+                              }
+                            </span>
+                          )}
+                        </span>
+                      </label>
+                    );
+                  }
+                )}
+              </div>
+            )}
+
+            {rolesError && (
+              <div
+                style={
+                  errorStyle
+                }
+              >
+                {rolesError}
+              </div>
+            )}
+
+            <div
+              style={{
+                ...actionsStyle,
+                justifyContent:
+                  "flex-end",
+              }}
+            >
+              <button
+                type="button"
+                onClick={
+                  closeRoleManagement
+                }
+                disabled={
+                  rolesSaving
+                }
+                style={
+                  secondarySmallButtonStyle
+                }
+              >
+                {text.cancel}
+              </button>
+
+              <button
+                type="button"
+                onClick={
+                  handleSaveRoles
+                }
+                disabled={
+                  rolesLoading ||
+                  rolesSaving ||
+                  !rolesChanged ||
+                  selectedRoleIds.length ===
+                    0
+                }
+                style={{
+                  ...primaryButtonStyle,
+                  opacity:
+                    rolesLoading ||
+                    rolesSaving ||
+                    !rolesChanged ||
+                    selectedRoleIds.length ===
+                      0
+                      ? 0.6
+                      : 1,
+                  cursor:
+                    rolesLoading ||
+                    rolesSaving ||
+                    !rolesChanged ||
+                    selectedRoleIds.length ===
+                      0
+                      ? "default"
+                      : "pointer",
+                }}
+              >
+                {rolesSaving
+                  ? text.rolesSaving
+                  : text.rolesSave}
+              </button>
+            </div>
           </div>
         )}
       </Modal>
