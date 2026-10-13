@@ -1920,6 +1920,18 @@ export default function UsersPage() {
                       <button
                         type="button"
                         onClick={() =>
+                          openRoleManagement(
+                            user
+                          )
+                        }
+                        style={smallButtonStyle}
+                      >
+                        {text.manageRoles}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() =>
                           openAssignments(
                             user
                           )
@@ -2081,6 +2093,18 @@ export default function UsersPage() {
                   style={smallButtonStyle}
                 >
                   {text.edit}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    openRoleManagement(
+                      user
+                    )
+                  }
+                  style={smallButtonStyle}
+                >
+                  {text.manageRoles}
                 </button>
 
                 <button
