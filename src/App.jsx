@@ -1,3 +1,6 @@
+import ModeRouteBoundary
+  from "./routes/ModeRouteBoundary";
+
 import {
   useEffect,
   useState,
@@ -192,7 +195,9 @@ export default function App() {
               : 30,
         }}
       >
-        <Outlet />
+        <ModeRouteBoundary>
+          <Outlet />
+        </ModeRouteBoundary>
       </main>
 
       <ContextHelpButton />

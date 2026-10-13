@@ -16,9 +16,9 @@ requires_acceptance: false
 
 ## 1. Par šo rokasgrāmatu
 
-Šī rokasgrāmata izskaidro MVX V0.0 funkcijas, kas pieejamas **Administratora režīmā**. Tā ir paredzēta lietotājiem ar tehnisko lomu `admin`.
+Šī rokasgrāmata izskaidro MVX V0.0 funkcijas, kas pieejamas **Administratora režīmā**. Tā ir paredzēta lietotājiem ar pilnu `admin` piekļuvi un lietotājiem ar lomu `board_member`, kuriem Administratora režīms ir pieejams tikai lasīšanai.
 
-Administratora režīmā var pārvaldīt lietotājus un dzīvokļus, ūdens skaitītājus un rādījumus, paziņojumus, mēneša pārskatus, lietotājiem redzamo kontaktinformāciju un citus sistēmas iestatījumus.
+Ar lomu `admin` Administratora režīms nodrošina visas šajā rokasgrāmatā aprakstītās administratīvās funkcijas. Lietotājam ar `board_member` bez `admin` Administratora režīms ir tikai lasīšanai un aprobežojas ar 5. sadaļā norādītajām pieejamajām sadaļām.
 
 Rokasgrāmata apraksta tikai MVX V0.0 redzamās lietotāja darbības. Tā neaizstāj juridiskos dokumentus, incidentu novēršanas procedūras vai tehnisko infrastruktūras dokumentāciju un neapraksta plānotas nākamo versiju funkcijas.
 
@@ -70,11 +70,13 @@ Administratora paroli nedrīkst koplietot ar citu personu. Nelūdziet lietotāji
 
 ## 5. Tehniskās lomas, Administratora režīms un piekļuves robežas
 
-Atsevišķs Administratora režīms MVX V0.0 ir pieejams tehniskajai lomai `admin`. Lomas `resident` un `owner` izmanto Iedzīvotāja režīmu.
+Administratora režīms MVX V0.0 ir pieejams lomai `admin` ar pilnu administratīvo piekļuvi un lomai `board_member` ar piekļuvi tikai lasīšanai. Lomas `resident` un `owner`, ja tās ir piešķirtas, izmanto Iedzīvotāja režīmu.
 
-Tehniskās lomas `cooperative_member`, `board_member`, `manager`, `accountant` un `worker` pastāv datu modelī, bet MVX V0.0 tām nav atsevišķu lomu režīmu. Lomas nosaukums pats par sevi nepiešķir Administratora režīmu.
+Ja vienlaikus piešķirtas lomas `admin` un `board_member`, prioritāte ir pilnai `admin` piekļuvei. Lomas `cooperative_member`, `manager`, `accountant` un `worker` MVX V0.0 nepiešķir piekļuvi Administratora režīmam.
 
-Administratora režīma sānu izvēlnē ir pieejamas šādas sadaļas:
+Lietotājam ar `board_member` bez `admin` Administratora režīmā ir pieejamas sadaļas **Lietotāji**, **Dzīvokļi**, **Ūdens skaitītāju pārvaldība**, **Ūdens rādījumu vēsture**, **Dokumenti**, **Iestatījumi** un **Administratora režīma rokasgrāmata**. **Informācijas panelis**, **Mēneša pārskats** un **Paziņojumu pārvaldība** ir pieejami tikai `admin`. Administratora režīmā tikai lasīšanai datu mainīšanas vadīklas nav pieejamas.
+
+Lomai `admin` Administratora režīma sānu izvēlnē ir pieejams pilns sadaļu kopums:
 
 - **Informācijas panelis**;
 - **Lietotāji**;
@@ -90,6 +92,8 @@ Mazā ekrānā sānu izvēlni atver ar izvēlnes pogu. Datora skatā izvēlni va
 
 ## 6. Informācijas panelis
 
+> **Piekļuves robeža:** šī sadaļa ir pieejama tikai pilnam `admin` un netiek rādīta `board_member` lietotājam tikai lasīšanas režīmā.
+
 Sadaļa **Informācijas panelis** parāda objekta kopsavilkumu.
 
 Blokā **Ēkas kopsavilkums** var būt redzams:
@@ -103,6 +107,8 @@ Blokā **Ēkas kopsavilkums** var būt redzams:
 Kopsavilkuma vērtības ir atkarīgas no sistēmā saglabātajiem aktīvajiem datiem. Ja skaitlis šķiet nepareizs, vispirms pārbaudiet sadaļas **Dzīvokļi** un **Lietotāji**, nevis veidojiet dublējošu ierakstu.
 
 ## 7. Lietotāji
+
+> **Piekļuves robeža:** `board_member` var meklēt un skatīt lietotājus, konta un atjaunošanas statusu, lomas un dzīvokļu piesaistes. Lietotāju izveide vai rediģēšana, statusa maiņa, atjaunošanas kodu izsniegšana vai atsaukšana, lomu maiņa un dzīvokļu piesaistes maiņa prasa `admin`.
 
 ### 7.1. Meklēšana un lietotāja informācija
 
@@ -158,6 +164,8 @@ Aktīvu kodu var atsaukt ar **Atsaukt atjaunošanas kodu**. Neprasiet lietotāja
 
 ## 8. Dzīvokļi
 
+> **Piekļuves robeža:** `board_member` var pārlūkot dzīvokļus, lietot filtrus, atvērt dzīvokļa informāciju, skatīt pseidonimizētās īpašnieku un iedzīvotāju saites un izmantot tikai lasīšanas savstarpējo navigāciju. Dzīvokļa izveide prasa `admin`.
+
 ### 8.1. Meklēšana un pārskats
 
 Atveriet **Dzīvokļi**. Dzīvokli var meklēt pēc numura vai lietotāja Nick, kā arī atlasīt pēc ēkas sekcijas un stāva.
@@ -178,6 +186,8 @@ Izvēloties saistītu lietotāju, var pāriet uz sadaļu **Lietotāji**. Atgrie�
 Pirms saglabāšanas pārbaudiet dzīvokļa numuru un sekciju. Neveidojiet otru dzīvokļa ierakstu, lai labotu jau esoša dzīvokļa lietotāja piesaisti.
 
 ## 9. Ūdens skaitītāju pārvaldība
+
+> **Piekļuves robeža:** `board_member` var skatīt skaitītāju sarakstu, filtrus, kalibrēšanas statusu, kalibrēšanas vēsturi un kalibrēšanas metadatus. Skaitītāju pievienošana, rediģēšana vai deaktivizēšana, kalibrēšanas datu pievienošana vai augšupielāde un sertifikāta binārā faila atvēršana prasa `admin`.
 
 ### 9.1. Saraksts un filtri
 
@@ -221,6 +231,8 @@ Skaitītāja skatā atveriet **Kalibrēšanas vēsture**. Tajā var apskatīt ie
 
 ## 10. Ūdens rādījumu vēsture
 
+> **Piekļuves robeža:** `board_member` var skatīt, meklēt, filtrēt un atjaunināt rādījumu vēsturi, kā arī eksportēt redzamos datus lokālā XLSX failā. Šajā lapā `board_member` nav datu mainīšanas darbību.
+
 Sadaļa **Ūdens rādījumu vēsture** ir iesniegto, laboto un aizstāto ūdens skaitītāju rādījumu audita pārskats.
 
 Kopsavilkumā ir redzams visu, aktīvo, aizstāto un administrācijas saņemto ierakstu skaits. Ierakstus var:
@@ -235,6 +247,8 @@ Avots var būt Iedzīvotāja portāls, papīra pieraksts, e-pasts, tālrunis vai
 Filtri ietekmē arī eksportējamo ierakstu kopu. Ja atlasītajiem filtriem nav ierakstu, MVX neizveido tukšu eksportu.
 
 ## 11. Mēneša pārskats un administratīva rādījumu saņemšana
+
+> **Piekļuves robeža:** Mēneša pārskats un administratīva rādījumu saņemšana ir pieejama tikai `admin` un netiek rādīta `board_member` lietotājam tikai lasīšanas režīmā.
 
 ### 11.1. Pārskata izvēle un kopsavilkums
 
@@ -261,6 +275,8 @@ Ja pārskata periods ir slēgts, MVX pieprasa atzīmēt **Šis pārskata periods
 
 ## 12. Paziņojumu pārvaldība
 
+> **Piekļuves robeža:** Paziņojumu pārvaldība ir pieejama tikai `admin` un netiek rādīta `board_member` lietotājam tikai lasīšanas režīmā.
+
 ### 12.1. Paziņojuma izveide
 
 Atveriet **Paziņojumi**. Lapā **Paziņojumu pārvaldība**:
@@ -283,6 +299,8 @@ Izvēlieties **Arhivēt**, lai noņemtu paziņojumu no iedzīvotājiem redzamā 
 
 ## 13. Dokumenti un juridiskā informācija
 
+> **Piekļuves robeža:** Dokumenti un juridiskā informācija ir pieejama gan pilnam `admin`, gan `board_member` lietotājam tikai lasīšanas režīmā.
+
 Atveriet **Dokumenti** un sadaļu **Juridiskā informācija**. MVX V0.0 nodrošina piekļuvi šādiem publiskiem dokumentiem:
 
 - **Personas datu apstrādes paziņojums**;
@@ -295,6 +313,8 @@ Izvēlieties dokumenta nosaukumu, lai to atvērtu. Dokumenta lapā izmantojiet *
 Šī rokasgrāmata neatkārto un neaizstāj juridisko dokumentu saturu. Vienmēr izmantojiet MVX redzamo aktuālo dokumenta versiju.
 
 ## 14. Administratīvie iestatījumi
+
+> **Piekļuves robeža:** šajā sadaļā aprakstītajiem administratīvajiem Iestatījumu blokiem nepieciešama loma `admin`. Tie netiek rādīti `board_member` lietotājam tikai lasīšanas režīmā.
 
 Administratīvie bloki ir redzami sadaļā **Iestatījumi**, ja aktīvs Administratora režīms, kontam ir loma `admin` un nav nepabeigtas pagaidu paroles nomaiņas.
 
@@ -335,6 +355,8 @@ Ja pēc atjaunošanas sistēma konstatē aizsargātu atcelšanas scenāriju, var
 Šī lietotāja rokasgrāmata nepublicē apstiprinājuma frāzes un neaizstāj tehnisko incidentu atjaunošanas procedūru. Ja nav skaidrs, kura darbība ir atļauta, pārtrauciet darbu un izmantojiet apstiprināto atbalsta ceļu.
 
 ## 15. Personīgie iestatījumi
+
+> **Piekļuves robeža:** kopīgie personīgie Iestatījumi paliek pieejami `board_member`. Administratīvās pārvaldības bloki joprojām ir pieejami tikai `admin`.
 
 ### 15.1. Paroles maiņa
 
@@ -411,7 +433,7 @@ Administratora režīmu mobilajā ierīcē izmantojiet īpaši piesardzīgi: pir
 |---|---|
 | Nevar pieslēgties | Pārbaudiet MVX adresi, **Nick**, paroli un izvēlēto vidi. Ja nepieciešams, izmantojiet **Aizmirsāt Nick vai paroli?** un sazinieties ar citu pilnvarotu MVX administratoru. |
 | Pieejami tikai Iestatījumi | Nomainiet pagaidu paroli, kā aprakstīts 4. sadaļā. |
-| Nav pieejams Administratora režīms | Pārbaudiet, vai kontam ir tehniskā loma `admin`. Lomas nosaukums citā sistēmā nepiešķir MVX piekļuvi. |
+| Nav pieejams Administratora režīms | Pārbaudiet, vai kontam ir tehniskā loma `admin` vai `board_member`. Loma `admin` piešķir pilnu piekļuvi, bet `board_member` — Administratora režīmu tikai lasīšanai. Citas lomas MVX V0.0 nepiešķir Administratora režīmu. |
 | Nevar atrast lietotāju | Pārbaudiet meklēšanas tekstu un statusa filtru. Meklējot personas datus, izmantojiet tikai administrēšanas uzdevumam nepieciešamo informāciju. |
 | Nav redzams dzīvoklis vai skaitītājs | Pārbaudiet sekcijas, stāva un statusa filtrus, pēc tam atjauniniet datus. Neveidojiet dublikātu, pirms nav pārbaudīts esošais ieraksts. |
 | Nevar saglabāt rādījumu | Pārbaudiet skaitītāju, pilnā rādījuma formātu, rādījuma datumu, avotu, avota piezīmi un perioda statusu. Slēgtam periodam nepieciešams atsevišķs apstiprinājums. |

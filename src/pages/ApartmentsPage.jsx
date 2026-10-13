@@ -13,6 +13,14 @@ import {
 import useApartments
   from "../hooks/useApartments";
 
+import {
+  useAuth,
+} from "../context/AuthContext";
+
+import {
+  isFullAdmin,
+} from "../access/adminCapabilities";
+
 import Modal
   from "../components/Modal";
 
@@ -476,6 +484,15 @@ export default function ApartmentsPage() {
       ?.origin === "users";
 
   const {
+    me,
+  } = useAuth();
+
+  const canMutateApartments =
+    isFullAdmin(
+      me?.roles
+    );
+
+  const {
     apartments,
     loading,
     error,
@@ -483,10 +500,35 @@ export default function ApartmentsPage() {
     setShowCreateApartment,
     newApartment,
     setNewApartment,
-    createApartment,
+    createApartment:
+      createApartmentRequest,
     loadApartments,
     loadApartmentDetails,
   } = useApartments();
+
+  const openCreateApartment =
+    () => {
+      if (
+        canMutateApartments === false
+      ) {
+        return;
+      }
+
+      setShowCreateApartment(
+        true
+      );
+    };
+
+  const createApartment =
+    async () => {
+      if (
+        canMutateApartments === false
+      ) {
+        return;
+      }
+
+      return createApartmentRequest();
+    };
 
   const [selectedSection, setSelectedSection] =
     useState(null);
@@ -845,9 +887,8 @@ export default function ApartmentsPage() {
 
         <button
           type="button"
-          onClick={() =>
-            setShowCreateApartment(true)
-          }
+          hidden={!canMutateApartments}
+          onClick={openCreateApartment}
           style={primaryButtonStyle}
         >
           {text.addApartment}
@@ -1275,7 +1316,10 @@ export default function ApartmentsPage() {
       )}
 
       <Modal
-        open={showCreateApartment}
+        open={
+          canMutateApartments &&
+          showCreateApartment
+        }
         title={
           text.createApartment
         }
@@ -1544,6 +1588,7 @@ export default function ApartmentsPage() {
 
           <button
             type="button"
+            hidden={!canMutateApartments}
             onClick={
               createApartment
             }

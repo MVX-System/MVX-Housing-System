@@ -17,6 +17,11 @@ import {
 } from "../context/ModeContext";
 
 import {
+  hasAdminModeAccess,
+  hasResidentModeAccess,
+} from "../access/adminCapabilities";
+
+import {
   useTranslation,
 } from "../i18n";
 
@@ -216,13 +221,14 @@ export default function ManualPage() {
 
   const requestedModeAllowed =
     requestedMode === "admin"
-      ? roles.includes("admin")
+      ? hasAdminModeAccess(
+          roles
+        )
       : requestedMode ===
           "resident"
-        ? roles.includes(
-            "resident"
-          ) ||
-          roles.includes("owner")
+        ? hasResidentModeAccess(
+            roles
+          )
         : false;
 
   const manualMode =

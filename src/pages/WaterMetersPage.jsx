@@ -14,6 +14,14 @@ import useWater
   from "../hooks/useWater";
 
 import {
+  useAuth,
+} from "../context/AuthContext";
+
+import {
+  isFullAdmin,
+} from "../access/adminCapabilities";
+
+import {
   useTranslation,
 } from "../i18n";
 
@@ -400,6 +408,15 @@ export default function WaterMetersPage() {
     LOCALE_MAP.en;
 
   const {
+    me,
+  } = useAuth();
+
+  const canMutateWaterMeters =
+    isFullAdmin(
+      me?.roles
+    );
+
+  const {
     adminWaterMeters,
     loadAdminWaterMeters,
     addWaterMeter,
@@ -410,9 +427,23 @@ export default function WaterMetersPage() {
     clearWaterMeterCalibrations,
     meterCalibrations,
     meterCalibrationsLoading,
-    openCalibrationDocument,
+    openCalibrationDocument:
+      openCalibrationDocumentRequest,
     deactivateMeter,
   } = useWater();
+
+  const openCalibrationDocument =
+    async (...args) => {
+      if (
+        canMutateWaterMeters === false
+      ) {
+        return false;
+      }
+
+      return openCalibrationDocumentRequest(
+        ...args
+      );
+    };
 
   const [
     isMobile,
@@ -899,8 +930,25 @@ export default function WaterMetersPage() {
       }
     };
 
+  const openAddMeter =
+    () => {
+      if (
+        canMutateWaterMeters === false
+      ) {
+        return;
+      }
+
+      setAddOpen(true);
+    };
+
   const openEditMeter =
     async (meter) => {
+
+      if (
+        canMutateWaterMeters === false
+      ) {
+        return;
+      }
 
       const risers =
         await loadApartmentRisers(
@@ -965,6 +1013,12 @@ export default function WaterMetersPage() {
 
   const handleEditMeter =
     async () => {
+
+      if (
+        canMutateWaterMeters === false
+      ) {
+        return;
+      }
 
       if (editSubmitting) {
         return;
@@ -1133,6 +1187,12 @@ export default function WaterMetersPage() {
 
   const handleAddMeter =
     async () => {
+
+      if (
+        canMutateWaterMeters === false
+      ) {
+        return;
+      }
 
       if (addSubmitting) {
         return;
@@ -1358,6 +1418,12 @@ export default function WaterMetersPage() {
     async () => {
 
       if (
+        canMutateWaterMeters === false
+      ) {
+        return;
+      }
+
+      if (
         !selectedCalibrationMeter ||
         calibrationSubmitting
       ) {
@@ -1457,6 +1523,12 @@ export default function WaterMetersPage() {
 
   const openDeactivate = () => {
 
+    if (
+      canMutateWaterMeters === false
+    ) {
+      return;
+    }
+
     setSelectedMeterIds([]);
     setDeactivateReason(
       "replacement"
@@ -1466,6 +1538,12 @@ export default function WaterMetersPage() {
 
   const handleDeactivate =
     async () => {
+
+      if (
+        canMutateWaterMeters === false
+      ) {
+        return;
+      }
 
       if (
         deactivateSubmitting
@@ -1690,17 +1768,17 @@ export default function WaterMetersPage() {
             {text.refresh}
           </button>
 
-          <button
+          <button hidden={!canMutateWaterMeters}
             type="button"
-            onClick={() =>
-              setAddOpen(true)
+            onClick={
+              openAddMeter
             }
             style={primaryButton}
           >
             {text.addMeter}
           </button>
 
-          <button
+          <button hidden={!canMutateWaterMeters}
             type="button"
             onClick={
               openDeactivate
@@ -2078,6 +2156,9 @@ export default function WaterMetersPage() {
                           getCalibrationStatus={
                             getCalibrationStatus
                           }
+                          canMutateWaterMeters={
+                            canMutateWaterMeters
+                          }
                           onOpenDocument={
                             openCalibrationDocument
                           }
@@ -2305,7 +2386,7 @@ export default function WaterMetersPage() {
                           }}
                         >
 
-                          <button
+                          <button hidden={!canMutateWaterMeters}
                             type="button"
                             onClick={() =>
                               openCalibrationDocument(
@@ -2395,7 +2476,7 @@ export default function WaterMetersPage() {
                     </td>
 
                     <td style={tableCell}>
-                      <button
+                      <button hidden={!canMutateWaterMeters}
                         type="button"
                         onClick={() =>
                           openEditMeter(
@@ -2422,7 +2503,7 @@ export default function WaterMetersPage() {
       )}
 
       <Modal
-        open={addOpen}
+        open={canMutateWaterMeters && addOpen}
         title={text.addWaterMeter}
         onClose={() => {
 
@@ -3166,7 +3247,7 @@ export default function WaterMetersPage() {
               {text.cancel}
             </button>
 
-            <button
+            <button hidden={!canMutateWaterMeters}
               type="button"
               onClick={
                 handleAddMeter
@@ -3196,7 +3277,7 @@ export default function WaterMetersPage() {
 
 
       <Modal
-        open={editOpen}
+        open={canMutateWaterMeters && editOpen}
         title={text.editWaterMeter}
         onClose={() => {
           if (!editSubmitting) {
@@ -3302,7 +3383,7 @@ export default function WaterMetersPage() {
 
           <div style={{display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8}}>
             <button type="button" onClick={() => setEditOpen(false)} disabled={editSubmitting} style={secondaryButton}>{text.cancel}</button>
-            <button type="button" onClick={handleEditMeter} disabled={editSubmitting} style={{...primaryButton, opacity: editSubmitting ? 0.65 : 1}}>
+            <button hidden={!canMutateWaterMeters} type="button" onClick={handleEditMeter} disabled={editSubmitting} style={{...primaryButton, opacity: editSubmitting ? 0.65 : 1}}>
               {editSubmitting ? text.saving : text.saveChanges}
             </button>
           </div>
@@ -3328,7 +3409,7 @@ export default function WaterMetersPage() {
           }}
         >
 
-          <section
+          <section hidden={!canMutateWaterMeters}
             style={{
               display: "grid",
               gap: 10,
@@ -3480,7 +3561,7 @@ export default function WaterMetersPage() {
               />
             </FormField>
 
-            <button
+            <button hidden={!canMutateWaterMeters}
               type="button"
               onClick={
                 handleAddCalibration
@@ -3613,7 +3694,7 @@ export default function WaterMetersPage() {
                         </span>
                       </div>
 
-                      <button
+                      <button hidden={!canMutateWaterMeters}
                         type="button"
                         onClick={() =>
                           openCalibrationDocument(
@@ -3645,7 +3726,7 @@ export default function WaterMetersPage() {
       </Modal>
 
       <Modal
-        open={deactivateOpen}
+        open={canMutateWaterMeters && deactivateOpen}
         title={text.deactivateWaterMeters}
         onClose={() => {
 
@@ -3832,7 +3913,7 @@ export default function WaterMetersPage() {
               {text.cancel}
             </button>
 
-            <button
+            <button hidden={!canMutateWaterMeters}
               type="button"
               onClick={
                 handleDeactivate
@@ -4130,6 +4211,7 @@ function MeterCard({
   formatDate,
   formatReading,
   getCalibrationStatus,
+  canMutateWaterMeters,
   onOpenDocument,
   onOpenCalibrationHistory,
   onEdit,
@@ -4321,7 +4403,7 @@ function MeterCard({
 
       </div>
 
-      <button
+      <button hidden={!canMutateWaterMeters}
         type="button"
         onClick={() =>
           onEdit(meter)
@@ -4353,7 +4435,7 @@ function MeterCard({
 
       {meter.calibration_id && (
 
-        <button
+        <button hidden={!canMutateWaterMeters}
           type="button"
           onClick={() =>
             onOpenDocument(

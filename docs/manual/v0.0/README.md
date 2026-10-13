@@ -48,9 +48,9 @@ Document version `1.0` is the first controlled version of a manual. It is indepe
 
 The Resident Mode Manual is intended for users who have access to Resident Mode in V0.0: the technical roles `resident` and `owner`.
 
-The Admin Mode Manual is intended for users who have the technical role `admin` and access to Admin Mode.
+The Admin Mode Manual is intended for users who have access to Admin Mode in V0.0: the technical role `admin` has full administrative access, while `board_member` has read-only Admin Mode access.
 
-The technical roles `cooperative_member`, `board_member`, `manager`, `accountant`, and `worker` exist in the data model but do not have separate role-specific modes in V0.0. The manuals must not imply otherwise.
+The technical roles `cooperative_member`, `manager`, `accountant`, and `worker` exist in the data model but do not receive Admin Mode access in V0.0. The `board_member` role uses Admin Mode in read-only form. If `admin` and `board_member` are both assigned, full `admin` access takes precedence.
 
 A user who has access to both UI modes may be offered both manuals. Manual availability must be based on the same effective mode and role rules as the application navigation.
 
@@ -157,6 +157,8 @@ The Resident Mode Manual must cover:
 ## 11. Admin Mode Manual content contract
 
 The Admin Mode Manual must cover:
+
+The manual serves both full administrators and read-only board members. Whenever a described function differs by capability, the text must state whether it is available to `admin`, to `board_member` in read-only form, or to both. Mutation procedures may remain documented for `admin`, but they must not be presented as available to a read-only `board_member`.
 
 1. MVX V0.0 purpose and scope;
 2. opening MVX, selecting a language, and identifying the facility;

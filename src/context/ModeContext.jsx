@@ -10,6 +10,10 @@ import {
   useAuth,
 } from "./AuthContext";
 
+import {
+  hasAdminModeAccess,
+} from "../access/adminCapabilities";
+
 const ModeContext =
   createContext(null);
 
@@ -32,14 +36,6 @@ function hasResidentAccess(
   );
 }
 
-function hasAdminAccess(
-  roles
-) {
-  return roles.includes(
-    "admin"
-  );
-}
-
 function isModeAllowed(
   mode,
   roles
@@ -55,7 +51,7 @@ function isModeAllowed(
   if (
     mode === "admin"
   ) {
-    return hasAdminAccess(
+    return hasAdminModeAccess(
       roles
     );
   }
@@ -75,7 +71,7 @@ function getDefaultMode(
   }
 
   if (
-    hasAdminAccess(
+    hasAdminModeAccess(
       roles
     )
   ) {
