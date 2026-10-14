@@ -193,11 +193,11 @@ Technical role identifiers must remain unchanged in code formatting. Descriptive
 | `resident` | iedzīvotājs | resident | жилец | Resident Mode |
 | `owner` | īpašnieks | owner | собственник | Resident Mode |
 | `cooperative_member` | kooperatīva biedrs | cooperative member | член кооператива | No |
-| `board_member` | valdes loceklis | board member | член правления | No |
+| `board_member` | valdes loceklis | board member | член правления | Admin Mode (read only) |
 | `manager` | pārvaldnieks | manager | управляющий | No |
 | `accountant` | grāmatvedis | accountant | бухгалтер | No |
 | `worker` | darbinieks | worker | работник | No |
-| `admin` | administrators | administrator | администратор | Admin Mode |
+| `admin` | administrators | administrator | администратор | Admin Mode (full) |
 
 ## 12. Mobile and PWA terms
 

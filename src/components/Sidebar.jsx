@@ -18,6 +18,12 @@ import {
 } from "../context/ModeContext";
 
 import {
+  getDefaultPathForMode,
+  hasAdminModeAccess,
+  isRestorablePathForMode,
+} from "../access/adminCapabilities";
+
+import {
   useFacility,
 } from "../context/FacilityContext";
 
@@ -48,72 +54,26 @@ const LAST_PATH_KEYS = {
     "mvx:last-path:admin",
 };
 
-const DEFAULT_PATHS = {
-  resident: "/",
-  admin: "/",
-};
-
-const RESIDENT_PATHS = new Set([
-  "/",
-  "/water",
-  "/announcements",
-  "/findings",
-  "/documents",
-  "/manual",
-  "/settings",
-]);
-
-const ADMIN_PATHS = new Set([
-  "/",
-  "/users",
-  "/apartments",
-  "/water-meters",
-  "/water-readings",
-  "/monthly-report",
-  "/admin-announcements",
-  "/admin-findings",
-  "/documents",
-  "/manual",
-  "/settings",
-]);
-
 const SETTINGS_LABELS = {
   lv: "Iestatījumi",
   en: "Settings",
   ru: "Настройки",
 };
 
-function isPathAllowedForMode(
-  path,
-  mode
-) {
-  if (mode === "resident") {
-    return RESIDENT_PATHS.has(
-      path
-    );
-  }
-
-  if (mode === "admin") {
-    return ADMIN_PATHS.has(
-      path
-    );
-  }
-
-  return false;
-}
-
 function saveLastPath(
   mode,
-  path
+  path,
+  roles
 ) {
   const key =
     LAST_PATH_KEYS[mode];
 
   if (
     !key ||
-    !isPathAllowedForMode(
+    !isRestorablePathForMode(
       path,
-      mode
+      mode,
+      roles
     )
   ) {
     return;
@@ -126,7 +86,8 @@ function saveLastPath(
 }
 
 function getLastPath(
-  mode
+  mode,
+  roles
 ) {
   const key =
     LAST_PATH_KEYS[mode];
@@ -140,17 +101,18 @@ function getLastPath(
 
   if (
     storedPath &&
-    isPathAllowedForMode(
+    isRestorablePathForMode(
       storedPath,
-      mode
+      mode,
+      roles
     )
   ) {
     return storedPath;
   }
 
-  return (
-    DEFAULT_PATHS[mode] ||
-    "/"
+  return getDefaultPathForMode(
+    mode,
+    roles
   );
 }
 
@@ -206,8 +168,10 @@ export default function Sidebar({
     roles.includes("resident") ||
     roles.includes("owner");
 
-  const hasAdmin =
-    roles.includes("admin");
+  const hasAdminMode =
+    hasAdminModeAccess(
+      roles
+    );
 
   const settingsLabel =
     SETTINGS_LABELS[language] ||
@@ -227,9 +191,20 @@ export default function Sidebar({
   const go = (
     path
   ) => {
+    if (
+      !isRestorablePathForMode(
+        path,
+        mode,
+        roles
+      )
+    ) {
+      return;
+    }
+
     saveLastPath(
       mode,
-      path
+      path,
+      roles
     );
 
     navigate(path);
@@ -257,12 +232,14 @@ export default function Sidebar({
 
     saveLastPath(
       mode,
-      location.pathname
+      location.pathname,
+      roles
     );
 
     const targetPath =
       getLastPath(
-        nextMode
+        nextMode,
+        roles
       );
 
     setMode(
@@ -284,6 +261,13 @@ export default function Sidebar({
     mode === "admin"
       ? "/admin-findings"
       : "/findings";
+
+  const canOpenFindings =
+    isRestorablePathForMode(
+      findingsPath,
+      mode,
+      roles
+    );
 
   const findingsActive =
     isActivePath(
@@ -491,7 +475,7 @@ export default function Sidebar({
               </button>
             )}
 
-            {hasAdmin && (
+            {hasAdminMode && (
               <button
                 style={
                   mode === "admin"
@@ -552,14 +536,18 @@ export default function Sidebar({
                 )
               }
             />
-
           </>
         )}
 
         {!mustChangePassword &&
           mode === "admin" && (
           <>
-            <MenuButton
+            {isRestorablePathForMode(
+              "/",
+              "admin",
+              roles
+            ) && (
+              <MenuButton
               title={t(
                 "sidebar.dashboard"
               )}
@@ -569,7 +557,8 @@ export default function Sidebar({
               onClick={() =>
                 go("/")
               }
-            />
+              />
+            )}
 
             <MenuButton
               title={t(
@@ -611,7 +600,12 @@ export default function Sidebar({
               }
             />
 
-            <MenuButton
+            {isRestorablePathForMode(
+              "/admin-announcements",
+              "admin",
+              roles
+            ) && (
+              <MenuButton
               title={t(
                 "sidebar.announcements"
               )}
@@ -621,9 +615,15 @@ export default function Sidebar({
                   "/admin-announcements"
                 )
               }
-            />
+              />
+            )}
 
-            <MenuButton
+            {isRestorablePathForMode(
+              "/monthly-report",
+              "admin",
+              roles
+            ) && (
+              <MenuButton
               title={t(
                 "sidebar.monthlyReport"
               )}
@@ -631,7 +631,8 @@ export default function Sidebar({
               onClick={() =>
                 go("/monthly-report")
               }
-            />
+              />
+            )}
           </>
         )}
 
@@ -711,7 +712,8 @@ export default function Sidebar({
         style={bottomBlockStyle}
       >
         {!mustChangePassword &&
-          environment === "test" && (
+          environment === "test" &&
+          canOpenFindings && (
             <button
               type="button"
               onClick={openFindings}

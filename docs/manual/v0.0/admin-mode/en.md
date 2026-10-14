@@ -18,9 +18,9 @@ requires_acceptance: false
 
 ## 1. About this manual
 
-This manual explains the MVX V0.0 functions available in **Admin Mode**. It is intended for users with the technical role `admin`.
+This manual explains the MVX V0.0 functions available in **Admin Mode**. It is intended for users with full `admin` access and for users with the `board_member` role who have read-only Admin Mode access.
 
-Admin Mode can be used to manage users and apartments, water meters and readings, announcements, monthly reports, contact information shown to users, and other system settings.
+With the `admin` role, Admin Mode provides the full administrative functions described in this manual. With `board_member` and without `admin`, Admin Mode is read-only and limited to the board-safe sections described in section 5.
 
 The manual describes only user-visible actions in MVX V0.0. It does not replace legal documents, incident recovery procedures, or technical infrastructure documentation, and it does not describe features planned for later versions.
 
@@ -72,11 +72,13 @@ An administrator password must not be shared with another person. Do not ask use
 
 ## 5. Technical roles, Admin Mode, and access boundaries
 
-A separate Admin Mode in MVX V0.0 is available to the technical role `admin`. The roles `resident` and `owner` use Resident Mode.
+Admin Mode in MVX V0.0 is available to `admin` with full administrative access and to `board_member` with read-only access. The roles `resident` and `owner` use Resident Mode when those roles are assigned.
 
-The technical roles `cooperative_member`, `board_member`, `manager`, `accountant`, and `worker` exist in the data model, but MVX V0.0 does not provide separate role-specific modes for them. A role name alone does not grant Admin Mode.
+If `admin` and `board_member` are both assigned, full `admin` access takes precedence. The roles `cooperative_member`, `manager`, `accountant`, and `worker` do not receive Admin Mode access in V0.0.
 
-The Admin Mode sidebar contains the following sections:
+For `board_member` without `admin`, the available Admin Mode areas are **Users**, **Apartments**, **Water Meter Management**, **Water Reading History**, **Documents**, **Settings**, and the **Admin Mode Manual**. **Dashboard**, **Monthly Report**, and **Announcement Management** are full-admin-only. Mutation controls are unavailable in read-only Admin Mode.
+
+For the `admin` role, the Admin Mode sidebar contains the full set of sections:
 
 - **Dashboard**;
 - **Users**;
@@ -92,6 +94,8 @@ On a small screen, open the sidebar with the menu button. In desktop view, the s
 
 ## 6. Dashboard
 
+> **Access boundary:** this section is full-admin-only and is not shown to a read-only `board_member`.
+
 The **Dashboard** section shows a summary of the facility.
 
 The **Building Summary** block may show:
@@ -105,6 +109,8 @@ The **Building Summary** block may show:
 The summary values depend on active data stored in the system. If a number appears incorrect, first check **Apartments** and **Users** instead of creating a duplicate record.
 
 ## 7. Users
+
+> **Access boundary:** `board_member` may search and inspect users, account and recovery status, roles, and apartment relations. Creating or editing users, changing status, issuing or revoking recovery codes, changing roles, and changing apartment assignments require `admin`.
 
 ### 7.1. Search and user information
 
@@ -160,6 +166,8 @@ An active code can be revoked with **Revoke Recovery Code**. Do not ask the user
 
 ## 8. Apartments
 
+> **Access boundary:** `board_member` may browse apartments, use filters, open apartment details, inspect pseudonymous owner/resident relations, and follow read-only cross-navigation. Creating an apartment requires `admin`.
+
 ### 8.1. Search and overview
 
 Open **Apartments**. An apartment can be found by its number or a user's Nick and filtered by building section and floor.
@@ -180,6 +188,8 @@ Selecting an associated user can open the **Users** section. The back action pre
 Before saving, check the apartment number and building section. Do not create a second apartment record to correct a user assignment for an existing apartment.
 
 ## 9. Water Meter Management
+
+> **Access boundary:** `board_member` may inspect meter inventory, filters, calibration status, calibration history, and calibration metadata. Adding, editing or deactivating meters, adding or uploading calibration data, and opening certificate binary files require `admin`.
 
 ### 9.1. List and filters
 
@@ -223,6 +233,8 @@ In the meter view, open **Calibration History**. Previous records and calibratio
 
 ## 10. Water Reading History
 
+> **Access boundary:** `board_member` may view, search, filter, refresh, and export the visible reading history to a local XLSX file. This page does not provide board-member mutation actions.
+
 The **Water Reading History** section is an audit overview of submitted, corrected, and superseded water-meter readings.
 
 The summary shows the number of all, active, superseded, and admin-received records. Records can be:
@@ -237,6 +249,8 @@ The source may be Resident portal, Paper note, Email, Phone, or Manual admin ent
 Filters also affect the set of records exported. If no records match the selected filters, MVX does not create an empty export.
 
 ## 11. Monthly Report and administrative receipt of readings
+
+> **Access boundary:** Monthly Report and administrative receipt of readings are full-admin-only and are not shown to a read-only `board_member`.
 
 ### 11.1. Selecting a report and reviewing the summary
 
@@ -263,6 +277,8 @@ If the reporting period is closed, MVX requires **This reporting period is close
 
 ## 12. Announcement Management
 
+> **Access boundary:** Announcement Management is full-admin-only and is not shown to a read-only `board_member`.
+
 ### 12.1. Creating an announcement
 
 Open **Announcements**. On the **Announcement Management** page:
@@ -285,6 +301,8 @@ Select **Archive** to remove the announcement from current content visible to re
 
 ## 13. Documents and legal information
 
+> **Access boundary:** Documents and legal information are available to both full `admin` and read-only `board_member` users.
+
 Open **Documents** and **Legal information**. MVX V0.0 provides access to the following public documents:
 
 - **Personal Data Processing Notice**;
@@ -297,6 +315,8 @@ Select a document title to open it. On the document page, use **Back to Document
 This manual does not repeat or replace the content of the legal documents. Always use the current document version displayed by MVX.
 
 ## 14. Administrative Settings
+
+> **Access boundary:** the administrative Settings blocks described in this section require `admin`. They are not shown to a read-only `board_member`.
 
 Administrative blocks are shown under **Settings** when Admin Mode is active, the account has the `admin` role, and the mandatory temporary-password change has been completed.
 
@@ -337,6 +357,8 @@ If the system detects a protected rollback scenario after a restore, **Rollback 
 This user manual does not publish confirmation phrases and does not replace the technical incident-recovery procedure. If it is unclear which action is permitted, stop and use the approved support path.
 
 ## 15. Personal Settings
+
+> **Access boundary:** shared personal Settings remain available to `board_member`. Administrative management blocks remain restricted to `admin`.
 
 ### 15.1. Changing the password
 
@@ -413,7 +435,7 @@ Use Admin Mode on a mobile device with particular care: before confirmation, che
 |---|---|
 | Unable to sign in | Check the MVX address, **Nick**, password, and selected environment. If needed, use **Forgot your Nick or password?** and contact another authorized MVX administrator. |
 | Only Settings is available | Change the temporary password as described in section 4. |
-| Admin Mode is unavailable | Check that the account has the technical role `admin`. A role name in another system does not grant MVX access. |
+| Admin Mode is unavailable | Check that the account has the technical role `admin` or `board_member`. The `admin` role grants full access; `board_member` grants read-only Admin Mode. Other role names do not grant Admin Mode in V0.0. |
 | Unable to find a user | Check the search text and status filter. When searching personal data, use only information necessary for the administrative task. |
 | An apartment or meter is not shown | Check the building-section, floor, and status filters, then refresh the data. Do not create a duplicate until the existing record has been checked. |
 | Unable to save a reading | Check the meter, full-reading format, reading date, source, source note, and period status. A separate confirmation is required for a closed period. |

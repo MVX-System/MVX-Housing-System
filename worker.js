@@ -34500,7 +34500,7 @@ async function verifyJWT(
 
 Router.register("GET", "/api/apartments/full", async (ctx) => {
 
-  const admin = await Auth.requireAdmin(ctx);
+  const admin = await Auth.requireAdminReader(ctx);
 
   if (!admin) {
     return {

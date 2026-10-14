@@ -18,6 +18,10 @@ import {
   useAuth,
 } from "../context/AuthContext";
 
+import {
+  isFullAdmin,
+} from "../access/adminCapabilities";
+
 import useApartments
   from "../hooks/useApartments";
 
@@ -403,6 +407,11 @@ export default function UsersPage() {
     refreshMe,
   } = useAuth();
 
+  const canMutateUsers =
+    isFullAdmin(
+      me?.roles
+    );
+
   const navigate =
     useNavigate();
 
@@ -523,12 +532,40 @@ export default function UsersPage() {
     setUserStatus,
 
     loadUserAssignments,
-    addAssignment,
-    removeAssignment,
+    addAssignment:
+      addAssignmentRequest,
+    removeAssignment:
+      removeAssignmentRequest,
     getRoles,
     getUserRoles,
     setUserRoles,
   } = useUsers();
+
+  const addAssignment =
+    async () => {
+      if (
+        !canMutateUsers
+      ) {
+        return;
+      }
+
+      return addAssignmentRequest();
+    };
+
+  const removeAssignment =
+    async (
+      assignmentId
+    ) => {
+      if (
+        !canMutateUsers
+      ) {
+        return;
+      }
+
+      return removeAssignmentRequest(
+        assignmentId
+      );
+    };
 
   const [
     roleUser,
@@ -633,6 +670,13 @@ export default function UsersPage() {
       user,
       mode = "view"
     ) => {
+      if (
+        mode === "edit" &&
+        !canMutateUsers
+      ) {
+        return;
+      }
+
       if (!user?.id) {
         return;
       }
@@ -705,6 +749,12 @@ export default function UsersPage() {
 
   const handleIssueRecoveryCode =
     async () => {
+      if (
+        !canMutateUsers
+      ) {
+        return;
+      }
+
       if (!selectedUser?.id) {
         return;
       }
@@ -778,6 +828,12 @@ export default function UsersPage() {
 
   const handleRevokeRecoveryCode =
     async () => {
+      if (
+        !canMutateUsers
+      ) {
+        return;
+      }
+
       if (!selectedUser?.id) {
         return;
       }
@@ -1054,6 +1110,12 @@ export default function UsersPage() {
     async (
       user
     ) => {
+      if (
+        !canMutateUsers
+      ) {
+        return;
+      }
+
       if (!user?.id) {
         return;
       }
@@ -1252,6 +1314,12 @@ export default function UsersPage() {
 
   const handleSaveRoles =
     async () => {
+      if (
+        !canMutateUsers
+      ) {
+        return;
+      }
+
       if (
         !roleUser?.id ||
         rolesSaving ||
@@ -1536,6 +1604,12 @@ export default function UsersPage() {
 
   const handleCreate =
     async () => {
+      if (
+        !canMutateUsers
+      ) {
+        return;
+      }
+
       try {
         await createUser();
       } catch (createError) {
@@ -1547,6 +1621,12 @@ export default function UsersPage() {
 
   const handleUpdate =
     async () => {
+      if (
+        !canMutateUsers
+      ) {
+        return;
+      }
+
       try {
         await updateUser(
           editingUser
@@ -1560,6 +1640,12 @@ export default function UsersPage() {
 
   const handleStatus =
     async () => {
+      if (
+        !canMutateUsers
+      ) {
+        return;
+      }
+
       const nextStatus =
         Number(
           statusUser.is_active
@@ -1686,6 +1772,7 @@ export default function UsersPage() {
 
         <button
           type="button"
+          hidden={!canMutateUsers}
           onClick={() =>
             setShowCreateUser(
               true
@@ -1906,6 +1993,7 @@ export default function UsersPage() {
 
                       <button
                         type="button"
+                        hidden={!canMutateUsers}
                         onClick={() =>
                           openUserDetails(
                             user,
@@ -1919,6 +2007,7 @@ export default function UsersPage() {
 
                       <button
                         type="button"
+                        hidden={!canMutateUsers}
                         onClick={() =>
                           openRoleManagement(
                             user
@@ -1938,7 +2027,9 @@ export default function UsersPage() {
                         }
                         style={smallButtonStyle}
                       >
-                        {text.assign}
+                        {canMutateUsers
+                    ? text.assign
+                    : text.assignmentTitle}
                       </button>
 
                     </div>
@@ -2084,6 +2175,7 @@ export default function UsersPage() {
 
                 <button
                   type="button"
+                  hidden={!canMutateUsers}
                   onClick={() =>
                     openUserDetails(
                       user,
@@ -2097,6 +2189,7 @@ export default function UsersPage() {
 
                 <button
                   type="button"
+                  hidden={!canMutateUsers}
                   onClick={() =>
                     openRoleManagement(
                       user
@@ -2116,7 +2209,9 @@ export default function UsersPage() {
                   }
                   style={smallButtonStyle}
                 >
-                  {text.assign}
+                  {canMutateUsers
+                    ? text.assign
+                    : text.assignmentTitle}
                 </button>
 
               </div>
@@ -2229,6 +2324,7 @@ export default function UsersPage() {
 
           <button
             type="button"
+            hidden={!canMutateUsers}
             onClick={
               handleCreate
             }
@@ -2343,6 +2439,7 @@ export default function UsersPage() {
 
             <button
               type="button"
+              hidden={!canMutateUsers}
               onClick={() => {
                 setStatusUser(
                   editingUser
@@ -2362,6 +2459,7 @@ export default function UsersPage() {
 
             <button
               type="button"
+              hidden={!canMutateUsers}
               onClick={
                 handleUpdate
               }
@@ -2409,6 +2507,7 @@ export default function UsersPage() {
 
             <button
               type="button"
+              hidden={!canMutateUsers}
               onClick={
                 handleStatus
               }
@@ -2503,6 +2602,7 @@ export default function UsersPage() {
 
             <button
               type="button"
+              hidden={!canMutateUsers}
               onClick={() =>
                 openRoleManagement(
                   selectedUser
@@ -2644,6 +2744,7 @@ export default function UsersPage() {
               >
                 <button
                   type="button"
+                  hidden={!canMutateUsers}
                   disabled={
                     recoveryBusy ||
                     recoveryLoading ||
@@ -2686,6 +2787,7 @@ export default function UsersPage() {
                   "active" && (
                     <button
                       type="button"
+                      hidden={!canMutateUsers}
                       disabled={
                         recoveryBusy ||
                         recoveryLoading
@@ -2989,6 +3091,7 @@ export default function UsersPage() {
                   event.target.value
                 )
               }
+              disabled={!canMutateUsers}
               style={inputStyle}
             >
               <option value="">
@@ -3020,6 +3123,7 @@ export default function UsersPage() {
                   event.target.value
                 )
               }
+              disabled={!canMutateUsers}
               style={inputStyle}
             >
               <option value="owner">
@@ -3033,6 +3137,7 @@ export default function UsersPage() {
 
             <button
               type="button"
+              hidden={!canMutateUsers}
               onClick={async () => {
                 try {
                   await addAssignment();
@@ -3090,6 +3195,7 @@ export default function UsersPage() {
 
                     <button
                       type="button"
+                      hidden={!canMutateUsers}
                       onClick={async () => {
                         try {
                           await removeAssignment(
