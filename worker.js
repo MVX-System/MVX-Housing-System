@@ -31492,6 +31492,36 @@ Router.register(
 );
 
 // =========================
+// ADMIN MONTHLY REPORT PERIOD LIST (READ ONLY)
+// Independent of administrative reading-entry permissions.
+// =========================
+Router.register(
+  "GET",
+  "/api/admin/water-monthly-report-periods",
+  async (ctx) => {
+    const admin = await Auth.requireAdmin(ctx);
+    if (!admin) {
+      return { error: "forbidden" };
+    }
+
+    const result = await ctx.env.DB.prepare(`
+      SELECT
+        id,
+        period_year,
+        period_month,
+        status,
+        collection_opens_at,
+        collection_closes_at
+      FROM water_reporting_periods
+      WHERE status IN ('scheduled', 'open', 'closed', 'finalized')
+      ORDER BY period_year DESC, period_month DESC, id DESC
+    `).all();
+
+    return { ok: true, periods: result.results || [] };
+  }
+);
+
+// =========================
 // ADMIN WATER MONTHLY REPORT
 // =========================
 Router.register(

@@ -72,6 +72,11 @@ export default function useWater() {
     setMeterCalibrationsLoading
   ] = useState(false);
 
+  const [
+    adminMonthlyReportPeriods,
+    setAdminMonthlyReportPeriods
+  ] = useState([]);
+
   // =====================================
   // ADMIN READING ENTRY PERIODS
   // =====================================
@@ -437,6 +442,26 @@ export default function useWater() {
         ""
       );
     };
+
+  // Read-only navigation list for the Monthly Report.
+  // Do not reuse this list to authorize manual submissions.
+  const loadAdminMonthlyReportPeriods = async () => {
+    try {
+      const result = await api(
+        "/api/admin/water-monthly-report-periods"
+      );
+      if (result?.error || !Array.isArray(result?.periods)) {
+        setAdminMonthlyReportPeriods([]);
+        return [];
+      }
+      setAdminMonthlyReportPeriods(result.periods);
+      return result.periods;
+    } catch (error) {
+      console.error("Load monthly report periods failed:", error);
+      setAdminMonthlyReportPeriods([]);
+      return [];
+    }
+  };
 
   const loadAdminReadingEntryPeriods =
     async () => {
@@ -1746,6 +1771,7 @@ export default function useWater() {
     adminWater,
     adminWaterMeters,
 
+    adminMonthlyReportPeriods,
     adminReadingEntryPeriods,
     adminReadingEntryPeriodsLoading,
     adminReadingEntryPeriodsError,
@@ -1772,6 +1798,7 @@ export default function useWater() {
     loadAdminWater,
     loadAdminWaterMeters,
 
+    loadAdminMonthlyReportPeriods,
     loadAdminReadingEntryPeriods,
     loadAdminMonthlyReport,
     clearAdminMonthlyReport,
