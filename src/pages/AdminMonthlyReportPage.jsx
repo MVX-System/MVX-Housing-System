@@ -1,3 +1,4 @@
+import { selectDefaultMonthlyReportPeriod } from "../utils/selectMonthlyReportPeriod";
 import {
   useEffect,
   useMemo,
@@ -714,9 +715,11 @@ export default function AdminMonthlyReportPage() {
     currentWaterReportingPeriodError,
     loadCurrentWaterReportingPeriod,
 
+    adminMonthlyReportPeriods,
     adminReadingEntryPeriods,
     adminReadingEntryPeriodsLoading,
     adminReadingEntryPeriodsError,
+    loadAdminMonthlyReportPeriods,
     loadAdminReadingEntryPeriods,
 
     adminMonthlyReport,
@@ -757,22 +760,16 @@ export default function AdminMonthlyReportPage() {
         await loadCurrentWaterReportingPeriod();
 
       const periods =
-        await loadAdminReadingEntryPeriods();
+        await loadAdminMonthlyReportPeriods();
 
-      const currentPeriod =
-        current?.period || null;
+      // Keep this independent list for administrative manual entry only.
+      await loadAdminReadingEntryPeriods();
 
       const defaultPeriod =
-        currentPeriod ||
-        periods.find(
-          (item) =>
-            item.status === "open"
-        ) ||
-        periods.find(
-          (item) =>
-            item.status === "closed"
-        ) ||
-        null;
+        selectDefaultMonthlyReportPeriod(
+          periods,
+          current?.period || null
+        );
 
       if (!defaultPeriod) {
         return;
@@ -800,33 +797,25 @@ export default function AdminMonthlyReportPage() {
     currentWaterReportingPeriod?.period;
 
   const reportingPeriods = [
+    ...adminMonthlyReportPeriods,
     ...(
       currentWaterReportingPeriod?.period
-        ? [
-            currentWaterReportingPeriod.period
-          ]
+        ? [currentWaterReportingPeriod.period]
         : []
     ),
     ...adminReadingEntryPeriods,
   ]
     .filter(
-      (
-        item,
-        index,
-        items
-      ) =>
-        items.findIndex(
+      (item, index, items) =>
+        item && items.findIndex(
           (candidate) =>
-            String(candidate.id) ===
-            String(item.id)
+            String(candidate.id) === String(item.id)
         ) === index
     )
     .sort(
       (a, b) =>
-        Number(b.period_year) -
-          Number(a.period_year) ||
-        Number(b.period_month) -
-          Number(a.period_month)
+        Number(b.period_year) - Number(a.period_year) ||
+        Number(b.period_month) - Number(a.period_month)
     );
 
   const selectedEntryPeriod =
