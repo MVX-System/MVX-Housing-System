@@ -7,9 +7,76 @@ export default {
   // Daily retention housekeeping is executed only by Cloudflare Cron.
   // It is intentionally not tied to normal user requests.
   async scheduled(controller, env, ctx) {
-    ctx.waitUntil(
-      SecurityHousekeeping.run(env)
-    );
+    // PR-9K.2C: fail-closed maintenance gate for Cron.
+    ctx.waitUntil((async () => {
+      let maintenance;
+
+      try {
+        maintenance =
+          await SystemOperationsControl.getState(env);
+      } catch (error) {
+        App.logError(
+          "cron_maintenance_check_failed",
+          error
+        );
+        return;
+      }
+
+      if (maintenance.maintenance_enabled) {
+        return;
+      }
+
+      const tasks = [
+        (async () => {
+          try {
+            const result =
+              await SecurityHousekeeping.run(env);
+
+            if (!result?.ok) {
+              App.logError(
+                "security_housekeeping_incomplete",
+                new Error("Retention housekeeping incomplete")
+              );
+            }
+          } catch (error) {
+            App.logError(
+              "security_housekeeping_cron_failed",
+              error
+            );
+          }
+        })(),
+        (async () => {
+          try {
+            const generation =
+              await ensureAutomaticWaterReportingPeriods(env);
+
+            if (!generation.ok) {
+              throw new Error(
+                "water_period_generation_incomplete: " +
+                JSON.stringify(generation.results)
+              );
+            }
+
+            const syncResult =
+              await syncWaterReportingPeriodStatuses(env);
+
+            if (!syncResult.ok || syncResult.skipped) {
+              throw new Error(
+                "water_period_sync_incomplete: " +
+                (syncResult.reason || "unknown")
+              );
+            }
+          } catch (error) {
+            App.logError(
+              "water_period_cron_failed",
+              error
+            );
+          }
+        })(),
+      ];
+
+      await Promise.allSettled(tasks);
+    })());
   }
 };
 
@@ -4551,6 +4618,8 @@ async function publishWaterPeriodOpeningAnnouncements(env) {
       collection_closes_at
     FROM water_reporting_periods
     WHERE status = 'open'
+      AND datetime('now') >= datetime(collection_opens_at)
+      AND datetime('now') <= datetime(collection_closes_at)
       AND NOT EXISTS (
         SELECT 1
         FROM water_reporting_period_announcements link
@@ -4674,6 +4743,33 @@ async function publishWaterPeriodOpeningAnnouncements(env) {
 async function syncWaterReportingPeriodStatuses(
   env
 ) {
+  // PR-9K.2C: prevent implicit D1 writes from HTTP GET
+  // while a controlled restore is active.
+  let maintenance;
+
+  try {
+    maintenance =
+      await SystemOperationsControl.getState(env);
+  } catch (error) {
+    App.logError(
+      "water_period_maintenance_check_failed",
+      error
+    );
+
+    return {
+      ok: false,
+      skipped: true,
+      reason: "maintenance_state_unavailable",
+    };
+  }
+
+  if (maintenance.maintenance_enabled) {
+    return {
+      ok: true,
+      skipped: true,
+      reason: "maintenance_enabled",
+    };
+  }
 
   const nowIso =
     new Date().toISOString();
@@ -4730,6 +4826,11 @@ async function syncWaterReportingPeriodStatuses(
       nowIso
     )
     .run();
+
+  return {
+    ok: true,
+    skipped: false,
+  };
 }
 
 // =========================
@@ -7232,6 +7333,213 @@ function getNextYearMonth(year, month) {
   };
 }
 
+
+// PR-9K.2C — Automatic water reporting period generation.
+// Does not change period statuses or publish announcements.
+async function ensureAutomaticWaterReportingPeriods(
+  env,
+  now = new Date()
+) {
+  const settings = await getWaterReportingSettings(env);
+  const timeZone = settings.timezone;
+
+  const current = getDatePartsInTimeZone(
+    now,
+    timeZone
+  );
+
+  const next = getNextYearMonth(
+    current.year,
+    current.month
+  );
+
+  const previous =
+    current.month === 1
+      ? {
+          year: current.year - 1,
+          month: 12,
+        }
+      : {
+          year: current.year,
+          month: current.month - 1,
+        };
+
+  const previousCalculated = calculateWaterReportingPeriod({
+    year: previous.year,
+    month: previous.month,
+    daysBeforeMonthEnd:
+      Number(settings.days_before_month_end),
+    daysAfterMonthEnd:
+      Number(settings.days_after_month_end),
+    timeZone,
+  });
+
+  const previousStillActive =
+    new Date(previousCalculated.collection_closes_at)
+      .getTime() > now.getTime();
+
+  const months = [
+    ...(previousStillActive ? [previous] : []),
+    {
+      year: current.year,
+      month: current.month,
+    },
+    next,
+  ];
+
+  const results = [];
+
+  for (const item of months) {
+    const calculated = calculateWaterReportingPeriod({
+      year: item.year,
+      month: item.month,
+      daysBeforeMonthEnd:
+        Number(settings.days_before_month_end),
+      daysAfterMonthEnd:
+        Number(settings.days_after_month_end),
+      timeZone,
+    });
+
+    const existing = await env.DB.prepare(`
+      SELECT id, status
+      FROM water_reporting_periods
+      WHERE period_year = ?
+        AND period_month = ?
+      LIMIT 1
+    `)
+      .bind(item.year, item.month)
+      .first();
+
+    if (existing) {
+      results.push({
+        year: item.year,
+        month: item.month,
+        action: "existing",
+        period_id: existing.id,
+      });
+      continue;
+    }
+
+    if (
+      new Date(calculated.collection_closes_at)
+        .getTime() <= now.getTime()
+    ) {
+      results.push({
+        year: item.year,
+        month: item.month,
+        action: "expired_skipped",
+      });
+      continue;
+    }
+
+    const overlap = await findWaterReportingPeriodOverlap(
+      env,
+      calculated.collection_opens_at,
+      calculated.collection_closes_at
+    );
+
+    if (overlap) {
+      results.push({
+        year: item.year,
+        month: item.month,
+        action: "overlap_skipped",
+        overlap_period_id: overlap.id,
+      });
+      continue;
+    }
+
+    const insert = await env.DB.prepare(`
+      INSERT OR IGNORE INTO water_reporting_periods (
+        period_year,
+        period_month,
+        status,
+        collection_opens_at,
+        collection_closes_at,
+        notes,
+        created_at,
+        updated_at
+      )
+      SELECT
+        ?, ?, 'scheduled', ?, ?, ?, ?, ?
+      WHERE NOT EXISTS (
+        SELECT 1
+        FROM water_reporting_periods
+        WHERE
+          datetime(collection_opens_at) <= datetime(?)
+          AND datetime(collection_closes_at) >= datetime(?)
+      )
+    `)
+      .bind(
+        item.year,
+        item.month,
+        calculated.collection_opens_at,
+        calculated.collection_closes_at,
+        "Automatically generated by PR-9K.2 period lifecycle",
+        now.toISOString(),
+        now.toISOString(),
+        calculated.collection_closes_at,
+        calculated.collection_opens_at
+      )
+      .run();
+
+    if (insert.meta?.changes === 1) {
+      results.push({
+        year: item.year,
+        month: item.month,
+        action: "created",
+        period_id: insert.meta?.last_row_id || null,
+      });
+      continue;
+    }
+
+    const existingAfterInsert = await env.DB.prepare(`
+      SELECT id, status
+      FROM water_reporting_periods
+      WHERE period_year = ?
+        AND period_month = ?
+      LIMIT 1
+    `)
+      .bind(item.year, item.month)
+      .first();
+
+    if (existingAfterInsert) {
+      results.push({
+        year: item.year,
+        month: item.month,
+        action: "already_created",
+        period_id: existingAfterInsert.id,
+      });
+      continue;
+    }
+
+    const overlapAfterInsert =
+      await findWaterReportingPeriodOverlap(
+        env,
+        calculated.collection_opens_at,
+        calculated.collection_closes_at
+      );
+
+    results.push({
+      year: item.year,
+      month: item.month,
+      action: overlapAfterInsert
+        ? "overlap_skipped"
+        : "insert_skipped_unknown",
+      overlap_period_id:
+        overlapAfterInsert?.id || null,
+    });
+  }
+
+  const unresolved = results.some(
+    (item) => item.action === "insert_skipped_unknown"
+  );
+
+  return {
+    ok: !unresolved,
+    results,
+  };
+}
+
 async function resolveManagedWaterReportingMonth(env, timeZone) {
   const scheduledPeriod = await env.DB.prepare(`
     SELECT
@@ -7325,6 +7633,69 @@ async function findWaterReportingPeriodOverlap(
   return overlap || null;
 }
 
+async function commitManagedWaterPeriodAndSettings(
+  env,
+  periodStatement,
+  {
+    daysBeforeMonthEnd,
+    daysAfterMonthEnd,
+    timeZone,
+    adminUserId,
+    nowIso,
+  }
+) {
+  return await env.DB.batch([
+    periodStatement,
+
+    // SQL conflict gate: changes() is evaluated immediately
+    // after the period INSERT/UPDATE in the same batch.
+    // CHECK (id = 1) rejects the deliberately invalid id=2.
+    env.DB.prepare(`
+      INSERT INTO water_reporting_settings (
+        id,
+        days_before_month_end,
+        days_after_month_end,
+        timezone
+      )
+      SELECT 2, 0, 0, ?
+      WHERE changes() = 0
+    `).bind(timeZone),
+
+    env.DB.prepare(`
+      UPDATE water_reporting_settings
+      SET
+        days_before_month_end = ?,
+        days_after_month_end = ?,
+        timezone = ?,
+        updated_by = ?,
+        updated_at = ?
+      WHERE id = ?
+    `).bind(
+      daysBeforeMonthEnd,
+      daysAfterMonthEnd,
+      timeZone,
+      adminUserId,
+      nowIso,
+      WATER_REPORTING_SETTINGS_ID
+    ),
+
+    // Settings integrity gate:
+    // the preceding UPDATE must affect one settings row.
+    // If it changed zero rows, deliberately violate NOT NULL.
+    // This is a technical integrity failure, not a period conflict.
+    env.DB.prepare(`
+      INSERT INTO water_reporting_settings (
+        id,
+        days_before_month_end,
+        days_after_month_end,
+        timezone
+      )
+      SELECT 1, NULL, 0, ?
+      WHERE changes() = 0
+    `).bind(timeZone),
+  ]);
+}
+
 async function upsertManagedWaterReportingPeriod({
   env,
   adminUserId,
@@ -7332,7 +7703,15 @@ async function upsertManagedWaterReportingPeriod({
   daysAfterMonthEnd,
   timeZone,
 }) {
-  await syncWaterReportingPeriodStatuses(env);
+  const syncResult =
+    await syncWaterReportingPeriodStatuses(env);
+
+  if (syncResult.skipped || !syncResult.ok) {
+    throw new Error(
+      "water_reporting_lifecycle_unavailable: " +
+      (syncResult.reason || "synchronization_failed")
+    );
+  }
 
   const managedMonth = await resolveManagedWaterReportingMonth(
     env,
@@ -7366,7 +7745,10 @@ async function upsertManagedWaterReportingPeriod({
   const nowIso = new Date().toISOString();
 
   if (managedMonth.existing_period) {
-    await env.DB.prepare(`
+    const transactionResults =
+      await commitManagedWaterPeriodAndSettings(
+        env,
+        env.DB.prepare(`
       UPDATE water_reporting_periods
       SET
         collection_opens_at = ?,
@@ -7379,14 +7761,41 @@ async function upsertManagedWaterReportingPeriod({
         updated_at = ?
       WHERE id = ?
         AND status = 'scheduled'
+        AND NOT EXISTS (
+          SELECT 1
+          FROM water_reporting_periods AS other
+          WHERE other.id <> water_reporting_periods.id
+            AND datetime(other.collection_opens_at) <= datetime(?)
+            AND datetime(other.collection_closes_at) >= datetime(?)
+        )
     `)
       .bind(
         calculatedPeriod.collection_opens_at,
         calculatedPeriod.collection_closes_at,
         nowIso,
-        managedMonth.existing_period.id
-      )
-      .run();
+        managedMonth.existing_period.id,
+        calculatedPeriod.collection_closes_at,
+        calculatedPeriod.collection_opens_at
+      ),
+        {
+          daysBeforeMonthEnd,
+          daysAfterMonthEnd,
+          timeZone,
+          adminUserId,
+          nowIso,
+        }
+      );
+
+    const updateResult = transactionResults[0];
+
+    if (updateResult.meta?.changes !== 1) {
+      return {
+        ok: false,
+        error: "water_reporting_period_update_conflict",
+        period_id: managedMonth.existing_period.id,
+        calculated_period: calculatedPeriod,
+      };
+    }
 
     return {
       ok: true,
@@ -7418,8 +7827,11 @@ async function upsertManagedWaterReportingPeriod({
     };
   }
 
-  const result = await env.DB.prepare(`
-    INSERT INTO water_reporting_periods (
+  const transactionResults =
+      await commitManagedWaterPeriodAndSettings(
+        env,
+        env.DB.prepare(`
+    INSERT OR IGNORE INTO water_reporting_periods (
       period_year,
       period_month,
       status,
@@ -7429,7 +7841,14 @@ async function upsertManagedWaterReportingPeriod({
       created_at,
       updated_at
     )
-    VALUES (?, ?, 'scheduled', ?, ?, ?, ?, ?)
+    SELECT
+      ?, ?, 'scheduled', ?, ?, ?, ?, ?
+    WHERE NOT EXISTS (
+      SELECT 1
+      FROM water_reporting_periods
+      WHERE datetime(collection_opens_at) <= datetime(?)
+        AND datetime(collection_closes_at) >= datetime(?)
+    )
   `)
     .bind(
       calculatedPeriod.period_year,
@@ -7438,9 +7857,66 @@ async function upsertManagedWaterReportingPeriod({
       calculatedPeriod.collection_closes_at,
       `Automatically generated from Water Reporting Settings by user ${adminUserId}`,
       nowIso,
-      nowIso
-    )
-    .run();
+      nowIso,
+      calculatedPeriod.collection_closes_at,
+      calculatedPeriod.collection_opens_at
+    ),
+        {
+          daysBeforeMonthEnd,
+          daysAfterMonthEnd,
+          timeZone,
+          adminUserId,
+          nowIso,
+        }
+      );
+
+    const result = transactionResults[0];
+
+  if (result.meta?.changes !== 1) {
+    const existingAfterInsert = await env.DB.prepare(`
+      SELECT id, status
+      FROM water_reporting_periods
+      WHERE period_year = ?
+        AND period_month = ?
+      LIMIT 1
+    `)
+      .bind(
+        calculatedPeriod.period_year,
+        calculatedPeriod.period_month
+      )
+      .first();
+
+    if (existingAfterInsert) {
+      return {
+        ok: false,
+        error: "water_reporting_period_month_exists",
+        existing_period: existingAfterInsert,
+        calculated_period: calculatedPeriod,
+      };
+    }
+
+    const overlapAfterInsert =
+      await findWaterReportingPeriodOverlap(
+        env,
+        calculatedPeriod.collection_opens_at,
+        calculatedPeriod.collection_closes_at
+      );
+
+    if (overlapAfterInsert) {
+      return {
+        ok: false,
+        error: "water_reporting_period_overlap",
+        overlap_period: overlapAfterInsert,
+        calculated_period: calculatedPeriod,
+      };
+    }
+
+    return {
+      ok: false,
+      error: "water_reporting_period_insert_conflict",
+      calculated_period: calculatedPeriod,
+    };
+  }
 
   return {
     ok: true,
@@ -14807,9 +15283,17 @@ Router.register("POST", "/api/correct-water-reading", async (ctx) => {
     return { error: "unauthorized" };
   }
 
-  await syncWaterReportingPeriodStatuses(
-    ctx.env
-  );
+  const syncResult =
+    await syncWaterReportingPeriodStatuses(
+      ctx.env
+    );
+
+  if (syncResult.skipped) {
+    return {
+      ok: false,
+      error: syncResult.reason,
+    };
+  }
 
   const body =
     await ctx.request
@@ -23240,39 +23724,42 @@ Router.register(
 
     await ensureWaterReportingSettingsTable(ctx.env);
 
-    const periodResult = await upsertManagedWaterReportingPeriod({
-      env: ctx.env,
-      adminUserId: admin.user_id,
-      daysBeforeMonthEnd,
-      daysAfterMonthEnd,
-      timeZone,
-    });
+    let periodResult;
+
+    try {
+      periodResult = await upsertManagedWaterReportingPeriod({
+        env: ctx.env,
+        adminUserId: admin.user_id,
+        daysBeforeMonthEnd,
+        daysAfterMonthEnd,
+        timeZone,
+      });
+    } catch (error) {
+      const message = String(error?.message || error);
+
+      // Only the deliberate SQL gate inside the Admin batch
+      // is classified as a business write conflict.
+      // Unexpected D1 errors must reach App.handle().
+      const isPeriodWriteConflict =
+        /CHECK constraint failed:\s*id\s*=\s*1\s*:/.test(
+          message
+        ) &&
+        message.includes("SQLITE_CONSTRAINT_CHECK");
+
+      if (!isPeriodWriteConflict) {
+        throw error;
+      }
+
+      return {
+        ok: false,
+        error: "water_reporting_period_write_conflict",
+      };
+    }
 
     if (!periodResult.ok) {
       return periodResult;
     }
 
-    const nowIso = new Date().toISOString();
-
-    await ctx.env.DB.prepare(`
-      UPDATE water_reporting_settings
-      SET
-        days_before_month_end = ?,
-        days_after_month_end = ?,
-        timezone = ?,
-        updated_by = ?,
-        updated_at = ?
-      WHERE id = ?
-    `)
-      .bind(
-        daysBeforeMonthEnd,
-        daysAfterMonthEnd,
-        timeZone,
-        admin.user_id,
-        nowIso,
-        WATER_REPORTING_SETTINGS_ID
-      )
-      .run();
 
     return {
       ok: true,
@@ -23299,9 +23786,20 @@ Router.register(
       };
     }
 
-    await syncWaterReportingPeriodStatuses(
-      ctx.env
-    );
+    const syncResult =
+      await syncWaterReportingPeriodStatuses(
+        ctx.env
+      );
+
+    if (syncResult.skipped) {
+      return {
+        ok: false,
+        submission_allowed: false,
+        state: "maintenance",
+        period: null,
+        error: syncResult.reason,
+      };
+    }
 
     const nowIso =
       new Date().toISOString();
@@ -23744,9 +24242,20 @@ Router.register(
       };
     }
 
-    await syncWaterReportingPeriodStatuses(
-      ctx.env
-    );
+    const syncResult =
+      await syncWaterReportingPeriodStatuses(
+        ctx.env
+      );
+
+    if (syncResult.skipped || !syncResult.ok) {
+      return {
+        ok: false,
+        error: syncResult.reason ||
+          "water_reporting_lifecycle_unavailable",
+        open_period: null,
+        latest_closed_period: null,
+      };
+    }
 
     const nowIso =
       new Date().toISOString();
