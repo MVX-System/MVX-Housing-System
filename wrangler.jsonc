@@ -89,7 +89,7 @@
       },
 
       "triggers": {
-        "crons": []
+        "crons": ["0 * * * *"]
       }
     },
     "demo": {
