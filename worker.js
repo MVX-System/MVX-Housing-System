@@ -25154,6 +25154,9 @@ Router.register(
           a.number AS apartment_number,
 
           wm.apartment_riser_id,
+          wm.source_slot,
+          wm.riser_assignment_status,
+          wm.riser_assignment_method,
 
           r.code AS riser_code,
           ar.local_label,
@@ -25662,6 +25665,36 @@ Router.register(
   }
 );
 
+
+// PR-9K.3F-R4: supplementary slot metadata, backwards-compatible with legacy meters.
+function normalizeMvXMeterSlot(raw, meterType) {
+  if (raw === null || raw === undefined || String(raw).trim() === "") return null;
+  const slot = String(raw).trim().toUpperCase();
+  if (!/^[AK][123]$/.test(slot)) return { error: "invalid_source_slot" };
+  if ((slot.startsWith("A") ? "cold" : "hot") !== meterType) {
+    return { error: "source_slot_type_mismatch" };
+  }
+  return slot;
+}
+
+function normalizeMvXRiserKind(riser) {
+  const system = String(riser?.system_type || "").trim().toLowerCase();
+  const code = String(riser?.code || "").trim().toUpperCase();
+  const kindFromSystem = ["cw", "cold", "cold_water", "cold-water"].includes(system)
+    ? "cold" : (["hw", "hot", "hot_water", "hot-water"].includes(system) ? "hot" : null);
+  const kindFromCode = /^CW(?:-|$)/.test(code) ? "cold" : (/^HW(?:-|$)/.test(code) ? "hot" : null);
+  if (kindFromSystem && kindFromCode && kindFromSystem !== kindFromCode) return null;
+  return kindFromSystem || kindFromCode;
+}
+
+function normalizeMvXAssignmentMethod(raw, fallback = null) {
+  if (raw === undefined) return fallback;
+  if (raw === null || String(raw).trim() === "") return null;
+  const method = String(raw).trim().toUpperCase();
+  const allowed = ["HISTORICAL_SERIAL_ANCHOR", "HEURISTIC_TYPE_AND_ROOM", "HEURISTIC_OLD_RECORD_CONFLICT", "HEURISTIC_SHARED_LINK", "HEURISTIC_ONLY_ELIGIBLE_LINK", "ADMIN_MANUAL", "ADMIN_MANUAL_CHANGE"];
+  return allowed.includes(method) ? method : { error: "invalid_riser_assignment_method" };
+}
+
 // =========================
 // CREATE WATER METER
 // =========================
@@ -25704,6 +25737,17 @@ Router.register(
             body.apartment_riser_id
           )
         : null;
+
+    const sourceSlot = normalizeMvXMeterSlot(body.source_slot, String(body.type || "").trim().toLowerCase());
+    if (sourceSlot && typeof sourceSlot === "object") return sourceSlot;
+    const assignmentMethod = normalizeMvXAssignmentMethod(body.riser_assignment_method,
+      apartmentRiserId === null ? null : "ADMIN_MANUAL");
+    if (assignmentMethod && typeof assignmentMethod === "object") return assignmentMethod;
+    // Until documented verification UI is implemented, imported/manual assignments remain provisional.
+    if (body.riser_assignment_status && body.riser_assignment_status !== "provisional") {
+      return { error: "riser_assignment_verification_not_supported" };
+    }
+    const assignmentStatus = apartmentRiserId === null ? null : "provisional";
 
     const initialReading =
       body.initial_reading ===
@@ -25869,12 +25913,9 @@ Router.register(
 
       const validRiser =
         await ctx.env.DB.prepare(`
-          SELECT id
-
-          FROM apartment_risers
-
-          WHERE id = ?
-            AND apartment_id = ?
+          SELECT ar.id, r.code, r.system_type
+          FROM apartment_risers ar JOIN risers r ON r.id = ar.riser_id
+          WHERE ar.id = ? AND ar.apartment_id = ?
         `)
           .bind(
             apartmentRiserId,
@@ -25883,15 +25924,22 @@ Router.register(
           .first();
 
       if (!validRiser) {
-        return {
-          error:
-            "apartment_riser_not_allowed"
-        };
-      }
+         return { error: "apartment_riser_not_allowed" };
+       }
+       if (normalizeMvXRiserKind(validRiser) !== meterType) {
+         return { error: "apartment_riser_water_type_mismatch" };
+       }
+    }
+
+    if (sourceSlot !== null) {
+      const existingSlot = await ctx.env.DB.prepare(`
+        SELECT id FROM water_meters WHERE apartment_id = ? AND source_slot = ? AND active = 1 LIMIT 1
+      `).bind(apartmentId, sourceSlot).first();
+      if (existingSlot) return { error: "active_apartment_slot_taken" };
     }
 
     const result =
-      await ctx.env.DB.prepare(`
+       await ctx.env.DB.prepare(`
 
         INSERT INTO water_meters (
 
@@ -25902,7 +25950,10 @@ Router.register(
           manufacturer,
           model,
           installed_at,
-          active
+           source_slot,
+           riser_assignment_status,
+           riser_assignment_method,
+           active
 
         )
 
@@ -25915,9 +25966,12 @@ Router.register(
           ?,
           ?,
           ?,
-          1
+           ?,
+           ?,
+           ?,
+           1
 
-        )
+         )
 
       `)
       .bind(
@@ -25927,8 +25981,11 @@ Router.register(
         serialNumber || null,
         manufacturer || null,
         model || null,
-        installedAt || null
-      )
+        installedAt || null,
+         sourceSlot,
+         assignmentStatus,
+         assignmentMethod
+       )
       .run();
 
     const meterId =
@@ -26075,8 +26132,8 @@ Router.register(
     }
 
     const meter = await ctx.env.DB.prepare(`
-      SELECT id, apartment_id
-      FROM water_meters
+      SELECT id, apartment_id, apartment_riser_id, source_slot, riser_assignment_status, riser_assignment_method
+       FROM water_meters
       WHERE id = ?
     `).bind(meterId).first();
 
@@ -26084,15 +26141,40 @@ Router.register(
       return { error: "water_meter_not_found" };
     }
 
+    const sourceSlot = normalizeMvXMeterSlot(
+      Object.prototype.hasOwnProperty.call(body, "source_slot") ? body.source_slot : meter.source_slot, type
+    );
+    if (sourceSlot && typeof sourceSlot === "object") return sourceSlot;
+    const riserChanged = apartmentRiserId !== meter.apartment_riser_id;
+    const method = normalizeMvXAssignmentMethod(
+      riserChanged ? "ADMIN_MANUAL_CHANGE" : body.riser_assignment_method,
+      meter.riser_assignment_method
+    );
+    if (method && typeof method === "object") return method;
+    if (body.riser_assignment_status && body.riser_assignment_status !== "provisional") {
+      return { error: "riser_assignment_verification_not_supported" };
+    }
+    const assignmentStatus = apartmentRiserId === null ? null :
+      (riserChanged ? "provisional" : (meter.riser_assignment_status || "provisional"));
+    if (sourceSlot !== null) {
+      const occupied = await ctx.env.DB.prepare(`
+        SELECT id FROM water_meters WHERE apartment_id = ? AND source_slot = ? AND active = 1 AND id <> ? LIMIT 1
+      `).bind(apartmentId, sourceSlot, meterId).first();
+      if (occupied) return { error: "active_apartment_slot_taken" };
+    }
+
     if (apartmentRiserId !== null) {
-      const riser = await ctx.env.DB.prepare(`
-        SELECT id
-        FROM apartment_risers
-        WHERE id = ? AND apartment_id = ?
+       const riser = await ctx.env.DB.prepare(`
+        SELECT ar.id, r.code, r.system_type
+         FROM apartment_risers ar JOIN risers r ON r.id = ar.riser_id
+         WHERE ar.id = ? AND ar.apartment_id = ?
       `).bind(apartmentRiserId, apartmentId).first();
       if (!riser) {
-        return { error: "apartment_riser_not_allowed" };
-      }
+         return { error: "apartment_riser_not_allowed" };
+       }
+       if (normalizeMvXRiserKind(riser) !== type) {
+         return { error: "apartment_riser_water_type_mismatch" };
+       }
     }
 
     const currentInitial = await ctx.env.DB.prepare(`
@@ -26120,7 +26202,7 @@ Router.register(
 
     await ctx.env.DB.prepare(`
       UPDATE water_meters
-      SET apartment_id = ?, apartment_riser_id = ?, type = ?, serial_number = ?, manufacturer = ?, model = ?, installed_at = ?
+      SET apartment_id = ?, apartment_riser_id = ?, type = ?, serial_number = ?, manufacturer = ?, model = ?, installed_at = ?, source_slot = ?, riser_assignment_status = ?, riser_assignment_method = ?
       WHERE id = ?
     `).bind(
       apartmentId,
@@ -26130,7 +26212,10 @@ Router.register(
       String(body.manufacturer || "").trim() || null,
       String(body.model || "").trim() || null,
       installedAt,
-      meterId
+       sourceSlot,
+       assignmentStatus,
+       method,
+       meterId
     ).run();
 
     let newInitialReadingId = currentInitial?.id || null;
