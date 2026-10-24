@@ -129,6 +129,15 @@ export default function WaterCard({
     return formatMvxDate(value);
   };
 
+  // Consistent sentence case for water types in every supported language.
+  // The same label is displayed in the heading and in the badge.
+  const sentenceCaseMeterType = (label) => {
+    const text = String(label ?? "");
+    return text
+      ? text.charAt(0).toLocaleUpperCase() + text.slice(1).toLocaleLowerCase()
+      : text;
+  };
+
   const formatMeterType =
     (type) => {
 
@@ -144,15 +153,15 @@ export default function WaterCard({
           .toLowerCase();
 
       if (normalizedType === "cold") {
-        return t(
+        return sentenceCaseMeterType(t(
           "water.card.coldWater"
-        );
+        ));
       }
 
       if (normalizedType === "hot") {
-        return t(
+        return sentenceCaseMeterType(t(
           "water.card.hotWater"
-        );
+        ));
       }
 
       return t(
@@ -277,6 +286,7 @@ export default function WaterCard({
               margin: 0,
               fontSize: 17,
               lineHeight: 1.25,
+              textTransform: "none",
             }}
           >
             {formatMeterType(
