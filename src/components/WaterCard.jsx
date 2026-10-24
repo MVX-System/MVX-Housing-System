@@ -316,7 +316,7 @@ export default function WaterCard({
             fontSize: 11,
             fontWeight: 700,
             textTransform:
-              "capitalize",
+              "none",
             whiteSpace: "nowrap",
           }}
         >
