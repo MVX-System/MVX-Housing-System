@@ -29,8 +29,8 @@ const TEXT = {
     closed: "Closed",
     finalized: "Finalized",
 
-    coldWater: "Cold Water",
-    hotWater: "Hot Water",
+    coldWater: "Cold water",
+    hotWater: "Hot water",
     water: "Water",
 
     complete: "Complete",

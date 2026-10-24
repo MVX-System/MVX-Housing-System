@@ -25,8 +25,8 @@ const water = {
 
   card: {
     water: "Water",
-    coldWater: "Cold Water",
-    hotWater: "Hot Water",
+    coldWater: "Cold water",
+    hotWater: "Hot water",
     customWater: "{{type}} Water",
     riser: "Riser",
     serialNumber: "Serial number",
