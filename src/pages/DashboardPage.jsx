@@ -1,3 +1,7 @@
+import { formatMvxDate } from "../utils/displayDate";
+
+import { localizeMeterLocation } from "../utils/meterLocation";
+
 import {
   useEffect,
   useMemo,
@@ -92,6 +96,7 @@ export default function DashboardPage() {
 
   const {
     t,
+    language,
   } = useTranslation();
 
   const navigate =
@@ -706,7 +711,7 @@ export default function DashboardPage() {
                                       ? t("dashboard.readings.hot")
                                       : t("dashboard.readings.cold")}
                                     {" · "}
-                                    {meter.local_label ||
+                                    {localizeMeterLocation(meter.local_label, language) ||
                                       meter.riser_code ||
                                       t("dashboard.readings.meter")}
                                   </div>
@@ -2063,35 +2068,7 @@ function getAnnouncementDate(
   );
 }
 
-function formatAnnouncementDate(
-  value
-) {
-
-  if (!value) {
-    return "";
-  }
-
-  const date =
-    new Date(value);
-
-  if (
-    Number.isNaN(
-      date.getTime()
-    )
-  ) {
-    return String(value)
-      .slice(0, 10);
-  }
-
-  return new Intl.DateTimeFormat(
-    "en-GB",
-    {
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-    }
-  ).format(date);
-}
+function formatAnnouncementDate(value) { return formatMvxDate(value); }
 
 function getAnnouncementPreview(
   content,
@@ -2184,17 +2161,7 @@ function formatArea(
   )} ㎡`;
 }
 
-function formatDate(
-  value
-) {
-
-  if (!value) {
-    return "—";
-  }
-
-  return String(value)
-    .slice(0, 10);
-}
+function formatDate(value) { return formatMvxDate(value); }
 
 const tileStyle = {
   minWidth: 0,

@@ -1,9 +1,17 @@
+import { useTranslation } from "../i18n";
+import { formatMvxDate } from "../utils/displayDate";
 export default function WaterMeterCard({
 
   meter,
 
 }) {
 
+  const {t, language} = useTranslation();
+  const names = {
+    lv: ["Dzīvoklis", "Sērijas numurs", "Uzstādīts", "Aktīvs", "Neaktīvs"],
+    en: ["Apartment", "Serial number", "Installed", "Active", "Inactive"],
+    ru: ["Квартира", "Серийный номер", "Установлен", "Активен", "Неактивен"],
+  }[language] || ["Apartment", "Serial number", "Installed", "Active", "Inactive"];
   return (
 
     <div
@@ -35,7 +43,7 @@ export default function WaterMeterCard({
 
         <strong>
 
-          Apartment {meter.apartment_number}
+          {names[0]} {meter.apartment_number}
 
         </strong>
 
@@ -43,9 +51,9 @@ export default function WaterMeterCard({
 
           {meter.type === "hot"
 
-            ? "🔴 Hot"
+            ? `🔴 ${t("water.card.hotWater")}`
 
-            : "🔵 Cold"}
+            : `🔵 ${t("water.card.coldWater")}`}
 
         </span>
 
@@ -63,7 +71,7 @@ export default function WaterMeterCard({
             fontSize: 13,
           }}
         >
-          Serial Number
+          {names[1]}
         </div>
 
         <div>
@@ -86,13 +94,13 @@ export default function WaterMeterCard({
             fontSize: 13,
           }}
         >
-          Installed
+          {names[2]}
         </div>
 
         <div>
 
           {meter.installed_at
-            ? meter.installed_at.slice(0,10)
+            ? formatMvxDate(meter.installed_at)
             : "-"}
 
         </div>
@@ -135,9 +143,9 @@ export default function WaterMeterCard({
 
           {meter.active
 
-            ? "Active"
+            ? names[3]
 
-            : "Inactive"}
+            : names[4]}
 
         </span>
 

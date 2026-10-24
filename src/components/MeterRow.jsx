@@ -1,3 +1,4 @@
+import { useTranslation } from "../i18n";
 import {
 
   meterCard,
@@ -18,6 +19,7 @@ export default function MeterRow({
 
 }) {
 
+  const { t } = useTranslation();
   return (
 
     <div
@@ -52,9 +54,9 @@ export default function MeterRow({
 
             {meter.type === "hot"
 
-              ? "Hot Water"
+              ? t("water.card.hotWater")
 
-              : "Cold Water"}
+              : t("water.card.coldWater")}
 
           </div>
 

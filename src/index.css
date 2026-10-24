@@ -1510,3 +1510,33 @@ code {
     padding: 12px;
   }
 }
+
+/* PR-9K.4: a single available role is descriptive, never a fake switch. */
+.mvx-single-mode-label {
+  padding: 9px 12px;
+  color: var(--sidebar-text);
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.4;
+  text-align: center;
+  border-bottom: 1px solid var(--sidebar-border);
+}
+/* Keep the submit field and hint clear of the contextual floating button. */
+@media (max-width: 767px) {
+  body:has(.context-help-button) .context-help-button {
+    right: 10px;
+    bottom: max(12px, env(safe-area-inset-bottom, 0px));
+    width: 40px;
+    height: 40px;
+    min-height: 40px;
+    opacity: 0.92;
+  }
+  body:has(.context-help-button) .context-help-button:not(:focus-visible) .context-help-symbol {
+    width: 23px;
+    height: 23px;
+    font-size: 15px;
+  }
+  /* On the water-entry page, dock Help beside the header, not on input hints. */
+  .context-help-button--water { top: 82px; bottom: auto !important; }
+  body:has(.context-help-button) main { padding-bottom: 72px; }
+}

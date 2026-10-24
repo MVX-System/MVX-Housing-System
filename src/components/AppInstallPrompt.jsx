@@ -48,7 +48,7 @@ function dismissedKey(
 ) {
   return (
     "mvx:pwa-install:" +
-    "dismissed-session:v1:" +
+    "dismissed-persistent:v2:" +
     environment
   );
 }
@@ -183,7 +183,7 @@ export default function AppInstallPrompt() {
 
     if (
       safeGet(
-        window.sessionStorage,
+        window.localStorage,
         sessionKey
       ) === "1"
     ) {
@@ -262,7 +262,7 @@ export default function AppInstallPrompt() {
   const dismissForSession =
     () => {
       safeSet(
-        window.sessionStorage,
+        window.localStorage,
         dismissedKey(
           resolvedEnvironment
         ),

@@ -1,6 +1,6 @@
 const water = {
   resident: {
-    title: "Water Readings",
+    title: "Water Meters",
     subtitle: "Submit the current values shown on your water meters.",
     noMeters: "No water meters found.",
     apartment: "Apartment",

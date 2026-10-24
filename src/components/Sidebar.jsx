@@ -404,42 +404,25 @@ export default function Sidebar({
           <div
             style={modeBlock}
           >
-            {hasResident && (
-              <button
-                style={
-                  mode === "resident"
-                    ? activeButton
-                    : menuButton
-                }
-                onClick={() =>
-                  switchMode(
-                    "resident"
-                  )
-                }
-              >
-                {t(
-                  "sidebar.residentMode"
-                )}
-              </button>
+            {hasResident && !hasAdminMode && (
+              <div className="mvx-single-mode-label" aria-label={t("sidebar.residentMode")}>
+                {t("sidebar.residentMode")}
+              </div>
             )}
-
-            {hasAdminMode && (
-              <button
-                style={
-                  mode === "admin"
-                    ? activeButton
-                    : menuButton
-                }
-                onClick={() =>
-                  switchMode(
-                    "admin"
-                  )
-                }
-              >
-                {t(
-                  "sidebar.adminMode"
-                )}
-              </button>
+            {hasAdminMode && !hasResident && (
+              <div className="mvx-single-mode-label" aria-label={t("sidebar.adminMode")}>
+                {t("sidebar.adminMode")}
+              </div>
+            )}
+            {hasResident && hasAdminMode && (
+              <>
+                <button type="button" aria-pressed={mode === "resident"}
+                  style={mode === "resident" ? activeButton : menuButton}
+                  onClick={() => switchMode("resident")}>{t("sidebar.residentMode")}</button>
+                <button type="button" aria-pressed={mode === "admin"}
+                  style={mode === "admin" ? activeButton : menuButton}
+                  onClick={() => switchMode("admin")}>{t("sidebar.adminMode")}</button>
+              </>
             )}
           </div>
         )}

@@ -1,3 +1,7 @@
+import { formatMvxDateTime } from "../utils/displayDate";
+
+import { localizeMeterLocation } from "../utils/meterLocation";
+
 import { selectDefaultMonthlyReportPeriod } from "../utils/selectMonthlyReportPeriod";
 import {
   useEffect,
@@ -927,37 +931,7 @@ export default function AdminMonthlyReportPage() {
     );
   };
 
-  const formatDateTime = (
-    value
-  ) => {
-
-    if (!value) {
-      return "—";
-    }
-
-    const date =
-      new Date(value);
-
-    if (
-      Number.isNaN(
-        date.getTime()
-      )
-    ) {
-      return value;
-    }
-
-    return date.toLocaleString(
-      locale,
-      {
-        day: "2-digit",
-        month: "short",
-        year: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-        timeZone: "Europe/Riga",
-      }
-    );
-  };
+  const formatDateTime = (value) => formatMvxDateTime(value);
 
   const formatConsumption = (
     value
@@ -1574,7 +1548,7 @@ export default function AdminMonthlyReportPage() {
 
           [text.location]:
             formatLocation(
-              row.local_label
+              localizeMeterLocation(row.local_label, language)
             ),
 
           [text.serialNumber]:
@@ -1680,7 +1654,7 @@ export default function AdminMonthlyReportPage() {
 
             [text.location]:
               formatLocation(
-                row.local_label
+                localizeMeterLocation(row.local_label, language)
               ),
 
             [text.serialNumber]:
@@ -2823,7 +2797,7 @@ export default function AdminMonthlyReportPage() {
                                           }}
                                         >
                                           {formatLocation(
-                                            row.local_label
+                                            localizeMeterLocation(row.local_label, language)
                                           ) ||
                                             text.locationNotAssigned}
                                         </div>
@@ -3031,9 +3005,9 @@ export default function AdminMonthlyReportPage() {
                                           {formatMeterType(
                                             row.type
                                           )}
-                                          {row.local_label
+                                          {localizeMeterLocation(row.local_label, language)
                                             ? ` · ${formatLocation(
-                                                row.local_label
+                                                localizeMeterLocation(row.local_label, language)
                                               )}`
                                             : ""}
                                           {" — "}
@@ -4088,6 +4062,7 @@ function MeterDetailsTable({
   getRowStatusStyle,
   hideApartmentColumn = false,
 }) {
+  const { language } = useTranslation();
 
   const headings = [
     ...(hideApartmentColumn
@@ -4226,7 +4201,7 @@ function MeterDetailsTable({
                       }}
                     >
                       {formatLocation(
-                        row.local_label
+                        localizeMeterLocation(row.local_label, language)
                       ) || "—"}
                     </div>
                   </td>
@@ -4357,6 +4332,7 @@ function MeterDetailCard({
   formatRowStatus,
   getRowStatusStyle,
 }) {
+  const { language } = useTranslation();
 
   const values = [
     [
@@ -4444,7 +4420,7 @@ function MeterDetailCard({
             )}
           </div>
 
-          {row.local_label && (
+          {localizeMeterLocation(row.local_label, language) && (
             <div
               style={{
                 marginTop: 2,
@@ -4454,7 +4430,7 @@ function MeterDetailCard({
               }}
             >
               {formatLocation(
-                row.local_label
+                localizeMeterLocation(row.local_label, language)
               )}
             </div>
           )}

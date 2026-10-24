@@ -1,3 +1,5 @@
+import { useTranslation } from "../i18n";
+import { formatMvxDate } from "../utils/displayDate";
 import InfoRow from "./InfoRow";
 import SectionCard from "./SectionCard";
 import StatusBadge from "./StatusBadge";
@@ -8,6 +10,7 @@ export default function WaterMeterDetails({
 
 }) {
 
+  const { t } = useTranslation();
   if (!meter) {
 
     return null;
@@ -46,9 +49,9 @@ export default function WaterMeterDetails({
 
             meter.type === "hot"
 
-              ? "Hot Water"
+              ? t("water.card.hotWater")
 
-              : "Cold Water"
+              : t("water.card.coldWater")
 
           }
 
@@ -90,7 +93,7 @@ export default function WaterMeterDetails({
 
             meter.installed_at
 
-              ? meter.installed_at.slice(0,10)
+              ? formatMvxDate(meter.installed_at)
 
               : "-"
 

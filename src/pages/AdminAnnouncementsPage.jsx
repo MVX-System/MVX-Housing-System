@@ -1,3 +1,5 @@
+import { formatMvxDateTime } from "../utils/displayDate";
+
 import {
   useMemo,
   useState,
@@ -337,17 +339,7 @@ export default function AdminAnnouncementsPage() {
         ru: "ru-RU",
       };
 
-      return new Intl.DateTimeFormat(
-        localeMap[language] ||
-          "en-GB",
-        {
-          day: "2-digit",
-          month: "short",
-          year: "numeric",
-          hour: "2-digit",
-          minute: "2-digit",
-        }
-      ).format(date);
+      return formatMvxDateTime(value);
     };
 
   const getStatusLabel =

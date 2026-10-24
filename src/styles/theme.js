@@ -113,7 +113,9 @@ const menuButton = {
   minHeight: 34,
   padding: "7px 9px",
   marginTop: 6,
-  border: "none",
+  border: "1px solid var(--sidebar-border)",
+  background: "var(--sidebar-menu-bg, rgba(255,255,255,.12))",
+  color: "var(--sidebar-text)",
   borderRadius: 8,
   cursor: "pointer",
   boxSizing:

@@ -1,3 +1,7 @@
+import { formatMvxDate } from "../utils/displayDate";
+
+import { localizeMeterLocation } from "../utils/meterLocation";
+
 import {
   useState,
 } from "react";
@@ -20,6 +24,7 @@ export default function WaterCard({
 
   const {
     t,
+    language,
   } = useTranslation();
 
   const [value, setValue] =
@@ -121,9 +126,7 @@ export default function WaterCard({
       return value;
     }
 
-    return date.toLocaleDateString(
-      "en-GB"
-    );
+    return formatMvxDate(value);
   };
 
   const formatMeterType =
@@ -291,7 +294,7 @@ export default function WaterCard({
                 fontWeight: 600,
               }}
             >
-              {meter.local_label}
+              {localizeMeterLocation(meter.local_label, language)}
             </div>
 
           )}

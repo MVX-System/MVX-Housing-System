@@ -1,8 +1,10 @@
+import { useTranslation } from "../../i18n";
 export default function ApartmentWaterTab({
   apartment,
   onOpenMeter,
 }) {
 
+  const { t } = useTranslation();
   return (
 
     <div>
@@ -56,8 +58,8 @@ export default function ApartmentWaterTab({
                   }}
                 >
                   {meter.type === "hot"
-                    ? "🔴 Hot Water"
-                    : "🔵 Cold Water"}
+                    ? `🔴 ${t("water.card.hotWater")}`
+                    : `🔵 ${t("water.card.coldWater")}`}
                 </div>
 
                 <div
@@ -76,7 +78,7 @@ export default function ApartmentWaterTab({
                     marginTop: 4,
                   }}
                 >
-                  Last reading: —
+                  {t("water.card.currentReading")}: —
                 </div>
 
               </div>

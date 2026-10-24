@@ -1,3 +1,7 @@
+import { formatMvxDate } from "../utils/displayDate";
+
+import { localizeMeterLocation } from "../utils/meterLocation";
+
 import {
   useEffect,
   useState,
@@ -23,6 +27,7 @@ export default function MeterHistoryModal({
 
   const {
     t,
+    language,
   } = useTranslation();
 
   const [
@@ -158,9 +163,7 @@ export default function MeterHistoryModal({
       return value;
     }
 
-    return date.toLocaleDateString(
-      "en-GB"
-    );
+    return formatMvxDate(value);
   };
 
   const formatMeterType =
@@ -421,7 +424,7 @@ export default function MeterHistoryModal({
                     fontWeight: 700,
                   }}
                 >
-                  {meter.local_label}
+                  {localizeMeterLocation(meter.local_label, language)}
                 </div>
 
               )}

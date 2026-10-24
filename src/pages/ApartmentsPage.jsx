@@ -137,7 +137,7 @@ const TEXT = {
     apartmentCount: "Квартир: {count}",
     addApartment: "+ Добавить квартиру",
     loading: "Загрузка квартир...",
-    searchPlaceholder: "Квартира или имя для входа (Nick) пользователя",
+    searchPlaceholder: "Квартира или имя пользователя для входа",
     noMatches: "Подходящие квартиры не найдены",
     sections: "Секции",
     selectSection: "Выберите секцию здания",

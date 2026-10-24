@@ -15,10 +15,10 @@ const dashboard = {
 
   readings: {
     title: "Rādījumi",
-    subtitle: "Jaunākie skaitītāju rādījumi un mēneša patēriņš",
+    subtitle: "Pēdējie skaitītāju rādījumi un mēneša patēriņš",
     noMeters: "Nav aktīvu ūdens skaitītāju.",
     meter: "Skaitītājs",
-    latest: "Jaunākais",
+    latest: "Pēdējais",
     date: "Datums",
     hot: "Karstais",
     cold: "Aukstais",

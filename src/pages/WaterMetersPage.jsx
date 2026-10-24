@@ -1,3 +1,5 @@
+import { formatMvxDate } from "../utils/displayDate";
+
 import {
   useEffect,
   useMemo,
@@ -168,8 +170,8 @@ const TEXT = {
     noCalibration: "No calibration",
     searchPlaceholder: "Search apartment, serial, riser...",
     allTypes: "All types",
-    coldWater: "Cold Water",
-    hotWater: "Hot Water",
+    coldWater: "Cold water",
+    hotWater: "Hot water",
     allStatuses: "All statuses",
     active: "Active",
     inactive: "Inactive",
@@ -1651,39 +1653,7 @@ export default function WaterMetersPage() {
       ? text.hotWater
       : text.coldWater;
 
-  const formatDate = (
-    value
-  ) => {
-
-    if (!value) {
-      return "—";
-    }
-
-    const date =
-      new Date(
-        `${String(value).slice(
-          0,
-          10
-        )}T00:00:00`
-      );
-
-    if (
-      Number.isNaN(
-        date.getTime()
-      )
-    ) {
-      return String(value);
-    }
-
-    return date.toLocaleDateString(
-      locale,
-      {
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-      }
-    );
-  };
+  const formatDate = (value) => formatMvxDate(value);
 
   const formatReading = (
     value
@@ -2670,8 +2640,8 @@ export default function WaterMetersPage() {
                       }
                     >
                       {riser.riser_code}
-                      {riser.local_label
-                        ? ` · ${riser.local_label}`
+                      {localizeMeterLocation(riser.local_label, language)
+                        ? ` · ${localizeMeterLocation(riser.local_label, language)}`
                         : ""}
                     </option>
 
@@ -3389,7 +3359,7 @@ export default function WaterMetersPage() {
                     value={riser.apartment_riser_id}
                   >
                     {riser.riser_code}
-                    {riser.local_label ? ` · ${riser.local_label}` : ""}
+                    {localizeMeterLocation(riser.local_label, language) ? ` · ${localizeMeterLocation(riser.local_label, language)}` : ""}
                   </option>
                 ))}
             </select>

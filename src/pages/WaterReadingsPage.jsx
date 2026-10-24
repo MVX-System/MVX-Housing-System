@@ -1,3 +1,5 @@
+import { formatMvxDate, formatMvxDateTime } from "../utils/displayDate";
+
 import {
   useEffect,
   useMemo,
@@ -90,8 +92,8 @@ const TEXT = {
     searchPlaceholder: "Search apartment, serial, user...",
     allPeriods: "All periods",
     allWaterTypes: "All water types",
-    coldWater: "Cold Water",
-    hotWater: "Hot Water",
+    coldWater: "Cold water",
+    hotWater: "Hot water",
     allSources: "All sources",
     residentPortal: "Resident portal",
     paperNote: "Paper note",
@@ -1038,7 +1040,7 @@ export default function WaterReadingsPage() {
                       {row.apartment_number}
 
                       <div style={subText}>
-                        {row.local_label ||
+                        {localizeMeterLocation(row.local_label, language) ||
                           "—"}
                       </div>
                     </td>
@@ -1628,72 +1630,8 @@ function formatReading(
   ).format(numeric / 1000)} m³`;
 }
 
-function formatDate(
-  value,
-  locale
-) {
-
-  if (!value) {
-    return "—";
-  }
-
-  const date =
-    new Date(
-      `${String(value).slice(
-        0,
-        10
-      )}T00:00:00`
-    );
-
-  if (
-    Number.isNaN(
-      date.getTime()
-    )
-  ) {
-    return String(value);
-  }
-
-  return date.toLocaleDateString(
-    locale,
-    {
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }
-  );
-}
-
-function formatDateTime(
-  value,
-  locale
-) {
-
-  if (!value) {
-    return "—";
-  }
-
-  const date =
-    new Date(value);
-
-  if (
-    Number.isNaN(
-      date.getTime()
-    )
-  ) {
-    return String(value);
-  }
-
-  return date.toLocaleString(
-    locale,
-    {
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-    }
-  );
-}
+function formatDate(value) { return formatMvxDate(value); }
+function formatDateTime(value) { return formatMvxDateTime(value); }
 
 const fieldStyle = {
   width: "100%",

@@ -7,6 +7,7 @@ const water = {
     notAssigned: "Не назначена",
     meterCount: {
       one: "{{count}} счётчик",
+      few: "{{count}} счётчика",
       other: "{{count}} счётчиков",
     },
 
