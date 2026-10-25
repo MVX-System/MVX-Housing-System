@@ -1,3 +1,7 @@
+import { formatMvxDate } from "../utils/displayDate";
+
+import { localizeMeterLocation } from "../utils/meterLocation";
+
 import {
   useState,
 } from "react";
@@ -20,6 +24,7 @@ export default function WaterCard({
 
   const {
     t,
+    language,
   } = useTranslation();
 
   const [value, setValue] =
@@ -121,9 +126,16 @@ export default function WaterCard({
       return value;
     }
 
-    return date.toLocaleDateString(
-      "en-GB"
-    );
+    return formatMvxDate(value);
+  };
+
+  // Consistent sentence case for water types in every supported language.
+  // The same label is displayed in the heading and in the badge.
+  const sentenceCaseMeterType = (label) => {
+    const text = String(label ?? "");
+    return text
+      ? text.charAt(0).toLocaleUpperCase() + text.slice(1).toLocaleLowerCase()
+      : text;
   };
 
   const formatMeterType =
@@ -141,15 +153,15 @@ export default function WaterCard({
           .toLowerCase();
 
       if (normalizedType === "cold") {
-        return t(
+        return sentenceCaseMeterType(t(
           "water.card.coldWater"
-        );
+        ));
       }
 
       if (normalizedType === "hot") {
-        return t(
+        return sentenceCaseMeterType(t(
           "water.card.hotWater"
-        );
+        ));
       }
 
       return t(
@@ -274,6 +286,7 @@ export default function WaterCard({
               margin: 0,
               fontSize: 17,
               lineHeight: 1.25,
+              textTransform: "none",
             }}
           >
             {formatMeterType(
@@ -291,7 +304,7 @@ export default function WaterCard({
                 fontWeight: 600,
               }}
             >
-              {meter.local_label}
+              {localizeMeterLocation(meter.local_label, language)}
             </div>
 
           )}
@@ -313,7 +326,7 @@ export default function WaterCard({
             fontSize: 11,
             fontWeight: 700,
             textTransform:
-              "capitalize",
+              "none",
             whiteSpace: "nowrap",
           }}
         >

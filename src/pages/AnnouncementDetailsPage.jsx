@@ -1,3 +1,5 @@
+import { formatMvxDate } from "../utils/displayDate";
+
 import {
   useEffect,
   useState,
@@ -80,15 +82,7 @@ export default function AnnouncementDetailsPage() {
         ru: "ru-RU",
       };
 
-      return new Intl.DateTimeFormat(
-        localeMap[language] ||
-          "en-GB",
-        {
-          day: "2-digit",
-          month: "long",
-          year: "numeric",
-        }
-      ).format(date);
+      return formatMvxDate(value);
     };
 
   useEffect(() => {

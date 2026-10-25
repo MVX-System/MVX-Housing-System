@@ -1,3 +1,5 @@
+import { formatMvxDate } from "../utils/displayDate";
+
 import {
   useState,
 } from "react";
@@ -281,15 +283,7 @@ export default function AnnouncementsPage() {
         ru: "ru-RU",
       };
 
-      return new Intl.DateTimeFormat(
-        localeMap[language] ||
-          "en-GB",
-        {
-          day: "2-digit",
-          month: "short",
-          year: "numeric",
-        }
-      ).format(date);
+      return formatMvxDate(value);
     };
 
   const toggleAnnouncement =

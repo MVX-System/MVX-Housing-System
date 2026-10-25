@@ -1,3 +1,5 @@
+import { formatMvxDateTime } from "../utils/displayDate";
+
 import {
   useEffect,
   useState,
@@ -17,6 +19,7 @@ export default function ResidentWaterPage() {
 
   const {
     t,
+    language,
   } = useTranslation();
 
   const {
@@ -71,69 +74,8 @@ export default function ResidentWaterPage() {
       clearMeterHistory();
     };
 
-  const getDateLocale = () => {
-
-    const htmlLanguage =
-      String(
-        document
-          .documentElement
-          .lang || "en"
-      )
-        .trim()
-        .toLowerCase();
-
-    if (
-      htmlLanguage.startsWith(
-        "lv"
-      )
-    ) {
-      return "lv-LV";
-    }
-
-    if (
-      htmlLanguage.startsWith(
-        "ru"
-      )
-    ) {
-      return "ru-RU";
-    }
-
-    return "en-GB";
-  };
-
-  const formatPeriodDateTime =
-    (value) => {
-
-      if (!value) {
-        return "—";
-      }
-
-      const date =
-        new Date(value);
-
-      if (
-        Number.isNaN(
-          date.getTime()
-        )
-      ) {
-        return value;
-      }
-
-      return date.toLocaleString(
-        getDateLocale(),
-        {
-          timeZone:
-            "Europe/Riga",
-
-          day: "2-digit",
-          month: "short",
-          year: "numeric",
-
-          hour: "2-digit",
-          minute: "2-digit",
-        }
-      );
-    };
+  // Date labels use a stable civil-date format and react immediately to locale changes.
+  const formatPeriodDateTime = (value) => formatMvxDateTime(value);
 
   const submissionAllowed =
     waterReportingPeriod
@@ -465,9 +407,13 @@ export default function ResidentWaterPage() {
                   }}
                 >
                   {t(
-                    meters.length === 1
-                      ? "water.resident.meterCount.one"
-                      : "water.resident.meterCount.other",
+                    language === "ru" && meters.length % 10 >= 2 && meters.length % 10 <= 4 && !(meters.length % 100 >= 12 && meters.length % 100 <= 14)
+                      ? "water.resident.meterCount.few"
+                      : (language === "ru"
+                          ? meters.length % 10 === 1 && meters.length % 100 !== 11
+                          : meters.length === 1)
+                        ? "water.resident.meterCount.one"
+                        : "water.resident.meterCount.other",
                     {
                       count:
                         meters.length,

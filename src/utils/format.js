@@ -1,14 +1,2 @@
-// =====================================
-// FORMAT DATE
-// =====================================
-
-export function formatDate(date) {
-
-  if (!date) {
-    return "";
-  }
-
-  return new Date(date)
-    .toLocaleDateString("en-CA");
-
-}
+import { formatMvxDate } from "./displayDate";
+export function formatDate(value) { return value ? formatMvxDate(value) : ""; }
