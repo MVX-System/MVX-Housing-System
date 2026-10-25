@@ -108,6 +108,7 @@ export default function App() {
     <div style={layout}>
       {showMenuButton && (
         <div
+          className={isMobile ? "mvx-mobile-toolbar" : undefined}
           style={{
             position: "fixed",
             top: 20,
@@ -143,6 +144,8 @@ export default function App() {
               variant="compact"
             />
           )}
+
+          {isMobile && <ContextHelpButton />}
         </div>
       )}
 
@@ -200,7 +203,7 @@ export default function App() {
         </ModeRouteBoundary>
       </main>
 
-      <ContextHelpButton />
+      {!isMobile && <ContextHelpButton />}
     </div>
   );
 }

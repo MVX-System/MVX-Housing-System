@@ -1510,3 +1510,25 @@ code {
     padding: 12px;
   }
 }
+
+/* PR-9K.4H: Help belongs to the fixed mobile menu/language toolbar.
+   Do not float it over headings, readings, input hints or buttons. */
+@media (max-width: 767px) {
+  .mvx-mobile-toolbar .context-help-button {
+    position: static;
+    top: auto;
+    right: auto;
+    bottom: auto;
+    left: auto;
+    flex: 0 0 44px;
+    width: 44px;
+    height: 44px;
+    min-height: 44px;
+    padding: 7px;
+    justify-content: center;
+  }
+
+  .mvx-mobile-toolbar .context-help-label {
+    display: none;
+  }
+}

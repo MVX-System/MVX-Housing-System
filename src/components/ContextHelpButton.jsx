@@ -68,7 +68,7 @@ export default function ContextHelpButton() {
   return (
     <button
       type="button"
-      className="context-help-button"
+      className={pathname === "/water" ? "context-help-button context-help-button--water" : "context-help-button"}
       onClick={openHelp}
       aria-label={text.title}
       title={text.title}
