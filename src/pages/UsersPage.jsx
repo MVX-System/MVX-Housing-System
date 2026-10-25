@@ -1,3 +1,5 @@
+import { formatMvxDateTime } from "../utils/displayDate";
+
 import {
   useEffect,
   useMemo,
@@ -125,14 +127,14 @@ const TEXT = {
   },
   lv: {
     title: "Lietotāji",
-    search: "Meklēt pēc pieslēgšanās vārda (Nick), vārda, e-pasta, tālruņa vai dzīvokļa",
+    search: "Meklēt pēc pieslēgšanās vārda, vārda, e-pasta, tālruņa vai dzīvokļa",
     add: "+ Pievienot lietotāju",
     loading: "Notiek lietotāju ielāde...",
     all: "Visi",
     active: "Aktīvs",
     inactive: "Neaktīvs",
     name: "Vārds",
-    nick: "Pieslēgšanās vārds (Nick)",
+    nick: "Pieslēgšanās vārds",
     email: "E-pasts",
     phone: "Tālrunis",
     apartments: "Dzīvokļi",
@@ -215,14 +217,14 @@ const TEXT = {
   },
   ru: {
     title: "Пользователи",
-    search: "Поиск по имени для входа (Nick), имени, email, телефону или квартире",
+    search: "Поиск по имени для входа, имени, email, телефону или квартире",
     add: "+ Добавить пользователя",
     loading: "Загрузка пользователей...",
     all: "Все",
     active: "Активный",
     inactive: "Неактивный",
     name: "Имя",
-    nick: "Имя для входа (Nick)",
+    nick: "Имя для входа",
     email: "Email",
     phone: "Телефон",
     apartments: "Квартиры",
@@ -290,18 +292,18 @@ const TEXT = {
     recoveryUsed: "Использован",
     recoveryExhausted: "Попытки исчерпаны",
     recoveryLoading: "Загрузка статуса восстановления...",
-    recoveryIssue: "Выдать Recovery Code",
-    recoveryReissue: "Выдать новый Recovery Code",
-    recoveryRevoke: "Отозвать Recovery Code",
-    recoveryIssuedTitle: "Recovery Code",
+    recoveryIssue: "Выдать код восстановления",
+    recoveryReissue: "Выдать новый код восстановления",
+    recoveryRevoke: "Отозвать код восстановления",
+    recoveryIssuedTitle: "Код восстановления",
     recoveryIssuedWarning: "Этот код показывается только один раз. Скопируйте его сейчас и передайте проверенному пользователю по согласованному ручному каналу.",
     recoveryCopy: "Скопировать код",
     recoveryCopied: "Скопировано",
     recoveryExpires: "Действителен до",
     recoveryAttempts: "Неудачные попытки",
-    recoveryConfirmIssue: "Выдать новый Recovery Code этому пользователю? Предыдущий активный код будет отозван.",
-    recoveryConfirmRevoke: "Отозвать активный Recovery Code этого пользователя?",
-    recoveryInactive: "Recovery Code можно выдать только активному пользователю.",
+    recoveryConfirmIssue: "Выдать новый код восстановления этому пользователю? Предыдущий активный код будет отозван.",
+    recoveryConfirmRevoke: "Отозвать активный код восстановления этого пользователя?",
+    recoveryInactive: "Код восстановления можно выдать только активному пользователю.",
   },
 };
 
@@ -940,36 +942,7 @@ export default function UsersPage() {
       );
     };
 
-  const formatRecoveryDate =
-    (value) => {
-      if (!value) {
-        return "—";
-      }
-
-      const date =
-        new Date(value);
-
-      if (
-        Number.isNaN(
-          date.getTime()
-        )
-      ) {
-        return String(
-          value
-        );
-      }
-
-      const locale =
-        language === "ru"
-          ? "ru-RU"
-          : language === "lv"
-            ? "lv-LV"
-            : "en-GB";
-
-      return date.toLocaleString(
-        locale
-      );
-    };
+  const formatRecoveryDate = (value) => formatMvxDateTime(value);
 
   // Stage 2I-5A3E v4:
   // PII search is performed only by the Worker.
