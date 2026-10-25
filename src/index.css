@@ -1511,6 +1511,16 @@ code {
   }
 }
 
+/* PR-9K.4: a single available role is descriptive, never a fake switch. */
+.mvx-single-mode-label {
+  padding: 9px 12px;
+  color: var(--sidebar-text);
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.4;
+  text-align: center;
+  border-bottom: 1px solid var(--sidebar-border);
+}
 /* PR-9K.4H: Help belongs to the fixed mobile menu/language toolbar.
    Do not float it over headings, readings, input hints or buttons. */
 @media (max-width: 767px) {
