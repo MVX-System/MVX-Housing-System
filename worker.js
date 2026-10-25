@@ -22083,9 +22083,17 @@ Router.register("POST", "/api/correct-water-reading", async (ctx) => {
     return { error: "unauthorized" };
   }
 
-  await syncWaterReportingPeriodStatuses(
-    ctx.env
-  );
+  const syncResult =
+    await syncWaterReportingPeriodStatuses(
+      ctx.env
+    );
+
+  if (syncResult.skipped) {
+    return {
+      ok: false,
+      error: syncResult.reason,
+    };
+  }
 
   const body =
     await ctx.request
@@ -31347,9 +31355,20 @@ Router.register(
       };
     }
 
-    await syncWaterReportingPeriodStatuses(
-      ctx.env
-    );
+    const syncResult =
+      await syncWaterReportingPeriodStatuses(
+        ctx.env
+      );
+
+    if (syncResult.skipped || !syncResult.ok) {
+      return {
+        ok: false,
+        error: syncResult.reason ||
+          "water_reporting_lifecycle_unavailable",
+        open_period: null,
+        latest_closed_period: null,
+      };
+    }
 
     const nowIso =
       new Date().toISOString();
