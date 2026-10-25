@@ -1118,6 +1118,7 @@ export default function useWater() {
       initialReading = null,
       initialReadingDate = null,
       options = {},
+          sourceSlot = undefined,
     }) => {
 
       const normalizedApartmentId =
@@ -1190,6 +1191,8 @@ export default function useWater() {
                 normalizedType,
               serial_number:
                 normalizedSerialNumber,
+              source_slot: sourceSlot == null || String(sourceSlot).trim() === ""
+                ? null : String(sourceSlot).trim().toUpperCase(),
               manufacturer:
                 String(
                   manufacturer || ""
@@ -1260,6 +1263,7 @@ export default function useWater() {
       initialReading = null,
       initialReadingDate = null,
       correctionReason = "",
+          sourceSlot = undefined,
     }) => {
 
       if (!meterId) {
@@ -1278,6 +1282,10 @@ export default function useWater() {
               apartment_riser_id: apartmentRiserId ? Number(apartmentRiserId) : null,
               type: String(type || "").trim().toLowerCase(),
               serial_number: String(serialNumber || "").trim(),
+              ...(sourceSlot !== undefined ? {
+                source_slot: sourceSlot == null || String(sourceSlot).trim() === ""
+                  ? null : String(sourceSlot).trim().toUpperCase(),
+              } : {}),
               manufacturer: String(manufacturer || "").trim() || null,
               model: String(model || "").trim() || null,
               installed_at: installedAt || null,

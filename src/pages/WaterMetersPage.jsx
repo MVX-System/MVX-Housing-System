@@ -58,6 +58,9 @@ const TEXT = {
     apartmentPrefix: "Dzīvoklis Nr.",
     typeLocation: "Veids / atrašanās vieta",
     serialNumber: "Sērijas numurs",
+    sourceSlot: "Skaitītāja pozīcija (A1–A3 / K1–K3)",
+    sourceSlotUnknown: "Nav norādīta",
+    riserAssignmentProvisional: "Stāvvada piesaiste ir provizoriska",
     riser: "Stāvvads",
     installed: "Uzstādīts",
     calibration: "Kalibrēšana",
@@ -177,6 +180,9 @@ const TEXT = {
     apartmentPrefix: "Apartment #",
     typeLocation: "Type / Location",
     serialNumber: "Serial Number",
+    sourceSlot: "Meter position (A1–A3 / K1–K3)",
+    sourceSlotUnknown: "Not specified",
+    riserAssignmentProvisional: "Riser assignment is provisional",
     riser: "Riser",
     installed: "Installed",
     calibration: "Calibration",
@@ -296,6 +302,9 @@ const TEXT = {
     apartmentPrefix: "Квартира №",
     typeLocation: "Тип / расположение",
     serialNumber: "Серийный номер",
+    sourceSlot: "Позиция счётчика (A1–A3 / K1–K3)",
+    sourceSlotUnknown: "Не указана",
+    riserAssignmentProvisional: "Привязка к стояку предварительная",
     riser: "Стояк",
     installed: "Установлен",
     calibration: "Калибровка",
@@ -972,6 +981,8 @@ export default function WaterMetersPage() {
               )
             : "",
         type: meter.type || "cold",
+        sourceSlot: meter.source_slot || "",
+        riserAssignmentStatus: meter.riser_assignment_status || null,
         serialNumber:
           meter.serial_number || "",
         manufacturer:
@@ -1044,6 +1055,7 @@ export default function WaterMetersPage() {
       try {
         const result =
           await updateWaterMeter({
+              sourceSlot: editForm.sourceSlot || null,
             meterId: editForm.id,
             apartmentId:
               editForm.apartmentId,
@@ -1265,6 +1277,7 @@ export default function WaterMetersPage() {
 
         const meterResult =
           await addWaterMeter({
+              sourceSlot: addForm.sourceSlot || null,
             apartmentId:
               addForm.apartmentId,
 
@@ -2685,6 +2698,7 @@ export default function WaterMetersPage() {
 
                     apartmentRiserId:
                       "",
+                  sourceSlot: "",
                   })
                 )
               }
@@ -2696,6 +2710,23 @@ export default function WaterMetersPage() {
               <option value="hot">
                 {text.hotWater}
               </option>
+            </select>
+          </FormField>
+          <FormField label={text.sourceSlot}>
+            <select
+              value={addForm.sourceSlot || ""}
+              disabled={addSubmitting}
+              onChange={(event) => setAddForm((current) => ({
+                ...current,
+                sourceSlot: event.target.value,
+              }))}
+              style={fieldStyle}
+            >
+              <option value="">{text.sourceSlotUnknown}</option>
+              {[1, 2, 3].map((number) => {
+                const slot = `${addForm.type === "hot" ? "K" : "A"}${number}`;
+                return <option key={slot} value={slot}>{slot}</option>;
+              })}
             </select>
           </FormField>
 
@@ -3300,12 +3331,30 @@ export default function WaterMetersPage() {
                   ...current,
                   type: event.target.value,
                   apartmentRiserId: "",
+                  sourceSlot: "",
                 }))
               }
               style={fieldStyle}
             >
               <option value="cold">{text.coldWater}</option>
               <option value="hot">{text.hotWater}</option>
+            </select>
+          </FormField>
+          <FormField label={text.sourceSlot}>
+            <select
+              value={editForm.sourceSlot || ""}
+              disabled={editSubmitting}
+              onChange={(event) => setEditForm((current) => ({
+                ...current,
+                sourceSlot: event.target.value,
+              }))}
+              style={fieldStyle}
+            >
+              <option value="">{text.sourceSlotUnknown}</option>
+              {[1, 2, 3].map((number) => {
+                const slot = `${editForm.type === "hot" ? "K" : "A"}${number}`;
+                return <option key={slot} value={slot}>{slot}</option>;
+              })}
             </select>
           </FormField>
 
@@ -3317,6 +3366,7 @@ export default function WaterMetersPage() {
                 setEditForm((current) => ({
                   ...current,
                   apartmentRiserId: event.target.value,
+                  riserAssignmentStatus: "provisional",
                 }))
               }
               style={fieldStyle}
@@ -3340,6 +3390,11 @@ export default function WaterMetersPage() {
                 ))}
             </select>
           </FormField>
+          {editForm.riserAssignmentStatus === "provisional" && (
+            <p role="note" style={{ margin: 0, fontSize: 12, opacity: 0.85 }}>
+              {text.riserAssignmentProvisional}
+            </p>
+          )}
 
           <FormField label={text.serialNumber}>
             <input
