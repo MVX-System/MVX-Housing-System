@@ -1314,9 +1314,37 @@ code {
     display: none;
   }
 
+  /* PR-9K.4I: keep the existing Close button available inside a compact
+     manual-only mobile header throughout scrolling, including deep links. */
   .manual-page-header {
-    align-items: flex-start;
-    flex-direction: column;
+    position: sticky;
+    top: env(safe-area-inset-top, 0px);
+    z-index: 1200;
+    align-items: center;
+    flex-direction: row;
+    min-height: 56px;
+    box-sizing: border-box;
+    padding: 8px 10px;
+    margin: -14px -14px 16px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    box-shadow: 0 3px 12px rgba(15, 23, 42, 0.08);
+  }
+
+  .manual-page-header > div:first-child {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .manual-page-section {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 10px;
+  }
+
+  .manual-page-mode {
+    display: none;
   }
 
   .manual-page {
@@ -1324,8 +1352,22 @@ code {
   }
 
   .manual-page-actions {
-    width: 100%;
-    justify-content: space-between;
+    flex: 0 0 auto;
+    width: auto;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
+  .manual-close-button {
+    min-height: 44px;
+    padding: 8px 10px;
+    white-space: nowrap;
+  }
+
+  /* Hash-linked section headings must not disappear behind the sticky bar. */
+  .manual-markdown h2[id],
+  .manual-markdown h3[id] {
+    scroll-margin-top: calc(72px + env(safe-area-inset-top, 0px));
   }
 
   .manual-state,
