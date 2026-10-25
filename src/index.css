@@ -1521,22 +1521,24 @@ code {
   text-align: center;
   border-bottom: 1px solid var(--sidebar-border);
 }
-/* Keep the submit field and hint clear of the contextual floating button. */
+/* PR-9K.4H: Help belongs to the fixed mobile menu/language toolbar.
+   Do not float it over headings, readings, input hints or buttons. */
 @media (max-width: 767px) {
-  body:has(.context-help-button) .context-help-button {
-    right: 10px;
-    bottom: max(12px, env(safe-area-inset-bottom, 0px));
-    width: 40px;
-    height: 40px;
-    min-height: 40px;
-    opacity: 0.92;
+  .mvx-mobile-toolbar .context-help-button {
+    position: static;
+    top: auto;
+    right: auto;
+    bottom: auto;
+    left: auto;
+    flex: 0 0 44px;
+    width: 44px;
+    height: 44px;
+    min-height: 44px;
+    padding: 7px;
+    justify-content: center;
   }
-  body:has(.context-help-button) .context-help-button:not(:focus-visible) .context-help-symbol {
-    width: 23px;
-    height: 23px;
-    font-size: 15px;
+
+  .mvx-mobile-toolbar .context-help-label {
+    display: none;
   }
-  /* On the water-entry page, dock Help beside the header, not on input hints. */
-  .context-help-button--water { top: 82px; bottom: auto !important; }
-  body:has(.context-help-button) main { padding-bottom: 72px; }
 }
