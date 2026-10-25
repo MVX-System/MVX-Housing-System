@@ -1,3 +1,5 @@
+import { formatMvxDateTime } from "../utils/displayDate";
+
 import {
   useEffect,
   useMemo,
@@ -750,35 +752,35 @@ const TEXT = {
     accountSection:
       "Konts",
     nickTitle:
-      "Pieslēgšanās vārds (Nick)",
+      "Pieslēgšanās vārds",
     nickHint:
-      "Izmantojiet 3–40 latīņu burtus, ciparus, punktu, pasvītrojumu vai defisi. Mainot Nick, tiks pārtrauktas sesijas visās ierīcēs.",
+      "Izmantojiet 3–40 latīņu burtus, ciparus, punktu, pasvītrojumu vai defisi. Mainot pieslēgšanās vārdu, tiks pārtrauktas sesijas visās ierīcēs.",
     currentNick:
-      "Pašreizējais pieslēgšanās vārds (Nick)",
+      "Pašreizējais pieslēgšanās vārds",
     newNick:
-      "Jaunais pieslēgšanās vārds (Nick)",
+      "Jaunais pieslēgšanās vārds",
     nickPassword:
       "Pašreizējā parole",
     changeNick:
-      "Mainīt Nick",
+      "Mainīt pieslēgšanās vārdu",
     changingNick:
-      "Nick tiek mainīts...",
+      "Tiek mainīts pieslēgšanās vārds...",
     nickRequired:
-      "Ievadiet jauno Nick un pašreizējo paroli.",
+      "Ievadiet jauno pieslēgšanās vārdu un pašreizējo paroli.",
     nickInvalid:
-      "Nick jābūt 3–40 rakstzīmes garam un drīkst saturēt tikai latīņu burtus, ciparus, punktu, pasvītrojumu vai defisi.",
+      "Pieslēgšanās vārdam jābūt 3–40 rakstzīmes garam un drīkst saturēt tikai latīņu burtus, ciparus, punktu, pasvītrojumu vai defisi.",
     nickExists:
-      "Šis Nick jau tiek izmantots.",
+      "Šis pieslēgšanās vārds jau tiek izmantots.",
     nickSame:
-      "Jaunajam Nick jāatšķiras no pašreizējā.",
+      "Jaunajam pieslēgšanās vārdam jāatšķiras no pašreizējā.",
     nickIncorrectPassword:
       "Pašreizējā parole nav pareiza.",
     nickPasswordFirst:
-      "Pirms Nick maiņas nomainiet pagaidu paroli.",
+      "Pirms pieslēgšanās vārda maiņas nomainiet pagaidu paroli.",
     nickChangeFailed:
-      "Nick neizdevās nomainīt.",
+      "Neizdevās nomainīt pieslēgšanās vārdu.",
     nickChanged:
-      "Nick ir veiksmīgi nomainīts. Piesakieties vēlreiz, izmantojot jauno Nick.",
+      "Pieslēgšanās vārds ir veiksmīgi nomainīts. Piesakieties vēlreiz, izmantojot jauno pieslēgšanās vārdu.",
 
     contactSection:
       "Publiskā kontaktinformācija",
@@ -1346,35 +1348,35 @@ const TEXT = {
     accountSection:
       "Учётная запись",
     nickTitle:
-      "Имя для входа (Nick)",
+      "Имя для входа",
     nickHint:
-      "Используйте 3–40 латинских букв, цифр, точку, подчёркивание или дефис. После смены Nick все сеансы будут завершены.",
+      "Используйте 3–40 латинских букв, цифр, точку, подчёркивание или дефис. После изменения имени для входа все сеансы будут завершены.",
     currentNick:
-      "Текущее имя для входа (Nick)",
+      "Текущее имя для входа",
     newNick:
-      "Новое имя для входа (Nick)",
+      "Новое имя для входа",
     nickPassword:
       "Текущий пароль",
     changeNick:
-      "Изменить Nick",
+      "Изменить имя для входа",
     changingNick:
-      "Изменение Nick...",
+      "Изменение имени для входа...",
     nickRequired:
-      "Введите новый Nick и текущий пароль.",
+      "Введите новое имя для входа и текущий пароль.",
     nickInvalid:
-      "Nick должен содержать 3–40 символов: A–Z, a–z, 0–9, точку, подчёркивание или дефис.",
+      "Имя для входа должно содержать 3–40 символов: A–Z, a–z, 0–9, точку, подчёркивание или дефис.",
     nickExists:
-      "Этот Nick уже используется.",
+      "Это имя для входа уже используется.",
     nickSame:
-      "Новый Nick должен отличаться от текущего.",
+      "Новое имя для входа должно отличаться от текущего.",
     nickIncorrectPassword:
       "Текущий пароль указан неверно.",
     nickPasswordFirst:
-      "Сначала замените временный пароль, затем измените Nick.",
+      "Сначала замените временный пароль, затем измените имя для входа.",
     nickChangeFailed:
-      "Не удалось изменить Nick.",
+      "Не удалось изменить имя для входа.",
     nickChanged:
-      "Nick успешно изменён. Войдите снова, используя новый Nick.",
+      "Имя для входа успешно изменено. Войдите снова, используя новое имя для входа.",
 
     contactSection:
       "Публичные контакты",
@@ -2014,47 +2016,7 @@ function formatMonth(
   ).format(date);
 }
 
-function formatDateTime(
-  value,
-  language,
-  timeZone
-) {
-  if (!value) {
-    return "—";
-  }
-
-  const date =
-    new Date(value);
-
-  if (
-    Number.isNaN(
-      date.getTime()
-    )
-  ) {
-    return String(value);
-  }
-
-  const localeMap = {
-    lv: "lv-LV",
-    en: "en-GB",
-    ru: "ru-RU",
-  };
-
-  return new Intl.DateTimeFormat(
-    localeMap[language] ||
-      "en-GB",
-    {
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-      timeZone:
-        timeZone ||
-        "Europe/Riga",
-    }
-  ).format(date);
-}
+function formatDateTime(value) { return formatMvxDateTime(value); }
 
 function getStatusLabel(
   status,
