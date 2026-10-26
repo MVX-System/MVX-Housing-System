@@ -1,3 +1,4 @@
+import { getUserLocationOptions, getUserLocationLabels, userMatchesLocation } from "../utils/adminUsersLocationFilters";
 import { formatMvxDateTime } from "../utils/displayDate";
 
 import {
@@ -468,6 +469,11 @@ export default function UsersPage() {
     statusFilter,
     setStatusFilter,
   ] = useState("all");
+  // PR-9G.7C: presentation-only, non-PII location filters.
+  const [locationSection, setLocationSection] = useState("all");
+  const [locationFloor, setLocationFloor] = useState("all");
+  const [locationApartments, setLocationApartments] = useState([]);
+
 
   const [
     selectedUser,
@@ -612,6 +618,7 @@ export default function UsersPage() {
 
   useEffect(() => {
     loadUsers();
+    loadApartments();
   }, []);
 
   const loadRecoveryStatus =
@@ -1422,6 +1429,17 @@ export default function UsersPage() {
       initialRoleIds
     );
 
+  
+  // PR-9G.7C: same apartment metadata source as Admin -> Apartments.
+  const locationOptions = useMemo(
+    () => getUserLocationOptions(apartments, locationSection, locationFloor),
+    [apartments, locationSection, locationFloor]
+  );
+  const locationLabels = getUserLocationLabels(
+    (typeof language !== "undefined" && language) ||
+    (typeof document !== "undefined" && document.documentElement.lang) || "en"
+  );
+
   const filteredUsers =
     useMemo(() => {
       const query =
@@ -1452,7 +1470,10 @@ export default function UsersPage() {
             return false;
           }
 
-          return true;
+          return userMatchesLocation(
+            users.find((candidate) => Number(candidate.id) === Number(user.id)) || user,
+            apartments, locationSection, locationFloor, locationApartments
+          );
         };
 
       if (!query) {
@@ -1524,6 +1545,7 @@ export default function UsersPage() {
       search,
       statusFilter,
       piiSearchResults,
+        apartments, locationSection, locationFloor, locationApartments,
     ]);
 
   // Stage 2I-5B4:
@@ -1760,6 +1782,61 @@ export default function UsersPage() {
       <section
         style={toolbarStyle}
       >
+          {/* PR-9G.7C: Location filters; no changes to permissions or user data */}
+          <div style={{ width: "100%", display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end", fontSize: 14 }}>
+            <label style={{ display: "grid", gap: 4, minWidth: 150, flex: "1 1 150px" }}>
+              <span>{locationLabels.section}</span>
+              <select aria-label={locationLabels.section} style={{ ...inputStyle, fontSize: 14 }} value={locationSection}
+                onChange={(event) => {
+                  setLocationSection(event.target.value);
+                  setLocationFloor("all");
+                  setLocationApartments([]);
+                }}>
+                <option value="all">{locationLabels.allSections}</option>
+                {locationOptions.sections.map((value) => (
+                  <option value={value} key={value}>{value}</option>
+                ))}
+              </select>
+            </label>
+            <label style={{ display: "grid", gap: 4, minWidth: 120, flex: "1 1 120px" }}>
+              <span>{locationLabels.floor}</span>
+              <select aria-label={locationLabels.floor} style={{ ...inputStyle, fontSize: 14 }} value={locationFloor}
+                onChange={(event) => {
+                  setLocationFloor(event.target.value);
+                  setLocationApartments([]);
+                }}>
+                <option value="all">{locationLabels.allFloors}</option>
+                {locationOptions.floors.map((value) => (
+                  <option value={value} key={value}>{value}</option>
+                ))}
+              </select>
+            </label>
+            <details style={{ minWidth: 190, flex: "1 1 190px", position: "relative" }}>
+              <summary style={{ cursor: "pointer", padding: "9px 10px", border: "1px solid #9ca3af", borderRadius: 8 }}>
+                {locationLabels.apartments}: {locationApartments.length
+                  ? `${locationApartments.length} ${locationLabels.selected}` : locationLabels.allApartments}
+              </summary>
+              <div style={{ maxHeight: 210, overflowY: "auto", padding: 8, border: "1px solid #9ca3af", borderRadius: 8 }}>
+                {locationOptions.numbers.length === 0 && <span>{locationLabels.none}</span>}
+                {locationOptions.numbers.map((number) => (
+                  <label key={number} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 2px" }}>
+                    <input type="checkbox" checked={locationApartments.includes(number)}
+                      onChange={(event) => setLocationApartments((previous) =>
+                        event.target.checked ? [...previous, number] : previous.filter((value) => value !== number)
+                      )}/>
+                    <span>{number}</span>
+                  </label>
+                ))}
+              </div>
+            </details>
+            <button type="button" style={{ ...inputStyle, fontSize: 14, cursor: "pointer", alignSelf: "flex-end" }}
+              onClick={() => {
+                setLocationSection("all");
+                setLocationFloor("all");
+                setLocationApartments([]);
+              }}>{locationLabels.reset}</button>
+          </div>
+
         <input
           type="search"
           value={search}
