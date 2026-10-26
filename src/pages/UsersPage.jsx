@@ -1783,10 +1783,10 @@ export default function UsersPage() {
         style={toolbarStyle}
       >
           {/* PR-9G.7C: Location filters; no changes to permissions or user data */}
-          <div style={{ width: "100%", display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
+          <div style={{ width: "100%", display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end", fontSize: 14 }}>
             <label style={{ display: "grid", gap: 4, minWidth: 150, flex: "1 1 150px" }}>
               <span>{locationLabels.section}</span>
-              <select aria-label={locationLabels.section} style={inputStyle} value={locationSection}
+              <select aria-label={locationLabels.section} style={{ ...inputStyle, fontSize: 14 }} value={locationSection}
                 onChange={(event) => {
                   setLocationSection(event.target.value);
                   setLocationFloor("all");
@@ -1800,7 +1800,7 @@ export default function UsersPage() {
             </label>
             <label style={{ display: "grid", gap: 4, minWidth: 120, flex: "1 1 120px" }}>
               <span>{locationLabels.floor}</span>
-              <select aria-label={locationLabels.floor} style={inputStyle} value={locationFloor}
+              <select aria-label={locationLabels.floor} style={{ ...inputStyle, fontSize: 14 }} value={locationFloor}
                 onChange={(event) => {
                   setLocationFloor(event.target.value);
                   setLocationApartments([]);
@@ -1829,7 +1829,7 @@ export default function UsersPage() {
                 ))}
               </div>
             </details>
-            <button type="button" style={{ ...inputStyle, cursor: "pointer", alignSelf: "flex-end" }}
+            <button type="button" style={{ ...inputStyle, fontSize: 14, cursor: "pointer", alignSelf: "flex-end" }}
               onClick={() => {
                 setLocationSection("all");
                 setLocationFloor("all");
