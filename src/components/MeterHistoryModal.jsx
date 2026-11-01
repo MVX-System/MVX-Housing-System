@@ -1,4 +1,5 @@
 import { formatMvxDate } from "../utils/displayDate";
+import { formatWaterReportingPeriodLabel, waterReportingPeriodHeading } from "../utils/waterReportingPeriodLabel";
 
 import { localizeMeterLocation } from "../utils/meterLocation";
 
@@ -576,9 +577,7 @@ export default function MeterHistoryModal({
                         textAlign: "left",
                       }}
                     >
-                      {t(
-                        "water.history.date"
-                      )}
+                      {waterReportingPeriodHeading(language)}
                     </th>
 
                     <th
@@ -683,9 +682,14 @@ export default function MeterHistoryModal({
                             }}
                           >
 
-                            {formatDate(
-                              reading.reading_date
-                            )}
+                            {reading.period_year && reading.period_month
+                                ? formatWaterReportingPeriodLabel(
+                                    `${reading.period_year}-${String(
+                                      reading.period_month
+                                    ).padStart(2, "0")}`,
+                                    language
+                                  )
+                                : formatDate(reading.reading_date)}
 
                             {isLatest && (
 
