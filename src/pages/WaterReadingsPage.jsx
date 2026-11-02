@@ -1,3 +1,4 @@
+import { formatWaterReportingPeriodLabel } from "../utils/waterReportingPeriodLabel";
 import { formatMvxDate, formatMvxDateTime } from "../utils/displayDate";
 
 import {
@@ -502,14 +503,9 @@ export default function WaterReadingsPage() {
                 locale
               ),
 
-            [text.exportReadingDate]:
-              formatDate(
-                row.reading_date,
-                locale
-              ),
 
             [text.exportReportingPeriod]:
-              row.period_label,
+              formatWaterReportingPeriodLabel(row.period_label, language),
 
             [text.apartment]:
               row.apartment_number,
@@ -1020,19 +1016,10 @@ export default function WaterReadingsPage() {
                         )}
                       </strong>
 
-                      <div
-                        style={subText}
-                      >
-                        {text.readingDate}:{" "}
-                        {formatDate(
-                          row.reading_date,
-                          locale
-                        )}
-                      </div>
                     </td>
 
                     <td style={tableCell}>
-                      {row.period_label}
+                      {formatWaterReportingPeriodLabel(row.period_label, language)}
                     </td>
 
                     <td style={tableCellStrong}>
@@ -1277,7 +1264,7 @@ function ReadingCard({
 
         <CardRow
           label={text.period}
-          value={row.period_label}
+          value={formatWaterReportingPeriodLabel(row.period_label, language)}
         />
 
         <CardRow

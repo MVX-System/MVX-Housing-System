@@ -1278,6 +1278,21 @@ code {
   cursor: pointer;
 }
 
+/* PR-9K.3J-R5: desktop help lives in the Sidebar,
+   never above page content. Mobile toolbar remains unchanged. */
+.mvx-desktop-sidebar-help {
+  margin: 8px 8px 12px;
+}
+
+.mvx-desktop-sidebar-help .context-help-button {
+  position: static;
+  right: auto;
+  bottom: auto;
+  width: 100%;
+  justify-content: center;
+  box-shadow: none;
+}
+
 .context-help-button:hover {
   filter: brightness(1.05);
 }

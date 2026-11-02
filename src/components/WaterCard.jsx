@@ -1,4 +1,4 @@
-import { formatMvxDate } from "../utils/displayDate";
+import { formatMvxDate, formatMvxDateTime } from "../utils/displayDate";
 
 import { localizeMeterLocation } from "../utils/meterLocation";
 
@@ -415,9 +415,7 @@ export default function WaterCard({
           </span>
 
           <span style={valueStyle}>
-            {formatDate(
-              meter.last_date
-            )}
+            {formatMvxDateTime(meter.last_date)}
           </span>
 
         </div>

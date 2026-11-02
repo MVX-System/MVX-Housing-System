@@ -203,7 +203,6 @@ export default function App() {
         </ModeRouteBoundary>
       </main>
 
-      {!isMobile && <ContextHelpButton />}
     </div>
   );
 }
