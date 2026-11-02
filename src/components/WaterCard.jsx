@@ -1,3 +1,7 @@
+import { formatMvxDate, formatMvxDateTime } from "../utils/displayDate";
+
+import { localizeMeterLocation } from "../utils/meterLocation";
+
 import {
   useState,
 } from "react";
@@ -106,24 +110,7 @@ export default function WaterCard({
     };
 
   const formatDate = (value) => {
-
-    if (!value) {
-      return "—";
-    }
-
-    const date = new Date(value);
-
-    if (
-      Number.isNaN(
-        date.getTime()
-      )
-    ) {
-      return value;
-    }
-
-    return date.toLocaleDateString(
-      "en-GB"
-    );
+    return formatMvxDate(value);
   };
 
   const formatMeterType =
@@ -402,9 +389,7 @@ export default function WaterCard({
           </span>
 
           <span style={valueStyle}>
-            {formatDate(
-              meter.last_date
-            )}
+            {formatMvxDateTime(meter.last_date)}
           </span>
 
         </div>

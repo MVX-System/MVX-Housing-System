@@ -195,7 +195,6 @@ export default function App() {
         <Outlet />
       </main>
 
-      <ContextHelpButton />
     </div>
   );
 }

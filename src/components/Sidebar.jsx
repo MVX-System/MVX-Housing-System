@@ -6,6 +6,9 @@ import {
 import MenuButton
   from "./MenuButton";
 
+import ContextHelpButton
+  from "./ContextHelpButton";
+
 import LanguageSelector
   from "./LanguageSelector";
 
@@ -609,6 +612,12 @@ export default function Sidebar({
             />
           </>
         )}
+
+          {!isMobile && (
+            <div className="mvx-desktop-sidebar-help">
+              <ContextHelpButton />
+            </div>
+          )}
 
         <hr style={divider} />
 

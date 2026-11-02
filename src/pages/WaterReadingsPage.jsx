@@ -1,3 +1,6 @@
+import { formatWaterReportingPeriodLabel } from "../utils/waterReportingPeriodLabel";
+import { formatMvxDate, formatMvxDateTime } from "../utils/displayDate";
+
 import {
   useEffect,
   useMemo,
@@ -498,14 +501,9 @@ export default function WaterReadingsPage() {
                 locale
               ),
 
-            [text.exportReadingDate]:
-              formatDate(
-                row.reading_date,
-                locale
-              ),
 
             [text.exportReportingPeriod]:
-              row.period_label,
+              formatWaterReportingPeriodLabel(row.period_label, language),
 
             [text.apartment]:
               row.apartment_number,
@@ -1017,19 +1015,10 @@ export default function WaterReadingsPage() {
                         )}
                       </strong>
 
-                      <div
-                        style={subText}
-                      >
-                        {text.readingDate}:{" "}
-                        {formatDate(
-                          row.reading_date,
-                          locale
-                        )}
-                      </div>
                     </td>
 
                     <td style={tableCell}>
-                      {row.period_label}
+                      {formatWaterReportingPeriodLabel(row.period_label, language)}
                     </td>
 
                     <td style={tableCellStrong}>
@@ -1274,7 +1263,7 @@ function ReadingCard({
 
         <CardRow
           label={text.period}
-          value={row.period_label}
+          value={formatWaterReportingPeriodLabel(row.period_label, language)}
         />
 
         <CardRow
@@ -1631,67 +1620,14 @@ function formatDate(
   value,
   locale
 ) {
-
-  if (!value) {
-    return "—";
-  }
-
-  const date =
-    new Date(
-      `${String(value).slice(
-        0,
-        10
-      )}T00:00:00`
-    );
-
-  if (
-    Number.isNaN(
-      date.getTime()
-    )
-  ) {
-    return String(value);
-  }
-
-  return date.toLocaleDateString(
-    locale,
-    {
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }
-  );
+  return formatMvxDate(value);
 }
 
 function formatDateTime(
   value,
   locale
 ) {
-
-  if (!value) {
-    return "—";
-  }
-
-  const date =
-    new Date(value);
-
-  if (
-    Number.isNaN(
-      date.getTime()
-    )
-  ) {
-    return String(value);
-  }
-
-  return date.toLocaleString(
-    locale,
-    {
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-    }
-  );
+  return formatMvxDateTime(value);
 }
 
 const fieldStyle = {

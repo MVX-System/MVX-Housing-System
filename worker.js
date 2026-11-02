@@ -13729,18 +13729,36 @@ Router.register("GET", "/api/my-water-meters", async (ctx) => {
         WHERE wmr.meter_id = wm.id
           AND wmr.status = 'active'
         ORDER BY
-          wmr.reading_date DESC,
+          COALESCE(
+            (
+              SELECT rp.period_year * 100 + rp.period_month
+              FROM water_reporting_periods rp
+              WHERE rp.id = wmr.reporting_period_id
+            ),
+            CAST(substr(wmr.reading_date, 1, 4) AS INTEGER) * 100
+              + CAST(substr(wmr.reading_date, 6, 2) AS INTEGER)
+          ) DESC,
+          wmr.submitted_at DESC,
           wmr.id DESC
         LIMIT 1
       ) AS last_reading,
 
       (
-        SELECT wmr.reading_date
+        SELECT wmr.submitted_at
         FROM water_meter_readings wmr
         WHERE wmr.meter_id = wm.id
           AND wmr.status = 'active'
         ORDER BY
-          wmr.reading_date DESC,
+          COALESCE(
+            (
+              SELECT rp.period_year * 100 + rp.period_month
+              FROM water_reporting_periods rp
+              WHERE rp.id = wmr.reporting_period_id
+            ),
+            CAST(substr(wmr.reading_date, 1, 4) AS INTEGER) * 100
+              + CAST(substr(wmr.reading_date, 6, 2) AS INTEGER)
+          ) DESC,
+          wmr.submitted_at DESC,
           wmr.id DESC
         LIMIT 1
       ) AS last_date
@@ -13839,19 +13857,26 @@ Router.register("GET", "/api/my-water-meter-history", async (ctx) => {
 
   const result = await ctx.env.DB.prepare(`
     SELECT
-      id,
-      reading_value,
-      reading_date,
-      submitted_by
-
-    FROM water_meter_readings
-
-    WHERE meter_id = ?
-      AND status = 'active'
-
-    ORDER BY
-      reading_date DESC,
-      id DESC
+        wmr.id,
+        wmr.reading_value,
+        wmr.reading_date,
+        wmr.submitted_at,
+        wmr.submitted_by,
+        rp.period_year,
+        rp.period_month
+      FROM water_meter_readings wmr
+      LEFT JOIN water_reporting_periods rp
+        ON rp.id = wmr.reporting_period_id
+      WHERE wmr.meter_id = ?
+        AND wmr.status = 'active'
+      ORDER BY
+        COALESCE(
+          rp.period_year * 100 + rp.period_month,
+          CAST(substr(wmr.reading_date, 1, 4) AS INTEGER) * 100
+            + CAST(substr(wmr.reading_date, 6, 2) AS INTEGER)
+        ) DESC,
+        wmr.submitted_at DESC,
+        wmr.id DESC
   `)
     .bind(meterId)
     .all();
@@ -13998,10 +14023,19 @@ Router.register("POST", "/api/submit-water-reading", async (ctx) => {
     };
   }
 
+  const dateParts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-GB", {
+      timeZone: "Europe/Riga",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    })
+      .formatToParts(new Date(nowIso))
+      .map(({ type, value }) => [type, value])
+  );
+
   const readingDate =
-    `${reportingPeriod.period_year}-${String(
-      reportingPeriod.period_month
-    ).padStart(2, "0")}-01`;
+    `${dateParts.year}-${dateParts.month}-${dateParts.day}`;
 
   await ctx.env.DB.prepare(`
     INSERT INTO water_meter_readings (
@@ -23301,8 +23335,15 @@ Router.register(
                 OR (
                   previous.reporting_period_id IS NULL
                   AND date(previous.reading_date) <= date((
-                    SELECT current_initial_target.reading_date
+                    SELECT printf(
+                      '%04d-%02d-01',
+                      current_period.period_year,
+                      current_period.period_month
+                    )
                     FROM water_meter_readings current_initial_target
+                    JOIN water_reporting_periods current_period
+                      ON current_period.id =
+                        current_initial_target.reporting_period_id
                     WHERE current_initial_target.meter_id = wm.id
                       AND current_initial_target.status = 'active'
                       AND current_initial_target.reporting_period_id = ?
@@ -23360,8 +23401,15 @@ Router.register(
                 OR (
                   previous.reporting_period_id IS NULL
                   AND date(previous.reading_date) <= date((
-                    SELECT current_initial_target.reading_date
+                    SELECT printf(
+                      '%04d-%02d-01',
+                      current_period.period_year,
+                      current_period.period_month
+                    )
                     FROM water_meter_readings current_initial_target
+                    JOIN water_reporting_periods current_period
+                      ON current_period.id =
+                        current_initial_target.reporting_period_id
                     WHERE current_initial_target.meter_id = wm.id
                       AND current_initial_target.status = 'active'
                       AND current_initial_target.reporting_period_id = ?
