@@ -21913,6 +21913,162 @@ Router.register("GET", "/api/my-water-meter-history", async (ctx) => {
 });
 
 // =========================
+// PR-10K.1 — RESIDENT WATER BATCH SUBMISSION (TEST)
+// One SQL INSERT ... SELECT statement provides all-or-none writes.
+// Existing single-meter and admin routes are deliberately unchanged.
+// =========================
+Router.register("POST", "/api/submit-water-readings-batch", async (ctx) => {
+  const user = await Auth.requireUser(ctx);
+  if (!user) return { error: "unauthorized" };
+
+  const syncResult = await syncWaterReportingPeriodStatuses(ctx.env);
+  if (syncResult.skipped) {
+    return { ok: false, error: syncResult.reason };
+  }
+
+  const body = await ctx.request.json().catch(() => ({}));
+  const periodId = Number(body.reporting_period_id);
+  const entries = body.readings;
+  if (!Number.isSafeInteger(periodId) || periodId <= 0 ||
+      !Array.isArray(entries) || entries.length < 1 || entries.length > 32) {
+    return { error: "invalid_fields" };
+  }
+
+  const readings = [];
+  const ids = new Set();
+  for (const entry of entries) {
+    const meterId = Number(entry?.meter_id);
+    const readingValue = entry?.reading_value;
+    const previous = entry?.expected_previous;
+    const unchanged = entry?.unchanged;
+    if (!Number.isSafeInteger(meterId) || meterId <= 0 ||
+        ids.has(meterId) ||
+        !Number.isSafeInteger(readingValue) || readingValue < 0 ||
+        !(previous === null || (Number.isSafeInteger(previous) && previous >= 0)) ||
+        typeof unchanged !== "boolean" ||
+        (unchanged && (previous === null || readingValue !== previous))) {
+      return { error: "invalid_fields" };
+    }
+    ids.add(meterId);
+    readings.push({ meterId, readingValue, previous, unchanged });
+  }
+
+  // PR-9K.3J-R4 contract: reading_date is the actual submission instant.
+  // Reporting period is stored separately in reporting_period_id.
+  const nowIso = new Date().toISOString();
+  const readingDate = nowIso;
+
+  // The live previous reading is resolved with the SAME ordering used by
+  // GET /api/my-water-meters, including older unlinked readings.
+  // Comparing expected_previous prevents submitting a stale resident form.
+  // One INSERT statement, rather than N INSERTs, prevents partial commits.
+  const placeholders = readings.map(() => "(?, ?, ?, ?)").join(", ");
+  const sql = `
+    WITH input (meter_id, reading_value, expected_previous, unchanged) AS (
+      VALUES ${placeholders}
+    ),
+    scoped_apartment AS (
+      SELECT wm.apartment_id
+      FROM water_meters wm
+      WHERE wm.id = ? AND wm.active = 1
+        AND EXISTS (
+          SELECT 1 FROM user_apartments ua
+          WHERE ua.apartment_id = wm.apartment_id AND ua.user_id = ?
+        )
+    ),
+    apartment_meters AS (
+      SELECT wm.id FROM water_meters wm
+      JOIN scoped_apartment sa ON sa.apartment_id = wm.apartment_id
+      WHERE wm.active = 1
+    ),
+    resolved AS (
+      SELECT i.*,
+        EXISTS (SELECT 1 FROM apartment_meters am WHERE am.id = i.meter_id)
+          AS allowed,
+        (
+          SELECT wmr.reading_value FROM water_meter_readings wmr
+          WHERE wmr.meter_id = i.meter_id AND wmr.status = 'active'
+          ORDER BY COALESCE(
+            (SELECT rp.period_year * 100 + rp.period_month
+               FROM water_reporting_periods rp
+              WHERE rp.id = wmr.reporting_period_id),
+            CAST(substr(wmr.reading_date, 1, 4) AS INTEGER) * 100 +
+            CAST(substr(wmr.reading_date, 6, 2) AS INTEGER)
+          ) DESC, wmr.submitted_at DESC, wmr.id DESC
+          LIMIT 1
+        ) AS live_previous,
+        EXISTS (
+          SELECT 1 FROM water_meter_readings wmr
+          WHERE wmr.meter_id = i.meter_id
+            AND wmr.reporting_period_id = ? AND wmr.status = 'active'
+        ) AS already_submitted
+      FROM input i
+    ),
+    validity AS (
+      SELECT
+        (SELECT COUNT(*) FROM scoped_apartment) AS apartments,
+        (SELECT COUNT(*) FROM apartment_meters) AS expected_count,
+        (SELECT COUNT(*) FROM input) AS input_count,
+        (SELECT COUNT(DISTINCT meter_id) FROM input) AS unique_count,
+        (SELECT COUNT(*) FROM resolved WHERE allowed = 1
+          AND already_submitted = 0
+          AND expected_previous IS live_previous
+          AND (live_previous IS NULL OR reading_value >= live_previous)
+          AND (unchanged = 0 OR
+            (live_previous IS NOT NULL AND reading_value = live_previous))
+        ) AS acceptable_count,
+        (SELECT COUNT(*) FROM water_reporting_periods rp
+          WHERE rp.id = ? AND rp.status = 'open'
+            AND datetime(?) >= datetime(rp.collection_opens_at)
+            AND datetime(?) <= datetime(rp.collection_closes_at)
+            AND rp.id = (
+              SELECT newest.id FROM water_reporting_periods newest
+              WHERE newest.status = 'open'
+                AND datetime(?) >= datetime(newest.collection_opens_at)
+                AND datetime(?) <= datetime(newest.collection_closes_at)
+              ORDER BY newest.period_year DESC, newest.period_month DESC
+              LIMIT 1
+            )
+        ) AS periods
+    )
+    INSERT INTO water_meter_readings (
+      meter_id, reading_value, reading_date, submitted_by,
+      status, reporting_period_id, submitted_at
+    )
+    SELECT i.meter_id, i.reading_value, ?, ?, 'active', ?, ?
+    FROM input i CROSS JOIN validity v
+    WHERE v.apartments = 1 AND v.periods = 1
+      AND v.input_count = v.expected_count
+      AND v.unique_count = v.input_count
+      AND v.acceptable_count = v.input_count
+  `;
+
+  const bindings = readings.flatMap((entry) => [
+    entry.meterId, entry.readingValue, entry.previous, entry.unchanged ? 1 : 0,
+  ]);
+  bindings.push(
+    readings[0].meterId, user.user_id, periodId, periodId,
+    nowIso, nowIso, nowIso, nowIso, readingDate, user.user_id, periodId, nowIso
+  );
+
+  try {
+    const result = await ctx.env.DB.prepare(sql).bind(...bindings).run();
+    if (result?.meta?.changes !== readings.length) {
+      return { ok: false, error: "water_batch_conflict_or_period_closed" };
+    }
+    return {
+      ok: true,
+      reporting_period_id: periodId,
+      submitted_count: readings.length,
+      submitted_at: nowIso,
+    };
+  } catch (error) {
+    console.error("PR-10K.1 batch submission failed", error);
+    return { ok: false, error: "water_batch_write_failed" };
+  }
+});
+
+// =========================
 // SUBMIT WATER READING
 // =========================
 Router.register("POST", "/api/submit-water-reading", async (ctx) => {

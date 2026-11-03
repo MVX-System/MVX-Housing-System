@@ -1,0 +1,94 @@
+/* PR-10K.1 — isolated styles, prefixed to avoid changing existing MVX pages. */
+.mvx-water-form {
+  --mvx-water-border: #dce2e8;
+  --mvx-water-muted: #667586;
+  --mvx-water-surface: #f4f6f8;
+  --mvx-water-positive: #11785b;
+  color: inherit;
+  width: 100%; max-width: 540px;
+  margin: 0 auto; padding: 16px;
+  display: flex; flex-direction: column; gap: 16px;
+  background: var(--mvx-water-background, #fff);
+  border: 1px solid var(--mvx-water-border);
+  border-radius: 18px; box-sizing: border-box;
+}
+.mvx-water-form *, .mvx-water-form *::before, .mvx-water-form *::after { box-sizing: border-box; }
+.mvx-water-form__header { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.mvx-water-form__header h2 { font-size: 21px; font-weight: 700; margin: 0 0 5px; }
+.mvx-water-form__header p { font-size: 12px; color: var(--mvx-water-muted); margin: 0; }
+.mvx-water-form__progress-label { display: flex; flex-direction: column; align-items: end; white-space: nowrap; }
+.mvx-water-form__progress-label small { color: var(--mvx-water-muted); }
+.mvx-water-form__progress-label strong { font-size: 20px; font-variant-numeric: tabular-nums; }
+.mvx-water-form__progress { display: flex; gap: 3px; min-height: 5px; }
+.mvx-water-form__progress span { flex: 1 1 0; background: var(--mvx-water-border); border-radius: 50px; }
+.mvx-water-form__progress span.is-complete { background: var(--mvx-water-positive); }
+.mvx-water-section { display: flex; flex-direction: column; gap: 11px; }
+.mvx-water-section__heading { background: var(--mvx-water-surface); margin: 0; padding: 12px;
+  border-radius: 10px; font-size: 18px; font-weight: 650; }
+.mvx-water-section + .mvx-water-section { padding-top: 15px; border-top: 1px solid var(--mvx-water-border); }
+.mvx-water-meter { padding: 11px 9px; border-radius: 10px; }
+.mvx-water-meter + .mvx-water-meter { border-top: 1px solid var(--mvx-water-border); border-radius: 0; }
+.mvx-water-meter__content { display: flex; flex-direction: column; gap: 8px; }
+.mvx-water-meter--unchanged { background: var(--mvx-water-surface); }
+.mvx-water-meter--unchanged .mvx-water-meter__content { opacity: .46; }
+.mvx-water-meter__heading { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.mvx-water-meter__name { font-size: 15px; display: flex; gap: 8px; align-items: center; }
+.mvx-water-drop { font-size: 15px; }
+.mvx-water-drop.cold { color: #2878ce; }
+.mvx-water-drop.hot { color: #d35a55; }
+.mvx-water-meter__check { color: var(--mvx-water-positive); font-weight: 700; }
+.mvx-water-meter__locked { font-size: 14px; }
+.mvx-water-meter__meta { color: var(--mvx-water-muted); font-size: 11px; overflow-wrap: anywhere; }
+.mvx-water-meter__values { display: grid; grid-template-columns: minmax(0, 1.07fr) minmax(0, .88fr) minmax(0, 1.05fr); gap: 8px; }
+.mvx-water-field { min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+.mvx-water-field__label { font-size: 11px; color: var(--mvx-water-muted); white-space: nowrap; }
+.mvx-water-value, .mvx-water-input { border: 1px solid transparent; border-radius: 8px;
+  height: 42px; padding: 0 8px; font-size: 14px; font-weight: 600;
+  display: flex; align-items: center; width: 100%; min-width: 0;
+  font-variant-numeric: tabular-nums; font-family: inherit; }
+.mvx-water-value { background: var(--mvx-water-surface); }
+.mvx-water-input { background: var(--mvx-water-background, #fff);
+  border-color: #aebac7; color: inherit; outline-offset: 2px; }
+.mvx-water-input:focus-visible { outline: 2px solid #2878ce; }
+.mvx-water-input:disabled { background: #eaedf0; color: var(--mvx-water-muted); cursor: not-allowed; }
+.mvx-water-value--consumption { color: var(--mvx-water-positive); }
+.mvx-water-unchanged { display: flex; gap: 9px; align-items: center; width: fit-content; cursor: pointer;
+  font-size: 13px; padding-top: 10px; }
+.mvx-water-unchanged input { accent-color: #11785b; width: 18px; height: 18px; margin: 0; }
+.mvx-water-error { color: #b52e2e; font-size: 12px; }
+.mvx-water-warning { color: #9a5b05; font-size: 12px; }
+.mvx-water-info { font-size: 12px; color: var(--mvx-water-muted); }
+.mvx-water-summary { border: 1px solid var(--mvx-water-border); border-radius: 12px; padding: 14px; }
+.mvx-water-summary__title { font-weight: 600; font-size: 14px; }
+.mvx-water-summary__value { font-size: 26px; font-weight: 750; font-variant-numeric: tabular-nums; margin: 5px 0; }
+.mvx-water-summary__subtitle { color: var(--mvx-water-muted); font-size: 12px; }
+.mvx-water-submit { border: 0; border-radius: 12px; padding: 14px; font: inherit; font-weight: 700;
+  min-height: 46px; background: #137759; color: white; cursor: pointer; }
+.mvx-water-submit:disabled { background: #b0b9c2; cursor: not-allowed; }
+.mvx-water-submit:focus-visible { outline: 3px solid #2878ce; outline-offset: 2px; }
+.mvx-water-success { color: var(--mvx-water-positive); font-size: 13px; }
+.mvx-water-form__hint { text-align: center; color: var(--mvx-water-muted); font-size: 12px; margin: 0; }
+@media (max-width: 370px) {
+  .mvx-water-form { padding: 12px; }
+  .mvx-water-meter { padding: 9px 2px; }
+  .mvx-water-meter__values { gap: 5px; }
+  .mvx-water-field__label { font-size: 10px; }
+  .mvx-water-value, .mvx-water-input { font-size: 12px; padding: 0 5px; }
+}
+@media (prefers-color-scheme: dark) {
+  .mvx-water-form {
+    --mvx-water-border: #424b55;
+    --mvx-water-muted: #aeb9c5;
+    --mvx-water-surface: #2c3440;
+    --mvx-water-background: #202731;
+    color: #eef3f8;
+  }
+  .mvx-water-input:disabled { background: #353f4a; }
+}
+
+/* History and unchanged toggle remain accessible when the reading is locked. */
+.mvx-water-meter__actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.mvx-water-history { background: transparent; border: 0; padding: 8px 2px; font: inherit; font-size: 12px;
+  color: var(--mvx-water-muted); text-decoration: underline; cursor: pointer; }
+.mvx-water-history:focus-visible { outline: 2px solid #2878ce; outline-offset: 2px; }
+.mvx-water-unchanged { padding-top: 0; }
