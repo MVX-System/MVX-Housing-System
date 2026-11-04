@@ -447,6 +447,7 @@ export default function ResidentWaterPage() {
                       : "",
                   }, language),
                   serial: meter.serial_number,
+                  previousReadingSubmittedAt: meter.last_date ?? null,
                   riser: meter.riser_code,
                   previous: Number.isSafeInteger(Number(meter.last_reading)) &&
                     meter.last_reading !== null && meter.last_reading !== ""

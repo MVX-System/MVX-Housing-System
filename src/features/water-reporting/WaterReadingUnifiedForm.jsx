@@ -6,11 +6,12 @@ import {
   groupMetersByLocation,
 } from './waterReadingLogic.js';
 import './waterReadingUnified.css';
+import { formatPreviousReadingDate } from './previousReadingDate.js';
 
 const I18N = {
   ru: {
     title: 'Показания воды', completed: 'Готово', cold: 'Холодная вода', hot: 'Горячая вода',
-    meter: 'Счётчик', riser: 'Стояк', was: 'Было, м³', now: 'Сейчас, м³', usage: 'Расход, м³',
+    meter: 'Счётчик', serialNumber: 'Серийный номер счетчика', date: 'Дата', previousDate: 'Дата предыдущего показания', riser: 'Стояк', was: 'Было, м³', now: 'Сейчас, м³', usage: 'Расход, м³',
     leave: 'Оставить без изменений', total: 'Суммарный расход', calculated: 'Рассчитано по',
     from: 'из', meterCount: 'счётчиков', submit: 'Передать все показания', sending: 'Передача…',
     fill: 'Заполните все счётчики или отметьте «Оставить без изменений».',
@@ -27,7 +28,7 @@ const I18N = {
   },
   lv: {
     title: 'Ūdens skaitītāju rādījumi', completed: 'Gatavs', cold: 'Aukstais ūdens', hot: 'Karstais ūdens',
-    meter: 'Skaitītājs', riser: 'Stāvvads', was: 'Iepriekš, m³', now: 'Tagad, m³', usage: 'Patēriņš, m³',
+    meter: 'Skaitītājs', serialNumber: 'Skaitītāja sērijas numurs', date: 'Datums', previousDate: 'Iepriekšējā rādījuma iesniegšanas datums', riser: 'Stāvvads', was: 'Iepriekš, m³', now: 'Tagad, m³', usage: 'Patēriņš, m³',
     leave: 'Atstāt bez izmaiņām', total: 'Kopējais patēriņš', calculated: 'Aprēķināts',
     from: 'no', meterCount: 'skaitītājiem', submit: 'Iesniegt visus rādījumus', sending: 'Iesniegšana…',
     fill: 'Ievadiet visus rādījumus vai atzīmējiet “Atstāt bez izmaiņām”.',
@@ -44,7 +45,7 @@ const I18N = {
   },
   en: {
     title: 'Water meter readings', completed: 'Completed', cold: 'Cold water', hot: 'Hot water',
-    meter: 'Meter', riser: 'Riser', was: 'Previous, m³', now: 'Current, m³', usage: 'Usage, m³',
+    meter: 'Meter', serialNumber: 'Meter serial number', date: 'Date', previousDate: 'Previous reading submission date', riser: 'Riser', was: 'Previous, m³', now: 'Current, m³', usage: 'Usage, m³',
     leave: 'Leave unchanged', total: 'Total consumption', calculated: 'Calculated for',
     from: 'of', meterCount: 'meters', submit: 'Submit all readings', sending: 'Submitting…',
     fill: 'Enter all readings or select “Leave unchanged”.',
@@ -76,22 +77,28 @@ function MeterPanel({ meter, status, draft, isUnchanged, submissionLocked, onDra
   return (
     <div className={`mvx-water-meter ${isUnchanged ? 'mvx-water-meter--unchanged' : ''}`}>
       <div className="mvx-water-meter__content" aria-disabled={isUnchanged}>
-        <div className="mvx-water-meter__heading">
-          <strong className="mvx-water-meter__name">
-            <span aria-hidden="true" className={`mvx-water-drop ${colorClass}`}>●</span>
-            {meter.label || (cold ? t.cold : hot ? t.hot : String(meter.kind || meter.type || t.meter))}
-          </strong>
-          {status.ready && !isUnchanged && <span aria-label="Valid" className="mvx-water-meter__check">✓</span>}
-          {isUnchanged && <span aria-hidden="true" className="mvx-water-meter__locked">🔒</span>}
-        </div>
-        <div className="mvx-water-meter__meta">
-          {t.meter}: {meter.serial || '—'}{meter.riser ? ` · ${t.riser}: ${meter.riser}` : ''}
+        <div className="mvx-water-meter__identity">
+          <div className="mvx-water-meter__heading">
+            <strong className="mvx-water-meter__name">
+              <span aria-hidden="true" className={`mvx-water-drop ${colorClass}`}>●</span>
+              {meter.label || (cold ? t.cold : hot ? t.hot : String(meter.kind || meter.type || t.meter))}
+            </strong>
+            {status.ready && !isUnchanged && <span aria-label="Valid" className="mvx-water-meter__check">✓</span>}
+            {isUnchanged && <span aria-hidden="true" className="mvx-water-meter__locked">🔒</span>}
+          </div>
+          <div className="mvx-water-meter__meta">
+            <span>{t.serialNumber}: {meter.serial || '—'}</span>
+            {meter.riser && <span className="mvx-water-meter__riser">{t.riser}: {meter.riser}</span>}
+          </div>
         </div>
         <div className="mvx-water-meter__values">
           <div className="mvx-water-field">
             <span className="mvx-water-field__label">{t.was}</span>
             <div className="mvx-water-value" aria-label={`${t.was} ${formatCubicMetres(status.previous, locale)}`}>
               {formatCubicMetres(status.previous, locale)}
+            </div>
+            <div className="mvx-water-field__previous-date" title={t.previousDate}>
+              {t.date}: {formatPreviousReadingDate(meter.previousReadingSubmittedAt)}
             </div>
           </div>
           <label className="mvx-water-field">
@@ -113,10 +120,12 @@ function MeterPanel({ meter, status, draft, isUnchanged, submissionLocked, onDra
             </div>
           </div>
         </div>
-        {!isUnchanged && error && <div id={errorId} className="mvx-water-error" role="alert">{error}</div>}
-        {!isUnchanged && abnormal && <div className="mvx-water-warning" role="status">{t.high}</div>}
-        {!isUnchanged && status.ready && status.previous === null &&
-          <div className="mvx-water-info">{t.noBaseline}</div>}
+        <div className="mvx-water-meter__feedback">
+          {!isUnchanged && error && <div id={errorId} className="mvx-water-error" role="alert">{error}</div>}
+          {!isUnchanged && abnormal && <div className="mvx-water-warning" role="status">{t.high}</div>}
+          {!isUnchanged && status.ready && status.previous === null &&
+            <div className="mvx-water-info">{t.noBaseline}</div>}
+        </div>
       </div>
       <div className="mvx-water-meter__actions">
       <label className="mvx-water-unchanged">
@@ -220,6 +229,13 @@ export default function WaterReadingUnifiedForm({
       {groups.map(group => (
         <section className="mvx-water-section" key={group.name} aria-label={group.name}>
           <h3 className="mvx-water-section__heading">{group.name}</h3>
+          <div className="mvx-water-section__columns" aria-hidden="true">
+            <span>{t.meter}</span>
+            <span>{t.was}</span>
+            <span>{t.now}</span>
+            <span>{t.usage}</span>
+            <span />
+          </div>
           {group.meters.map(meter => (
             <MeterPanel
               key={String(meter.id)} meter={meter} locale={language} t={t}
@@ -234,17 +250,19 @@ export default function WaterReadingUnifiedForm({
           ))}
         </section>
       ))}
-      <section className="mvx-water-summary" aria-label={t.total}>
-        <div className="mvx-water-summary__title">{t.total}</div>
-        <div className="mvx-water-summary__value" aria-live="polite">{formatCubicMetres(form.totalConsumption, language)} м³</div>
-        <div className="mvx-water-summary__subtitle">{t.calculated} {form.calculated} {t.from} {form.total} {t.meterCount}</div>
-      </section>
-      <button className="mvx-water-submit" type="submit" disabled={!enabled}>
-        {isSubmitting ? t.sending : t.submit}
-      </button>
-      {isAccepted ? <div role="status" className="mvx-water-success">{t.accepted}</div> :
-        submitError ? <div role="alert" className="mvx-water-error">{submitError}</div> :
-        <p className="mvx-water-form__hint">{submissionDisabled ? t.closed : !onSubmit ? t.unavailable : form.canSubmit ? t.ready : t.fill}</p>}
+      <div className="mvx-water-form__footer">
+        <section className="mvx-water-summary" aria-label={t.total}>
+          <div className="mvx-water-summary__title">{t.total}</div>
+          <div className="mvx-water-summary__value" aria-live="polite">{formatCubicMetres(form.totalConsumption, language)} м³</div>
+          <div className="mvx-water-summary__subtitle">{t.calculated} {form.calculated} {t.from} {form.total} {t.meterCount}</div>
+        </section>
+        <button className="mvx-water-submit" type="submit" disabled={!enabled}>
+          {isSubmitting ? t.sending : t.submit}
+        </button>
+        {isAccepted ? <div role="status" className="mvx-water-success">{t.accepted}</div> :
+          submitError ? <div role="alert" className="mvx-water-error">{submitError}</div> :
+          <p className="mvx-water-form__hint">{submissionDisabled ? t.closed : !onSubmit ? t.unavailable : form.canSubmit ? t.ready : t.fill}</p>}
+      </div>
     </form>
   );
 }
