@@ -230,7 +230,7 @@ export default function WaterReadingUnifiedForm({
         <section className="mvx-water-section" key={group.name} aria-label={group.name}>
           <h3 className="mvx-water-section__heading">{group.name}</h3>
           <div className="mvx-water-section__columns" aria-hidden="true">
-            <span>{t.meter}</span>
+            <span>{t.serialNumber}</span>
             <span>{t.was}</span>
             <span>{t.now}</span>
             <span>{t.usage}</span>

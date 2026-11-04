@@ -237,6 +237,21 @@ export default function ResidentWaterPage() {
         )
     );
 
+  // PR-10K.1K — localize the location label passed to the History modal.
+  // The API history object stays untouched; user-defined labels remain intact.
+  const localizedMeterHistory = meterHistory?.meter?.local_label
+    ? {
+        ...meterHistory,
+        meter: {
+          ...meterHistory.meter,
+          local_label: getLocationName(
+            { location: localizeMeterLocation(meterHistory.meter.local_label, language) },
+            language,
+          ),
+        },
+      }
+    : meterHistory;
+
   return (
     <div>
 
@@ -467,7 +482,7 @@ export default function ResidentWaterPage() {
 
       <MeterHistoryModal
         open={historyOpen}
-        history={meterHistory}
+        history={localizedMeterHistory}
         loading={
           meterHistoryLoading
         }
