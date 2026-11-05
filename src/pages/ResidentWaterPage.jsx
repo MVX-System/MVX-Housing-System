@@ -3,7 +3,10 @@ import {
   useState,
 } from "react";
 
-import WaterCard from "../components/WaterCard";
+import WaterReadingUnifiedForm from "../features/water-reporting/WaterReadingUnifiedForm";
+import { formatCubicMetres, getLocationName } from "../features/water-reporting/waterReadingLogic";
+import { localizeMeterLocation } from "../utils/meterLocation";
+import { formatWaterReportingPeriodLabel } from "../utils/waterReportingPeriodLabel";
 import MeterHistoryModal
   from "../components/MeterHistoryModal";
 
@@ -17,6 +20,7 @@ export default function ResidentWaterPage() {
 
   const {
     t,
+    language,
   } = useTranslation();
 
   const {
@@ -35,7 +39,7 @@ export default function ResidentWaterPage() {
     loadMeterHistory,
     clearMeterHistory,
 
-    submitReading,
+    submitBatchReadings,
     correctReading,
   } = useWater();
 
@@ -45,12 +49,11 @@ export default function ResidentWaterPage() {
   ] = useState(false);
 
   useEffect(() => {
-
-    Promise.all([
-      loadMyWater(),
-      loadWaterReportingPeriod(),
-    ]);
-
+    // The period must be known before requesting period-specific meter status.
+    (async () => {
+      const result = await loadWaterReportingPeriod();
+      await loadMyWater(result?.period?.id ?? null);
+    })().catch(error => console.error("Load resident water failed", error));
   }, []);
 
   const handleOpenHistory =
@@ -248,7 +251,7 @@ export default function ResidentWaterPage() {
   }
 
   const metersByApartment =
-    waterMeters.reduce(
+    waterMeters.filter(meter => meter.active !== 0 && meter.active !== false && meter.active !== "0").reduce(
       (
         groupedMeters,
         meter
@@ -291,6 +294,21 @@ export default function ResidentWaterPage() {
           }
         )
     );
+
+  // PR-10K.1K — localize the location label passed to the History modal.
+  // The API history object stays untouched; user-defined labels remain intact.
+  const localizedMeterHistory = meterHistory?.meter?.local_label
+    ? {
+        ...meterHistory,
+        meter: {
+          ...meterHistory.meter,
+          local_label: getLocationName(
+            { location: localizeMeterLocation(meterHistory.meter.local_label, language) },
+            language,
+          ),
+        },
+      }
+    : meterHistory;
 
   return (
     <div>
@@ -477,34 +495,53 @@ export default function ResidentWaterPage() {
 
               </div>
 
-              <div
-                style={{
-                  display: "grid",
-                  gap: 16,
-                }}
-              >
-
-                {meters.map(
-                  (meter) => (
-
-                    <WaterCard
-                      key={meter.id}
-                      meter={meter}
-                      onSubmit={
-                        submitReading
-                      }
-                      onHistory={
-                        handleOpenHistory
-                      }
-                      submissionDisabled={
-                        !submissionAllowed
-                      }
-                    />
-
-                  )
-                )}
-
-              </div>
+              <WaterReadingUnifiedForm
+                key={`${apartmentNumber}:${period?.id ?? "none"}`}
+                locale={language}
+                apartmentLabel={`${t("water.resident.apartment")} #${apartmentNumber}`}
+                periodLabel={period?.period_year && period?.period_month
+                  ? formatWaterReportingPeriodLabel(
+                      `${period.period_year}-${String(period.period_month).padStart(2, "0")}`,
+                      language,
+                    )
+                  : ""}
+                reportingPeriodId={period?.id ?? null}
+                submissionDisabled={!submissionAllowed}
+                meters={meters.map(meter => ({
+                  id: meter.id,
+                  submitted: meter.current_period_reading_value !== null &&
+                    meter.current_period_reading_value !== undefined,
+                  submittedValue: meter.current_period_reading_value !== null &&
+                    meter.current_period_reading_value !== undefined
+                    ? formatCubicMetres(Number(meter.current_period_reading_value), "en")
+                    : null,
+                  submittedAt: meter.current_period_submitted_at ?? null,
+                  kind: meter.type,
+                  location: getLocationName({
+                    location: meter.local_label
+                      ? localizeMeterLocation(meter.local_label, language)
+                      : "",
+                  }, language),
+                  serial: meter.serial_number,
+                  previousReadingSubmittedAt:
+                    meter.current_period_reading_value !== null &&
+                    meter.current_period_reading_value !== undefined
+                      ? meter.prior_period_submitted_at ?? null
+                      : meter.last_date ?? null,
+                  riser: meter.riser_code,
+                  previous: (() => {
+                    const alreadySubmitted = meter.current_period_reading_value !== null &&
+                      meter.current_period_reading_value !== undefined;
+                    const baseline = alreadySubmitted
+                      ? meter.prior_period_reading_value : meter.last_reading;
+                    return baseline !== null && baseline !== undefined && baseline !== "" &&
+                      Number.isSafeInteger(Number(baseline))
+                        ? formatCubicMetres(Number(baseline), "en") : null;
+                  })(),
+                }))}
+                onHistory={handleOpenHistory}
+                onSubmit={submitBatchReadings}
+              />
 
             </section>
 
@@ -515,7 +552,7 @@ export default function ResidentWaterPage() {
 
       <MeterHistoryModal
         open={historyOpen}
-        history={meterHistory}
+        history={localizedMeterHistory}
         loading={
           meterHistoryLoading
         }

@@ -28,6 +28,7 @@ export default function MeterHistoryModal({
 
   const {
     t,
+    language,
   } = useTranslation();
 
   const [
