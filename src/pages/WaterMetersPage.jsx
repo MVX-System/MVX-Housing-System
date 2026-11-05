@@ -35,6 +35,21 @@ const LOCALE_MAP = {
 
 import { localizeMeterLocation } from "../utils/meterLocation";
 
+import {
+  parseNumberRanges,
+  matchesLocationFilters,
+} from "../utils/mvxSmartNumberFilter";
+
+const INITIAL_FILTERS = {
+  search: "",
+  section: "",
+  floor: "",
+  apartment: "",
+  type: "all",
+  status: "active",
+  calibration: "all",
+};
+
 const TEXT = {
   lv: {
     title: "Ūdens skaitītāju pārvaldība",
@@ -47,6 +62,14 @@ const TEXT = {
     expired: "Termiņš beidzies",
     noCalibration: "Nav kalibrēšanas",
     searchPlaceholder: "Meklēt pēc dzīvokļa, sērijas numura vai stāvvada...",
+    generalSearchLabel: "Vispārīgā meklēšana",
+    sectionFilterLabel: "Kāpņu telpa",
+    floorFilterLabel: "Stāvs",
+    apartmentFilterLabel: "Dzīvoklis",
+    filterRangeHint: "Var ievadīt vairākus numurus un diapazonus: 2, 3-5, 9",
+    filterRangeError: "Pārbaudiet numurus un diapazonus. Piemērs: 2, 3-5, 9.",
+    resetSearchFilters: "Notīrīt filtrus",
+    filteredSearchSummary: "Atrasti skaitītāji: {meters} · dzīvokļi: {apartments}",
     allTypes: "Visi veidi",
     coldWater: "Aukstais ūdens",
     hotWater: "Karstais ūdens",
@@ -169,6 +192,14 @@ const TEXT = {
     expired: "Expired",
     noCalibration: "No calibration",
     searchPlaceholder: "Search apartment, serial, riser...",
+    generalSearchLabel: "General search",
+    sectionFilterLabel: "Entrance",
+    floorFilterLabel: "Floor",
+    apartmentFilterLabel: "Apartment",
+    filterRangeHint: "Enter multiple numbers and ranges: 2, 3-5, 9",
+    filterRangeError: "Check numbers and ranges. Example: 2, 3-5, 9.",
+    resetSearchFilters: "Reset filters",
+    filteredSearchSummary: "Meters found: {meters} · apartments: {apartments}",
     allTypes: "All types",
     coldWater: "Cold water",
     hotWater: "Hot water",
@@ -291,6 +322,14 @@ const TEXT = {
     expired: "Срок истёк",
     noCalibration: "Нет калибровки",
     searchPlaceholder: "Поиск по квартире, серийному номеру или стояку...",
+    generalSearchLabel: "Универсальный поиск",
+    sectionFilterLabel: "Секция",
+    floorFilterLabel: "Этаж",
+    apartmentFilterLabel: "Квартира",
+    filterRangeHint: "Можно вводить списки и диапазоны: 2, 3-5, 9",
+    filterRangeError: "Проверьте числа и диапазоны. Например: 2, 3-5, 9.",
+    resetSearchFilters: "Сбросить фильтры",
+    filteredSearchSummary: "Найдено счётчиков: {meters} · квартир: {apartments}",
     allTypes: "Все типы",
     coldWater: "Холодная вода",
     hotWater: "Горячая вода",
@@ -486,12 +525,9 @@ export default function WaterMetersPage() {
   const [
     filter,
     setFilter
-  ] = useState({
-    search: "",
-    type: "all",
-    status: "active",
-    calibration: "all",
-  });
+  ] = useState(() => ({
+    ...INITIAL_FILTERS,
+  }));
 
   const [
     addOpen,
@@ -675,6 +711,20 @@ export default function WaterMetersPage() {
 
   }, []);
 
+  const apartmentsById =
+    useMemo(
+      () =>
+        new Map(
+          apartments.map(
+            (apartment) => [
+              String(apartment.id),
+              apartment,
+            ]
+          )
+        ),
+      [apartments]
+    );
+
   const normalizedMeters =
     useMemo(
       () =>
@@ -682,6 +732,16 @@ export default function WaterMetersPage() {
           (meter) => ({
 
             ...meter,
+
+            apartment_section:
+              apartmentsById.get(
+                String(meter.apartment_id)
+              )?.section ?? null,
+
+            apartment_floor:
+              apartmentsById.get(
+                String(meter.apartment_id)
+              )?.floor ?? null,
 
             status:
               Number(
@@ -708,7 +768,18 @@ export default function WaterMetersPage() {
       [
         adminWaterMeters,
         text,
+        apartmentsById,
       ]
+    );
+
+  const locationFilterSpecs =
+    useMemo(
+      () => ({
+        section: parseNumberRanges(filter.section),
+        floor: parseNumberRanges(filter.floor),
+        apartment: parseNumberRanges(filter.apartment),
+      }),
+      [filter.section, filter.floor, filter.apartment]
     );
 
   const filteredMeters =
@@ -750,6 +821,15 @@ export default function WaterMetersPage() {
             }
 
             if (
+              !matchesLocationFilters(
+                meter,
+                locationFilterSpecs
+              )
+            ) {
+              return false;
+            }
+
+            if (
               filter.type !== "all" &&
               meter.type !==
                 filter.type
@@ -779,6 +859,7 @@ export default function WaterMetersPage() {
       [
         normalizedMeters,
         filter,
+        locationFilterSpecs,
       ]
     );
 
@@ -1926,6 +2007,7 @@ export default function WaterMetersPage() {
 
           <input
             type="search"
+            aria-label={text.generalSearchLabel}
             value={
               filter.search
             }
@@ -2030,6 +2112,96 @@ export default function WaterMetersPage() {
             </option>
           </select>
 
+        </div>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns:
+              "repeat(auto-fit, minmax(160px, 1fr))",
+            gap: 10,
+            marginTop: 12,
+          }}
+        >
+          {[
+            ["section", text.sectionFilterLabel, "2, 3-5, 9"],
+            ["floor", text.floorFilterLabel, "1, 3-5"],
+            ["apartment", text.apartmentFilterLabel, "16, 20-22"],
+          ].map(([key, label, example]) => (
+            <label
+              key={key}
+              style={{
+                display: "grid",
+                gap: 5,
+                fontSize: 13,
+                color: "var(--text)",
+              }}
+            >
+              <span style={{ fontWeight: 600 }}>{label}</span>
+              <input
+                type="text"
+                autoComplete="off"
+                spellCheck={false}
+                value={filter[key]}
+                onChange={(event) =>
+                  setFilter((current) => ({
+                    ...current,
+                    [key]: event.target.value,
+                  }))
+                }
+                placeholder={example}
+                aria-label={label}
+                aria-invalid={Boolean(locationFilterSpecs[key].error)}
+                style={{
+                  ...fieldStyle,
+                  borderColor: locationFilterSpecs[key].error
+                    ? "var(--danger, #dc2626)"
+                    : undefined,
+                }}
+              />
+              {locationFilterSpecs[key].error && (
+                <span role="alert" style={{ color: "var(--danger, #dc2626)", fontSize: 12 }}>
+                  {text.filterRangeError}
+                </span>
+              )}
+            </label>
+          ))}
+        </div>
+
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            flexWrap: "wrap",
+            gap: 10,
+            marginTop: 12,
+          }}
+        >
+          <span style={{ color: "var(--text)", fontSize: 12 }}>
+            {text.filterRangeHint}
+          </span>
+          <button
+            type="button"
+            onClick={() => setFilter({ ...INITIAL_FILTERS })}
+            style={secondaryButton}
+          >
+            {text.resetSearchFilters}
+          </button>
+        </div>
+
+        <div
+          aria-live="polite"
+          style={{
+            marginTop: 10,
+            color: "var(--text)",
+            fontSize: 13,
+            fontWeight: 600,
+          }}
+        >
+          {text.filteredSearchSummary
+            .replace("{meters}", String(filteredMeters.length))
+            .replace("{apartments}", String(groupedMeters.length))}
         </div>
 
       </section>
