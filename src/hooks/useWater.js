@@ -138,10 +138,13 @@ export default function useWater() {
   // LOAD RESIDENT WATER
   // =====================================
 
-  const loadMyWater = async () => {
+  const loadMyWater = async (reportingPeriodId = null) => {
 
+    const periodQuery = Number.isSafeInteger(Number(reportingPeriodId)) &&
+      reportingPeriodId !== null && reportingPeriodId !== undefined
+      ? `?reporting_period_id=${encodeURIComponent(reportingPeriodId)}` : "";
     const d = await api(
-      "/api/my-water-meters"
+      `/api/my-water-meters${periodQuery}`
     );
 
     setWaterMeters(
@@ -807,6 +810,49 @@ export default function useWater() {
       alert("Submit failed");
       return false;
     }
+  };
+
+  // PR-10K.1: one authenticated request for the entire apartment.
+  // Never loop over /api/submit-water-reading: that route is not atomic.
+  const submitBatchReadings = async (batch) => {
+    const normalizedReadings = batch.readings.map((reading) => {
+      const normalized = String(reading.value).trim();
+      if (!/^\d+(?:\.\d{1,3})?$/.test(normalized)) {
+        throw new Error("invalid_fields");
+      }
+      const [whole, fraction = ""] = normalized.split(".");
+      const readingValue = Number(whole) * 1000 + Number(fraction.padEnd(3, "0"));
+      if (!Number.isSafeInteger(readingValue) || readingValue < 0) {
+        throw new Error("invalid_fields");
+      }
+      const expectedRaw = reading.expectedPrevious;
+      const expectedPrevious = expectedRaw === null || expectedRaw === undefined
+        ? null
+        : Number(expectedRaw);
+      if (expectedPrevious !== null &&
+          (!Number.isSafeInteger(expectedPrevious) || expectedPrevious < 0)) {
+        throw new Error("invalid_fields");
+      }
+      return {
+        meter_id: Number(reading.meterId),
+        reading_value: readingValue,
+        expected_previous: expectedPrevious,
+        unchanged: reading.unchanged === true,
+      };
+    });
+    const result = await api("/api/submit-water-readings-batch", {
+      method: "POST",
+      body: JSON.stringify({
+        reporting_period_id: batch.reportingPeriodId,
+        readings: normalizedReadings,
+      }),
+    });
+    if (result?.ok !== true) {
+      throw new Error(result?.error || "water_batch_submission_failed");
+    }
+    // Successful DB commit is not undone if a separate refresh fails.
+    await Promise.allSettled([loadMyWater(batch.reportingPeriodId), loadWaterReportingPeriod()]);
+    return result;
   };
 
   const submitAdminReading =
@@ -1815,6 +1861,7 @@ export default function useWater() {
     clearCurrentWaterReportingPeriod,
 
     submitReading,
+    submitBatchReadings,
     submitAdminReading,
     correctReading,
 
