@@ -1,3 +1,5 @@
+import { buildMonthlyApartmentLayout } from "../utils/monthlyWaterApartmentLayout.mjs";
+import { styleMonthlyApartmentWorksheet } from "../utils/monthlyWaterExcelStyles.mjs";
 import { formatMvxDateTime } from "../utils/displayDate";
 
 import { localizeMeterLocation } from "../utils/meterLocation";
@@ -1247,17 +1249,20 @@ export default function AdminMonthlyReportPage() {
       }
     };
 
-  const handleDownloadXlsx = () => {
+  const handleDownloadXlsx = async () => {
 
-    const XLSX =
-      window.XLSX;
-
-    if (!XLSX) {
-
-      alert(
-        text.xlsxUnavailable
-      );
-
+    // A separate, pinned writer is used for this download only.
+    // SheetJS CE does not serialize font/border cell styles reliably.
+    let XLSX;
+    try {
+      const module = await import("xlsx-js-style");
+      XLSX = module.default || module;
+      if (!XLSX?.utils?.aoa_to_sheet || !XLSX?.writeFile) {
+        throw new Error("PR10K4_STYLED_XLSX_UNAVAILABLE");
+      }
+    } catch (error) {
+      console.error("PR-10K.4 styled XLSX writer unavailable", error);
+      alert(text.xlsxUnavailable);
       return;
     }
 
@@ -1493,40 +1498,79 @@ export default function AdminMonthlyReportPage() {
         }
       );
 
-    const apartmentsSheet =
-      XLSX.utils.json_to_sheet(
-        apartmentRows
-      );
+    // Strict slot-based accounting export.  Positions are taken from the
+    // authenticated PROD monthly-report API, never from row order / riser.
+    // D1 stores the readings as thousandths of m³; convert only for XLSX.
+    let apartmentLayout;
+    try {
+      apartmentLayout = buildMonthlyApartmentLayout({
+        meterRows: reportRows.map((row) => ({
+          ...row,
+          current_reading: toCubicMeters(row.current_reading),
+          consumption: toCubicMeters(row.consumption),
+        })),
+        apartmentRows: apartmentGroups.map((group, index) => ({
+          apartment_number: group.apartment_number,
+          totals: apartmentRows[index],
+        })),
+        getSummary: (group) => [
+          group.totals[`${text.coldWater}, m³`],
+          group.totals[`${text.hotWater}, m³`],
+          group.totals[`${text.totalWater}, m³`],
+          group.totals[text.meters],
+          group.totals[text.status],
+        ],
+      });
+      if (
+        apartmentLayout.stats.meters !== Number(summary.meters_total) ||
+        apartmentLayout.stats.apartments !== Number(summary.apartments_total) ||
+        apartmentLayout.stats.positioned !== apartmentLayout.stats.meters
+      ) {
+        throw new Error("PR10K4_REPORT_SUMMARY_COUNT_MISMATCH");
+      }
+    } catch (error) {
+      console.error("PR-10K.4 accounting export blocked", error);
+      alert(`Не удалось безопасно сформировать отчёт: ${error.message}`);
+      return;
+    }
+
+    const apartmentsSheet = XLSX.utils.aoa_to_sheet(
+      apartmentLayout.rows
+    );
 
     setWorksheetColumns(
       apartmentsSheet,
-      [12, 18, 18, 18, 10, 22]
+      [13, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 20, 20, 20, 12, 24]
     );
 
-    if (
-      apartmentRows.length > 0
-    ) {
+    apartmentsSheet["!autofilter"] = {
+      ref: `A2:R${apartmentLayout.rows.length}`,
+    };
 
-      apartmentsSheet[
-        "!autofilter"
-      ] = {
-        ref:
-          apartmentsSheet["!ref"],
-      };
+    applyThreeDecimalFormat(
+      apartmentsSheet,
+      ["B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P"],
+      3,
+      apartmentLayout.rows.length
+    );
 
-      applyThreeDecimalFormat(
-        apartmentsSheet,
-        ["B", "C", "D"],
-        2,
-        apartmentRows.length + 1
-      );
-    }
+    styleMonthlyApartmentWorksheet(
+      apartmentsSheet,
+      apartmentLayout.headerDividerIndices
+    );
 
     XLSX.utils.book_append_sheet(
       workbook,
       apartmentsSheet,
       text.xlsxSheetApartments
     );
+
+    if (apartmentLayout.warnings.length > 0) {
+      alert(
+        `Внимание: в отчёте ${apartmentLayout.warnings.length} несоответствий типа воды и позиции A/K. ` +
+        "Показания сохранены. Проверьте привязки счётчиков до выставления счетов."
+      );
+    }
 
     // =====================================
     // METER DETAILS
@@ -1712,13 +1756,18 @@ export default function AdminMonthlyReportPage() {
     const fileName =
       `${text.xlsxFilePrefix}_${period.period_year}-${safeMonth}.xlsx`;
 
-    XLSX.writeFileXLSX(
-      workbook,
-      fileName,
-      {
+    try {
+      // xlsx-js-style writes the requested bold font and vertical borders
+      // into OOXML; the original global SheetJS is unchanged.
+      XLSX.writeFile(workbook, fileName, {
+        bookType: "xlsx",
         compression: true,
-      }
-    );
+        cellStyles: true,
+      });
+    } catch (error) {
+      console.error("PR-10K.4 XLSX export failed", error);
+      alert(`Ошибка формирования XLSX: ${error.message}`);
+    }
   };
 
   const getLastDayOfPeriodMonth =

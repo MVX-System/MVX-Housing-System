@@ -1,0 +1,25 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {buildMonthlyApartmentLayout,WATER_SLOTS,MONTHLY_APARTMENT_HEADERS,HEADER_DIVIDER_INDICES} from '../src/utils/monthlyWaterApartmentLayout.mjs';
+const sums=(apt, n=2)=>({apartment_number:apt,cold_consumption:4,hot_consumption:2,total_consumption:6,meters_count:n,status:'Полные данные'});
+const r=(apartment_number,source_slot,current_reading,consumption,type=null)=>({apartment_number,source_slot,current_reading,consumption,type:type??(source_slot.startsWith('A')?'cold':'hot')});
+const one=()=>buildMonthlyApartmentLayout({apartmentRows:[sums('22')],meterRows:[r('22','A1',0,0),r('22','K1',456,-338)]});
+test('18 exact headers in approved reading-then-delta order',()=>assert.deepEqual(MONTHLY_APARTMENT_HEADERS,['Квартира','A1','A2','A3','K1','K2','K3','d_A1','d_A2','d_A3','d_K1','d_K2','d_K3','Холодная вода, m³','Горячая вода, m³','Вода всего, m³','Счётчики','Статус']));
+test('first row is legend, second row is header, data starts row 3',()=>{let v=one();assert.match(v.rows[0][0],/d_A1.*расход воды/);assert.equal(v.rows[1][0],'Квартира');assert.equal(v.rows[2][0],'22')});
+test('header group separators B/H/N/Q',()=>assert.deepEqual(HEADER_DIVIDER_INDICES,[1,7,13,16]));
+test('zero is not blank, negative delta is preserved',()=>{let v=one();assert.equal(v.rows[2][1],0);assert.equal(v.rows[2][7],0);assert.equal(v.rows[2][10],-338);assert.equal(v.stats.zeroDeltas,1);assert.equal(v.stats.negativeDeltas,1)});
+test('missing reading is blank, not zero',()=>{let v=buildMonthlyApartmentLayout({apartmentRows:[sums('1',1)],meterRows:[r('1','A1',null,null)]});assert.equal(v.rows[2][1],null);assert.equal(v.rows[2][7],null)});
+test('all six meters of apartment 22 mapped once',()=>{let m=WATER_SLOTS.map((s,i)=>r('22',s,100+i,i));let v=buildMonthlyApartmentLayout({apartmentRows:[sums('22',6)],meterRows:m});assert.deepEqual(v.rows[2].slice(1,7),[100,101,102,103,104,105]);assert.deepEqual(v.rows[2].slice(7,13),[0,1,2,3,4,5]);assert.equal(v.stats.positioned,6)});
+test('slot type conflict is warned but never drops reading',()=>{let v=buildMonthlyApartmentLayout({apartmentRows:[sums('1',1)],meterRows:[r('1','K3',12,2,'cold')]});assert.equal(v.rows[2][6],12);assert.equal(v.warnings.length,1)});
+test('unassigned slot must BLOCK export',()=>assert.throws(()=>buildMonthlyApartmentLayout({apartmentRows:[sums('1',1)],meterRows:[r('1','',2,1)]}),/SLOT_INTEGRITY_BLOCKED/));
+test('duplicate apartment slot must BLOCK export',()=>assert.throws(()=>buildMonthlyApartmentLayout({apartmentRows:[sums('1',2)],meterRows:[r('1','A2',2,1),r('1','A2',3,1)]}),/SLOT_INTEGRITY_BLOCKED/));
+test('rejects strings containing arbitrary formula-like XLSX expressions',()=>assert.throws(()=>buildMonthlyApartmentLayout({apartmentRows:[sums('1',1)],meterRows:[r('1','A1','=HYPERLINK()',1)]}),/INVALID_NUMBER/));
+test('source-slot case whitespace normalized',()=>{let v=buildMonthlyApartmentLayout({apartmentRows:[sums('1',1)],meterRows:[r('1',' a1 ',2,1,'cold')]});assert.equal(v.rows[2][1],2)});
+test('can support verified resolver without changing row data',()=>{let v=buildMonthlyApartmentLayout({apartmentRows:[sums('1',1)],meterRows:[{apartment_number:'1',type:'cold',current_reading:3,consumption:0}],resolveSlot:()=> 'A3'});assert.equal(v.rows[2][3],3)});
+test('existing apartment totals are preserved, not recomputed from deltas',()=>{let v=one();assert.deepEqual(v.rows[2].slice(13),[4,2,6,2,'Полные данные'])});
+test('rejects summary without corresponding meters',()=>assert.throws(()=>buildMonthlyApartmentLayout({apartmentRows:[sums('1'),sums('2')],meterRows:[r('1','A1',1,0)]}),/COUNT_MISMATCH/));
+test('supports merged apartment reference via normalized name',()=>{let v=buildMonthlyApartmentLayout({apartmentRows:[sums('28-29',1)],meterRows:[r('28/29','A1',33,0)]});assert.equal(v.rows[2][1],33)});
+test('950 rows malformed values blocked fail-closed',()=>{let m=[r('1','A1',NaN,1)];assert.throws(()=>buildMonthlyApartmentLayout({apartmentRows:[sums('1',1)],meterRows:m}),/INVALID_NUMBER/)});
+
+test('duplicate meter IDs are rejected despite different slots',()=>{let a=r('1','A1',3,2), b=r('1','A2',4,1); a.meter_id=1;b.meter_id=1;assert.throws(()=>buildMonthlyApartmentLayout({apartmentRows:[sums('1',2)],meterRows:[a,b]}),/DUPLICATE_METER_ID/) });
+test('consumption without current reading is rejected',()=>assert.throws(()=>buildMonthlyApartmentLayout({apartmentRows:[sums('1',1)],meterRows:[r('1','A1',null,0)]}),/DELTA_WITHOUT_CURRENT/));
