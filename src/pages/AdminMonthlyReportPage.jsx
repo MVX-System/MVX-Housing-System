@@ -1,5 +1,6 @@
 import { buildMonthlyApartmentLayout } from "../utils/monthlyWaterApartmentLayout.mjs";
 import { styleMonthlyApartmentWorksheet } from "../utils/monthlyWaterExcelStyles.mjs";
+import { buildMonthlyWaterAnomalyReview, styleMonthlyWaterAnomalyWorksheet } from "../utils/monthlyWaterAnomalyReview.mjs";
 import { formatMvxDateTime } from "../utils/displayDate";
 
 import { localizeMeterLocation } from "../utils/meterLocation";
@@ -1747,6 +1748,41 @@ export default function AdminMonthlyReportPage() {
       missingDataSheet,
       text.xlsxSheetMissingData
     );
+
+    // =====================================
+    // READ-ONLY UNUSUAL VALUE REVIEW (PR-10K.4F)
+    // =====================================
+    // Do not treat alerts as corrections or billing instructions.
+    // All source measurements and the four existing sheets remain unchanged.
+    let anomalyReview;
+    try {
+      anomalyReview = buildMonthlyWaterAnomalyReview({
+        language,
+        periodName,
+        meterRows: reportRows.map((row) => ({
+          ...row,
+          previous_reading: toCubicMeters(row.previous_reading),
+          current_reading: toCubicMeters(row.current_reading),
+          consumption: toCubicMeters(row.consumption),
+        })),
+        apartmentRows: apartmentGroups.map((group, index) => ({
+          apartment_number: group.apartment_number,
+          cold_consumption: apartmentRows[index][`${text.coldWater}, m³`],
+          hot_consumption: apartmentRows[index][`${text.hotWater}, m³`],
+          total_consumption: apartmentRows[index][`${text.totalWater}, m³`],
+        })),
+      });
+      if (anomalyReview.counts.metersChecked !== Number(summary.meters_total)) {
+        throw new Error("PR10K4F_METER_COUNT_MISMATCH");
+      }
+      const anomalySheet = XLSX.utils.aoa_to_sheet(anomalyReview.rows);
+      styleMonthlyWaterAnomalyWorksheet(anomalySheet, anomalyReview);
+      XLSX.utils.book_append_sheet(workbook, anomalySheet, anomalyReview.sheetName);
+    } catch (error) {
+      console.error("PR-10K.4F anomaly review export blocked", error);
+      alert(`Не удалось безопасно сформировать аудит: ${error.message}`);
+      return;
+    }
 
     const safeMonth =
       String(
