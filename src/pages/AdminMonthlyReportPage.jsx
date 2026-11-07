@@ -1,6 +1,7 @@
 import { buildMonthlyApartmentLayout } from "../utils/monthlyWaterApartmentLayout.mjs";
 import { styleMonthlyApartmentWorksheet } from "../utils/monthlyWaterExcelStyles.mjs";
 import { buildMonthlyWaterAnomalyReview, styleMonthlyWaterAnomalyWorksheet } from "../utils/monthlyWaterAnomalyReview.mjs";
+import { summarizeMonthlySubmissionCoverage, assertMonthlyCoverageMatchesSummary, buildMonthlyCoverageSummaryRows, selectMissingMonthlyReadingRows, isMissingReadingStatus } from "../utils/monthlyWaterSubmissionCoverage.mjs";
 import { formatMvxDateTime } from "../utils/displayDate";
 
 import { localizeMeterLocation } from "../utils/meterLocation";
@@ -166,10 +167,16 @@ const TEXT = {
       "Generated at",
     apartmentsTotal:
       "Apartments total",
+    apartmentsAny:
+      "Apartments with at least one reading",
     apartmentsSubmitted:
-      "Apartments submitted",
+      "Apartments with all meter readings",
+    apartmentsPartial:
+      "Apartments with partial readings",
+    apartmentsNone:
+      "Apartments with no readings",
     apartmentsMissing:
-      "Apartments missing",
+      "Apartments with missing readings",
     metersTotal:
       "Meters total",
     metersSubmitted:
@@ -364,8 +371,14 @@ const TEXT = {
       "Izveidots",
     apartmentsTotal:
       "Dzīvokļi kopā",
+    apartmentsAny:
+      "Dzīvokļi ar vismaz vienu rādījumu",
     apartmentsSubmitted:
-      "Dzīvokļi ar iesniegtiem rādījumiem",
+      "Dzīvokļi ar visiem iesniegtiem rādījumiem",
+    apartmentsPartial:
+      "Dzīvokļi ar daļēji iesniegtiem rādījumiem",
+    apartmentsNone:
+      "Dzīvokļi bez iesniegtiem rādījumiem",
     apartmentsMissing:
       "Dzīvokļi ar trūkstošiem rādījumiem",
     metersTotal:
@@ -587,10 +600,16 @@ const TEXT = {
       "Сформирован",
     apartmentsTotal:
       "Квартир всего",
+    apartmentsAny:
+      "Квартиры с хотя бы одним показанием",
     apartmentsSubmitted:
-      "Квартиры с полученными показаниями",
+      "Квартиры с полным комплектом показаний",
+    apartmentsPartial:
+      "Квартиры с частичным комплектом показаний",
+    apartmentsNone:
+      "Квартиры без полученных показаний",
     apartmentsMissing:
-      "Квартиры с отсутствующими показаниями",
+      "Квартиры с пропущенными показаниями",
     metersTotal:
       "Счётчиков всего",
     metersSubmitted:
@@ -852,6 +871,19 @@ export default function AdminMonthlyReportPage() {
     )
       ? adminMonthlyReport.rows
       : [];
+
+  const submissionCoverage = useMemo(
+    () => {
+      if (!Array.isArray(adminMonthlyReport?.rows)) return null;
+      try {
+        return summarizeMonthlySubmissionCoverage(adminMonthlyReport.rows);
+      } catch (error) {
+        console.error("PR-10K.4I monthly coverage calculation failed", error);
+        return null;
+      }
+    },
+    [adminMonthlyReport?.rows]
+  );
 
   const apartmentGroups =
     Object.values(
@@ -1280,6 +1312,18 @@ export default function AdminMonthlyReportPage() {
       return;
     }
 
+    // Validate the API totals before exporting the accounting workbook.
+    // apartments_submitted means FULLY submitted; it does not mean ANY reading.
+    let coverage;
+    try {
+      coverage = summarizeMonthlySubmissionCoverage(reportRows);
+      assertMonthlyCoverageMatchesSummary(coverage, summary);
+    } catch (error) {
+      console.error("PR-10K.4I monthly export coverage check failed", error);
+      alert(`Не удалось безопасно сформировать отчёт: ${error.message}`);
+      return;
+    }
+
     const generatedAt =
       new Date();
 
@@ -1357,20 +1401,7 @@ export default function AdminMonthlyReportPage() {
           0
         ),
       ],
-      [
-        text.apartmentsSubmitted,
-        Number(
-          summary.apartments_submitted ||
-          0
-        ),
-      ],
-      [
-        text.apartmentsMissing,
-        Number(
-          summary.apartments_missing ||
-          0
-        ),
-      ],
+      ...buildMonthlyCoverageSummaryRows(text, coverage),
       [],
       [
         text.metersTotal,
@@ -1421,14 +1452,20 @@ export default function AdminMonthlyReportPage() {
 
     setWorksheetColumns(
       summarySheet,
-      [28, 26]
+      [52, 26]
     );
 
+    const firstWaterTotalRow = summaryData.findIndex(
+      (record) => record[0] === `${text.coldWater}, m³`
+    ) + 1;
+    if (firstWaterTotalRow < 1) {
+      throw new Error("PR10K4I_WATER_TOTALS_HEADER_MISSING");
+    }
     applyThreeDecimalFormat(
       summarySheet,
       ["B"],
-      17,
-      19
+      firstWaterTotalRow,
+      firstWaterTotalRow + 2
     );
 
     XLSX.utils.book_append_sheet(
@@ -1678,12 +1715,7 @@ export default function AdminMonthlyReportPage() {
     // =====================================
 
     const missingRows =
-      reportRows
-        .filter(
-          (row) =>
-            row.status !==
-            "complete"
-        )
+      selectMissingMonthlyReadingRows(reportRows)
         .map(
           (row) => ({
 
@@ -1720,6 +1752,14 @@ export default function AdminMonthlyReportPage() {
               ),
           })
         );
+
+    // Missing-data rows are limited to missing_current / missing_previous.
+    // Negative consumption is a received reading and belongs in the audit sheet.
+    if (missingRows.length !== coverage.missingCurrent + coverage.missingPrevious) {
+      console.error("PR-10K.4I missing-data count mismatch");
+      alert("Не удалось безопасно сформировать список отсутствующих показаний.");
+      return;
+    }
 
     const missingDataSheet =
       XLSX.utils.json_to_sheet(
@@ -2460,17 +2500,27 @@ export default function AdminMonthlyReportPage() {
               }
               items={[
                 {
-                  label: text.submitted,
-                  value:
-                    summary.apartments_submitted,
+                  label: text.apartmentsAny,
+                  value: submissionCoverage?.any ?? "—",
                 },
                 {
-                  label: text.missing,
-                  value:
-                    summary.apartments_missing,
-                  warning:
-                    summary.apartments_missing >
-                    0,
+                  label: text.apartmentsSubmitted,
+                  value: submissionCoverage?.complete ?? "—",
+                },
+                {
+                  label: text.apartmentsPartial,
+                  value: submissionCoverage?.partial ?? "—",
+                  warning: (submissionCoverage?.partial ?? 0) > 0,
+                },
+                {
+                  label: text.apartmentsNone,
+                  value: submissionCoverage?.none ?? "—",
+                  warning: (submissionCoverage?.none ?? 0) > 0,
+                },
+                {
+                  label: text.apartmentsMissing,
+                  value: submissionCoverage?.withMissing ?? "—",
+                  warning: (submissionCoverage?.withMissing ?? 0) > 0,
                 },
               ]}
             />
@@ -2651,10 +2701,8 @@ export default function AdminMonthlyReportPage() {
                     const apartmentRows =
                       reportRows.filter(
                         (row) =>
-                          row.apartment_id ===
-                            apartmentId &&
-                          row.status !==
-                            "complete"
+                          row.apartment_id === apartmentId &&
+                          isMissingReadingStatus(row.status)
                       );
 
                     return (
