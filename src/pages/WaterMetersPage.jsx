@@ -10,6 +10,7 @@ import Modal
   from "../components/Modal";
 
 import MeterDocumentsModal from "../components/MeterDocumentsModal";
+import { METER_DOCUMENT_ACCEPT, uploadOptionalMeterDocuments } from "../utils/meterDocumentOnAdd.mjs";
 
 import { api }
   from "../services/api";
@@ -95,6 +96,13 @@ const TEXT = {
     calibrationStatus: "Kalibrēšanas statuss",
     document: "Dokuments",
     meterDocuments: "Dokumenti",
+    newMeterDocumentsTitle: "Dokumenti (nav obligāti)",
+    replacementActFileLabel: "Skaitītāja nomaiņas akts (nav obligāts)",
+    otherMeterFilesLabel: "Citi dokumenti (var izvēlēties vairākus)",
+    newMeterDocsHelp: "PDF, JPG, PNG, DOC(X), XLS(X), eDoc, ASiC-E; līdz 20 MiB katram failam. Failus var pievienot vēlāk.",
+    linkActExistingMeter: "Piesaistīt aktu arī esošajiem šī dzīvokļa skaitītājiem (nav obligāti)",
+    meterCreatedDocsUploaded: "Pievienotie dokumenti: {count}.",
+    meterCreatedDocsFailed: "Skaitītājs ir saglabāts, taču {count} dokumentu(-us) neizdevās pievienot. Atveriet «Dokumenti» un pievienojiet tos vēlāk. Nekādā gadījumā neveidojiet skaitītāju atkārtoti.",
     lastReading: "Pēdējais rādījums",
     lastDate: "Pēdējais datums",
     status: "Statuss",
@@ -226,6 +234,13 @@ const TEXT = {
     calibrationStatus: "Calibration Status",
     document: "Document",
     meterDocuments: "Documents",
+    newMeterDocumentsTitle: "Documents (optional)",
+    replacementActFileLabel: "Replacement act (optional)",
+    otherMeterFilesLabel: "Other documents (select multiple files)",
+    newMeterDocsHelp: "PDF, JPG, PNG, DOC(X), XLS(X), eDoc, ASiC-E; up to 20 MiB each. Files can be added later.",
+    linkActExistingMeter: "Also link the act to existing meters in this apartment (optional)",
+    meterCreatedDocsUploaded: "Documents attached: {count}.",
+    meterCreatedDocsFailed: "Meter saved, but {count} documents were not uploaded. Open Documents and attach them later. Do not create the meter again.",
     lastReading: "Last Reading",
     lastDate: "Last Date",
     status: "Status",
@@ -357,6 +372,13 @@ const TEXT = {
     calibrationStatus: "Статус калибровки",
     document: "Документ",
     meterDocuments: "Документы",
+    newMeterDocumentsTitle: "Документы (необязательно)",
+    replacementActFileLabel: "Акт замены счётчика (необязательно)",
+    otherMeterFilesLabel: "Другие документы (можно выбрать несколько файлов)",
+    newMeterDocsHelp: "PDF, JPG, PNG, DOC(X), XLS(X), eDoc, ASiC-E; до 20 МиБ каждый. Документы можно приложить позже.",
+    linkActExistingMeter: "Также связать акт с существующими счётчиками этой квартиры (необязательно)",
+    meterCreatedDocsUploaded: "Прикреплено документов: {count}.",
+    meterCreatedDocsFailed: "Счётчик сохранён, но не удалось загрузить {count} документ(ов). Откройте «Документы» и добавьте их позже. Повторно создавать счётчик не нужно.",
     lastReading: "Последнее показание",
     lastDate: "Последняя дата",
     status: "Статус",
@@ -599,6 +621,9 @@ export default function WaterMetersPage() {
     calibrationNotes: "",
     calibrationDocument: null,
     certificateAvailable: true,
+    replacementActFile: null,
+    otherDocumentFiles: [],
+    replacementActRelatedMeterIds: [],
   });
 
   const [
@@ -986,6 +1011,9 @@ export default function WaterMetersPage() {
       calibrationNotes: "",
       calibrationDocument: null,
       certificateAvailable: true,
+      replacementActFile: null,
+      otherDocumentFiles: [],
+      replacementActRelatedMeterIds: [],
     });
 
     setApartmentRisers([]);
@@ -1001,6 +1029,7 @@ export default function WaterMetersPage() {
           ...current,
           apartmentId,
           apartmentRiserId: "",
+          replacementActRelatedMeterIds: [],
         })
       );
 
@@ -1458,26 +1487,44 @@ export default function WaterMetersPage() {
 
         }
 
-        await loadAdminWaterMeters();
+        // Meter already exists. Documents are optional and may fail individually.
+        // Never repeat meter creation in response to an attachment failure.
+        const newMeterId = Number(meterResult.meter_id);
+        const documentResult = await uploadOptionalMeterDocuments({
+          meterId: newMeterId,
+          replacementActFile: addForm.replacementActFile,
+          otherDocumentFiles: addForm.otherDocumentFiles,
+          relatedActMeterIds: addForm.replacementActRelatedMeterIds,
+          send: api,
+        });
 
-        if (
-          calibrationResult?.ok
-        ) {
+        try {
+          await loadAdminWaterMeters();
+        } catch (reloadError) {
+          console.error("Water meter list refresh failed after create", reloadError);
+        }
 
-          setAddOpen(false);
-          resetAddForm();
+        setAddOpen(false);
+        resetAddForm();
 
-          alert(
-            addForm.certificateAvailable
+        const notices = [calibrationResult?.ok
+          ? (addForm.certificateAvailable
               ? text.meterAndCalibrationAdded
-              : text.meterAddedWithoutCalibration
-          );
-
-        } else {
-
-          alert(
-            text.calibrationSaveFailed
-          );
+              : text.meterAddedWithoutCalibration)
+          : text.calibrationSaveFailed];
+        if (documentResult.uploaded > 0) {
+          notices.push(text.meterCreatedDocsUploaded.replace("{count}", String(documentResult.uploaded)));
+        }
+        if (documentResult.failed.length > 0) {
+          notices.push(text.meterCreatedDocsFailed.replace("{count}", String(documentResult.failed.length)));
+        }
+        alert(notices.join("\n"));
+        if (documentResult.failed.length > 0) {
+          setDocumentsMeter({
+            id: newMeterId,
+            apartment_id: Number(addForm.apartmentId),
+            serial_number: addForm.serialNumber,
+          });
         }
 
       } finally {
@@ -3411,6 +3458,61 @@ export default function WaterMetersPage() {
               </>
             )}
 
+          </div>
+
+          <div style={{ borderTop: "1px solid var(--border)", paddingTop: 14, display: "grid", gap: 12 }}>
+            <SectionHeading compact>{text.newMeterDocumentsTitle}</SectionHeading>
+            <p style={{ margin: 0, fontSize: 12, color: "var(--text)" }}>{text.newMeterDocsHelp}</p>
+            <div style={{ display: "grid", gap: 5 }}>
+              <label style={{ fontSize: 12, fontWeight: 700, color: "var(--text-h)" }}>{text.replacementActFileLabel}
+              <input type="file" accept={METER_DOCUMENT_ACCEPT} disabled={addSubmitting}
+                onChange={(event) => {
+                  const selected = event.target.files?.[0] || null;
+                  setAddForm((current) => ({ ...current, replacementActFile: selected,
+                    replacementActRelatedMeterIds: selected ? current.replacementActRelatedMeterIds : [] }));
+                  event.target.value = "";
+                }} style={fieldStyle}/></label>
+              {addForm.replacementActFile && <div style={{ fontSize: 12 }}>
+                {addForm.replacementActFile.name}
+                <button type="button" disabled={addSubmitting} onClick={() =>
+                  setAddForm((current) => ({ ...current, replacementActFile: null, replacementActRelatedMeterIds: [] }))
+                } style={{ ...secondaryButton, marginLeft: 8 }}>×</button>
+              </div>}
+            </div>
+            {addForm.replacementActFile && addForm.apartmentId && (
+              <fieldset style={{ border: "1px solid var(--border)", borderRadius: 8 }}>
+                <legend style={{ fontSize: 12 }}>{text.linkActExistingMeter}</legend>
+                {adminWaterMeters.filter((meter) => Number(meter.apartment_id) === Number(addForm.apartmentId))
+                  .map((meter) => <label key={meter.id} style={{ display: "block", fontSize: 12, marginTop: 6 }}>
+                    <input type="checkbox" disabled={addSubmitting}
+                      checked={addForm.replacementActRelatedMeterIds.includes(Number(meter.id))}
+                      onChange={(event) => setAddForm((current) => ({
+                        ...current,
+                        replacementActRelatedMeterIds: event.target.checked
+                          ? [...new Set([...current.replacementActRelatedMeterIds, Number(meter.id)])]
+                          : current.replacementActRelatedMeterIds.filter((id) => id !== Number(meter.id)),
+                      }))}/>{" "}{meter.serial_number || `#${meter.id}`}
+                  </label>)}
+              </fieldset>
+            )}
+            <div style={{ display: "grid", gap: 5 }}>
+              <label style={{ fontSize: 12, fontWeight: 700, color: "var(--text-h)" }}>{text.otherMeterFilesLabel}
+              <input type="file" multiple accept={METER_DOCUMENT_ACCEPT} disabled={addSubmitting}
+                onChange={(event) => {
+                  const selected = Array.from(event.target.files || []);
+                  setAddForm((current) => ({ ...current, otherDocumentFiles: selected }));
+                  event.target.value = "";
+                }} style={fieldStyle}/></label>
+              {addForm.otherDocumentFiles.length > 0 && <div style={{ fontSize: 12 }}>
+                {addForm.otherDocumentFiles.map((file, index) =>
+                  <div key={`${file.name}-${index}`} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span>{file.name}</span>
+                    <button type="button" disabled={addSubmitting} style={secondaryButton} onClick={() =>
+                      setAddForm((current) => ({ ...current,
+                        otherDocumentFiles: current.otherDocumentFiles.filter((_, i) => i !== index) }))}>×</button>
+                  </div>)}
+              </div>}
+            </div>
           </div>
 
           <div
