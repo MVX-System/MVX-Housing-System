@@ -31834,6 +31834,7 @@ Router.register(
           wm.id AS meter_id,
           wm.type,
           wm.serial_number,
+          wm.source_slot,
 
           r.code AS riser_code,
           ar.local_label,
