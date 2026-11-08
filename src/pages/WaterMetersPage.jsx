@@ -9,6 +9,8 @@ import {
 import Modal
   from "../components/Modal";
 
+import MeterDocumentsModal from "../components/MeterDocumentsModal";
+
 import { api }
   from "../services/api";
 
@@ -92,6 +94,7 @@ const TEXT = {
     expires: "Derīga līdz",
     calibrationStatus: "Kalibrēšanas statuss",
     document: "Dokuments",
+    meterDocuments: "Dokumenti",
     lastReading: "Pēdējais rādījums",
     lastDate: "Pēdējais datums",
     status: "Statuss",
@@ -222,6 +225,7 @@ const TEXT = {
     expires: "Expires",
     calibrationStatus: "Calibration Status",
     document: "Document",
+    meterDocuments: "Documents",
     lastReading: "Last Reading",
     lastDate: "Last Date",
     status: "Status",
@@ -352,6 +356,7 @@ const TEXT = {
     expires: "Действует до",
     calibrationStatus: "Статус калибровки",
     document: "Документ",
+    meterDocuments: "Документы",
     lastReading: "Последнее показание",
     lastDate: "Последняя дата",
     status: "Статус",
@@ -465,6 +470,8 @@ export default function WaterMetersPage() {
     isFullAdmin(
       me?.roles
     );
+
+  const [documentsMeter, setDocumentsMeter] = useState(null);
 
   const {
     adminWaterMeters,
@@ -2322,6 +2329,9 @@ export default function WaterMetersPage() {
                           onOpenCalibrationHistory={
                             openCalibrationHistory
                           }
+                          onOpenMeterDocuments={
+                            setDocumentsMeter
+                          }
                           onEdit={
                             openEditMeter
                           }
@@ -2533,6 +2543,9 @@ export default function WaterMetersPage() {
                     </td>
 
                     <td style={tableCell}>
+                      <button type="button" hidden={!canMutateWaterMeters} onClick={() => setDocumentsMeter(meter)} style={documentButton}>
+                        {text.meterDocuments}
+                      </button>
                       {meter.calibration_id ? (
 
                         <div
@@ -4142,6 +4155,13 @@ export default function WaterMetersPage() {
 
       </Modal>
 
+      <MeterDocumentsModal
+        meter={canMutateWaterMeters ? documentsMeter : null}
+        metersInApartment={adminWaterMeters}
+        language={language}
+        onClose={() => setDocumentsMeter(null)}
+      />
+
     </div>
   );
 }
@@ -4415,6 +4435,7 @@ function MeterCard({
   canMutateWaterMeters,
   onOpenDocument,
   onOpenCalibrationHistory,
+  onOpenMeterDocuments,
   onEdit,
   text,
 }) {
@@ -4632,6 +4653,10 @@ function MeterCard({
         }}
       >
         {text.calibrationHistory}
+      </button>
+
+      <button type="button" hidden={!canMutateWaterMeters} onClick={() => onOpenMeterDocuments(meter)} style={{...secondaryButton,width:"100%",marginTop:10}}>
+        {text.meterDocuments}
       </button>
 
       {meter.calibration_id && (
