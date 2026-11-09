@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Modal from './Modal';
 import { api, apiFile } from '../services/api';
+import { meterDocumentPreviewFormat, meterDocumentPreviewSignatureMatches } from '../utils/meterDocumentPreview.mjs';
 
 const I18N = {
   ru: {title:'Документы счётчика', upload:'Добавить документ', act:'Акт замены счётчика',
@@ -10,7 +11,10 @@ const I18N = {
     none:'Выберите файл', format:'PDF, PNG, JPG, DOC, DOCX, XLS, XLSX, eDoc, ASiC-E; до 20 МБ на файл',
     uploadError:'Не удалось загрузить документ', loadError:'Не удалось получить список документов',
     downloadError:'Не удалось открыть документ', loading:'Загрузка…', uploaded:'Документ загружен',
-    required:'Выберите файл.', size:'Файл превышает 20 МБ.', view:'Скачать', meters:'Счётчиков в акте'},
+    required:'Выберите файл.', size:'Файл превышает 20 МБ.', view:'Просмотр', download:'Скачать',
+    closePreview:'Закрыть просмотр', previewLoading:'Открываем документ…',
+    previewError:'Не удалось показать документ', previewUnsupported:'Предпросмотр этого формата в браузере недоступен. Для открытия используйте «Скачать».',
+    previewCorrupt:'Формат файла не соответствует документу.', meters:'Счётчиков в акте'},
   en: {title:'Meter documents', upload:'Add document', act:'Replacement act',other:'Other attachment',
     recommended:'A replacement act is recommended, not required. You can attach it later.',
     noDocs:'No documents attached yet.',name:'Description (optional)',file:'File',
@@ -18,7 +22,9 @@ const I18N = {
     none:'Select a file',format:'PDF, PNG, JPG, DOC, DOCX, XLS, XLSX, eDoc, ASiC-E; up to 20 MB per file',
     uploadError:'Document upload failed',loadError:'Cannot load documents',downloadError:'Cannot open document',
     loading:'Loading…',uploaded:'Document uploaded',required:'Select a file.',size:'File exceeds 20 MB.',
-    view:'Download',meters:'Linked meters'},
+    view:'Preview',download:'Download',closePreview:'Close preview',previewLoading:'Opening preview…',
+    previewError:'Could not preview document',previewUnsupported:'Browser preview is not available for this format. Use Download to open it in an appropriate app.',
+    previewCorrupt:'File signature does not match document format.',meters:'Linked meters'},
   lv: {title:'Skaitītāja dokumenti',upload:'Pievienot dokumentu',act:'Skaitītāja nomaiņas akts',other:'Cits pielikums',
     recommended:'Nomaiņas akts ir vēlams, bet nav obligāts. To var pievienot vēlāk.',
     noDocs:'Dokumenti vēl nav pievienoti.',name:'Apraksts (nav obligāts)',file:'Fails',
@@ -26,7 +32,10 @@ const I18N = {
     none:'Izvēlieties failu',format:'PDF, PNG, JPG, DOC, DOCX, XLS, XLSX, eDoc, ASiC-E; līdz 20 MB katram failam',
     uploadError:'Neizdevās augšupielādēt dokumentu',loadError:'Neizdevās ielādēt dokumentus',
     downloadError:'Neizdevās atvērt dokumentu',loading:'Ielāde…',uploaded:'Dokuments pievienots',
-    required:'Izvēlieties failu.',size:'Fails ir lielāks par 20 MB.',view:'Lejupielādēt',meters:'Saistītie skaitītāji'}
+    required:'Izvēlieties failu.',size:'Fails ir lielāks par 20 MB.',view:'Skatīt',download:'Lejupielādēt',
+    closePreview:'Aizvērt priekšskatījumu',previewLoading:'Atver dokumentu…',
+    previewError:'Neizdevās apskatīt dokumentu',previewUnsupported:'Šī formāta priekšskatījums pārlūkā nav pieejams. Lai atvērtu failu, izmantojiet Lejupielādēt.',
+    previewCorrupt:'Faila saturs neatbilst deklarētajam formātam.',meters:'Saistītie skaitītāji'}
 };
 const ALLOWED = '.pdf,.png,.jpg,.jpeg,.doc,.docx,.xls,.xlsx,.edoc,.asice';
 const MAX_BYTES=20*1024*1024;
@@ -41,9 +50,17 @@ export default function MeterDocumentsModal({meter, metersInApartment=[],languag
   const [title,setTitle]=useState('');
   const [file,setFile]=useState(null);
   const [selectedIds,setSelectedIds]=useState([]);
+  const [preview,setPreview]=useState(null);
+  const [previewBusyId,setPreviewBusyId]=useState(null);
+  const previewUrl=useRef(null);
+  const previewRequest=useRef(0);
   const meterId=meter?.id;
   const peers=useMemo(()=>metersInApartment.filter(m=>Number(m.apartment_id)===Number(meter?.apartment_id)),[metersInApartment,meter?.apartment_id]);
   useEffect(()=>{
+    // Cancel any outstanding preview on meter change and discard its private blob URL.
+    previewRequest.current += 1;
+    if (previewUrl.current) URL.revokeObjectURL(previewUrl.current);
+    previewUrl.current=null;setPreview(null);setPreviewBusyId(null);
     if (!meterId) {setRows([]);setSelectedIds([]);setFile(null);setError('');return;}
     let cancelled=false;
     setSelectedIds([Number(meterId)]);
@@ -54,6 +71,39 @@ export default function MeterDocumentsModal({meter, metersInApartment=[],languag
       .finally(()=>{if (!cancelled)setLoading(false);});
     return ()=>{cancelled=true;};
   },[meterId]);
+  useEffect(()=>()=>{
+    previewRequest.current += 1;
+    if (previewUrl.current) URL.revokeObjectURL(previewUrl.current);
+    previewUrl.current=null;
+  },[]);
+  function closePreview() {
+    previewRequest.current += 1;
+    if (previewUrl.current) URL.revokeObjectURL(previewUrl.current);
+    previewUrl.current=null;setPreview(null);setPreviewBusyId(null);
+  }
+  async function openPreview(doc) {
+    const format=meterDocumentPreviewFormat(doc);
+    if (!format) {setError(text.previewUnsupported);return;}
+    const request=++previewRequest.current;
+    setPreviewBusyId(doc.id);setError('');
+    try {
+      const response=await apiFile(`/api/admin/water-meter-document?id=${encodeURIComponent(doc.id)}`);
+      if (!response.ok) throw Error(`HTTP ${response.status}`);
+      const fileBlob=await response.blob();
+      const header=new Uint8Array(await fileBlob.slice(0,8).arrayBuffer());
+      if (!meterDocumentPreviewSignatureMatches(header,format.mime)) throw Error(text.previewCorrupt);
+      if (request!==previewRequest.current) return;
+      // Object URL belongs only to this authenticated browser session, never to R2/public links.
+      const url=URL.createObjectURL(new Blob([fileBlob],{type:format.mime}));
+      if (previewUrl.current) URL.revokeObjectURL(previewUrl.current);
+      previewUrl.current=url;
+      setPreview({url,type:format.type,title:doc.display_title||doc.original_filename});
+    } catch (err) {
+      if (request===previewRequest.current) setError(`${text.previewError}: ${err.message}`);
+    } finally {
+      if (request===previewRequest.current) setPreviewBusyId(null);
+    }
+  }
   async function upload(event) {
     event.preventDefault();
     if (!file) {setError(text.required);return;}
@@ -92,10 +142,24 @@ export default function MeterDocumentsModal({meter, metersInApartment=[],languag
       {loading ? <p>{text.loading}</p> : rows.length ?
         <ul style={{paddingLeft:18,margin:0,display:'grid',gap:8}}>
           {rows.map(doc=><li key={doc.id}>
-            <button type="button" onClick={()=>download(doc)} style={{cursor:'pointer',textDecoration:'underline',border:0,background:'transparent',color:'var(--text-h)',fontWeight:600}}>{doc.display_title||doc.original_filename}</button>
+            <strong style={{fontSize:13}}>{doc.display_title||doc.original_filename}</strong>
             <span style={{fontSize:12,color:'var(--text)',marginLeft:8}}>{doc.document_kind==='replacement_act'?text.act:text.other} · {doc.meter_links} {text.meters}</span>
+            <div style={{display:'flex',gap:10,flexWrap:'wrap',marginTop:4}}>
+              {meterDocumentPreviewFormat(doc) && <button type="button" disabled={previewBusyId!==null} onClick={()=>openPreview(doc)}>{previewBusyId===doc.id?text.previewLoading:text.view}</button>}
+              <button type="button" disabled={previewBusyId!==null} onClick={()=>download(doc)}>{text.download}</button>
+              {!meterDocumentPreviewFormat(doc) && <small style={{alignSelf:'center'}}>{text.previewUnsupported}</small>}
+            </div>
           </li>)}
         </ul> : <p style={{fontSize:13,margin:0}}>{text.noDocs}</p>}
+      {preview && <section aria-label={preview.title} style={{border:'1px solid var(--border)',borderRadius:8,padding:10,minWidth:0}}>
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,marginBottom:8}}>
+          <strong style={{overflowWrap:'anywhere'}}>{preview.title}</strong>
+          <button type="button" onClick={closePreview}>{text.closePreview}</button>
+        </div>
+        {preview.type==='image'
+          ? <img src={preview.url} alt={preview.title} style={{display:'block',maxWidth:'100%',maxHeight:'65vh',margin:'0 auto',objectFit:'contain'}} />
+          : <iframe title={preview.title} src={preview.url} referrerPolicy="no-referrer" style={{display:'block',width:'100%',height:'min(65vh, 630px)',minHeight:320,border:0}} />}
+      </section>}
       <form onSubmit={upload} style={{display:'grid',gap:10}}>
         <strong>{text.upload}</strong>
         <select value={kind} onChange={e=>setKind(e.target.value)} disabled={busy}>
