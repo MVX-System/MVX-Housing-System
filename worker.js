@@ -18060,9 +18060,15 @@ Router.register('GET', '/api/admin/water-meter-documents', async (ctx) => {
       d.mime_type, d.size_bytes, d.uploaded_at, d.uploaded_by,
       (SELECT COUNT(*) FROM water_meter_document_links l2 WHERE l2.document_id=d.id) AS meter_links
     FROM water_meter_document_links l JOIN water_meter_documents d ON d.id=l.document_id
-    WHERE l.meter_id=? ORDER BY d.uploaded_at DESC, d.id DESC
+    WHERE l.meter_id=? AND d.delete_state='active' ORDER BY d.uploaded_at DESC, d.id DESC
   `).bind(meterId).all();
-  return {ok:true, documents:result.results||[]};
+  const pending=await ctx.env.DB.prepare(`
+    SELECT d.id, d.display_title, d.original_filename,
+      (SELECT COUNT(*) FROM water_meter_document_links l2 WHERE l2.document_id=d.id) AS meter_links
+    FROM water_meter_document_links l JOIN water_meter_documents d ON d.id=l.document_id
+    WHERE l.meter_id=? AND d.delete_state='pending' ORDER BY d.delete_requested_at DESC
+  `).bind(meterId).all();
+  return {ok:true, documents:result.results||[], pending_deletions:pending.results||[]};
 });
 
 Router.register('POST', '/api/admin/water-meter-document', async (ctx) => {
@@ -18135,7 +18141,7 @@ Router.register('GET', '/api/admin/water-meter-document', async (ctx) => {
   const id=String(ctx.url.searchParams.get('id')||'').trim();
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id))
     return mvxDocumentErrorResponse('invalid_document_id',400,ctx.cors);
-  const row=await ctx.env.DB.prepare('SELECT r2_key,original_filename,mime_type FROM water_meter_documents WHERE id=?').bind(id).first();
+  const row=await ctx.env.DB.prepare("SELECT r2_key,original_filename,mime_type FROM water_meter_documents WHERE id=? AND delete_state='active'").bind(id).first();
   if (!row) return mvxDocumentErrorResponse('document_not_found',404,ctx.cors);
   if (!hasWaterCertificateStorage(ctx.env)) return mvxDocumentErrorResponse('water_document_storage_unavailable',503,ctx.cors);
   const object=await ctx.env.WATER_CERTIFICATES.get(row.r2_key);
@@ -18156,6 +18162,105 @@ Router.register('GET', '/api/admin/water-meter-document', async (ctx) => {
   if (object.httpEtag) headers.set('ETag',object.httpEtag);
   return new Response(object.body,{status:200,headers});
 });
+
+// PR-10K.6N.2: Admin-only unlink or delete-all. No direct bucket access by browsers.
+Router.register('DELETE', '/api/admin/water-meter-document', async (ctx) => {
+  const admin=await Auth.requireAdmin(ctx);
+  if (!admin) return {error:'forbidden'};
+  const body=await ctx.request.json().catch(()=>null);
+  if (!body || typeof body!=='object' || Array.isArray(body)) return {error:'invalid_request'};
+  const documentId=body.document_id;
+  const meterId=body.meter_id;
+  const action=body.action;
+  const expected=body.expected_link_count;
+  if (typeof documentId!=='string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(documentId) ||
+      !Number.isSafeInteger(meterId) || meterId<=0 ||
+      !Number.isSafeInteger(expected) || expected<1 || expected>10000 ||
+      !['unlink','delete_all'].includes(action)) return {error:'invalid_document_deletion_request'};
+  const db=ctx.env.DB;
+  const doc=await db.prepare(`SELECT d.id,d.apartment_id,d.r2_key,d.delete_state,
+    (SELECT COUNT(*) FROM water_meter_document_links l2 WHERE l2.document_id=d.id) AS link_count
+    FROM water_meter_documents d JOIN water_meter_document_links l ON l.document_id=d.id
+    WHERE d.id=? AND l.meter_id=?`).bind(documentId,meterId).first();
+  if (!doc) return {error:'document_not_found_or_not_linked'};
+  const count=Number(doc.link_count);
+  if (count!==expected) return {error:'document_links_changed',current_link_count:count};
+  if (action==='unlink') {
+    if (doc.delete_state!=='active') return {error:'document_deletion_pending'};
+    if (count<=1) return {error:'last_link_requires_delete_all'};
+    const e=crypto.randomUUID();
+    // Single D1 transaction. Both operations require an active document with >1 links.
+    const transaction=await db.batch([
+      db.prepare(`INSERT INTO water_meter_document_audit_events
+        (event_id,document_id,apartment_id,meter_id,actor_user_id,action,links_before,links_after)
+        SELECT ?,d.id,d.apartment_id,?,?,'unlink',?,?
+        FROM water_meter_documents d
+        WHERE d.id=? AND d.delete_state='active' AND
+          (SELECT COUNT(*) FROM water_meter_document_links WHERE document_id=d.id)=? AND
+          EXISTS(SELECT 1 FROM water_meter_document_links WHERE document_id=d.id AND meter_id=?)
+      `).bind(e,meterId,admin.user_id,count,count-1,documentId,count,meterId),
+      db.prepare(`DELETE FROM water_meter_document_links WHERE document_id=? AND meter_id=?
+        AND EXISTS(SELECT 1 FROM water_meter_documents d WHERE d.id=? AND d.delete_state='active')
+        AND (SELECT COUNT(*) FROM water_meter_document_links WHERE document_id=?)=?
+      `).bind(documentId,meterId,documentId,documentId,count)
+    ]);
+    if (Number(transaction?.[0]?.meta?.changes)!==1 || Number(transaction?.[1]?.meta?.changes)!==1)
+      return {error:'document_links_changed'};
+    try {await SecurityAudit.recordSafe(ctx,{actorUserId:admin.user_id,action:'admin.water_meter_document_unlink',
+      targetType:'water_meter_document',targetId:documentId,details:{apartment_id:doc.apartment_id,meter_id:meterId,links_before:count}});} catch(error) {
+      console.error('PR-10K6N2 security audit forwarding failed; D1 audit is durable',error);
+    }
+    return {ok:true,action:'unlink',remaining_links:count-1};
+  }
+  if (doc.delete_state==='active') {
+    const result=await db.batch([
+      db.prepare(`UPDATE water_meter_documents SET delete_state='pending',
+        delete_requested_at=CURRENT_TIMESTAMP,delete_requested_by=?
+        WHERE id=? AND delete_state='active' AND
+        (SELECT COUNT(*) FROM water_meter_document_links WHERE document_id=?)=?
+      `).bind(admin.user_id,documentId,documentId,count),
+      db.prepare(`INSERT INTO water_meter_document_audit_events
+        (event_id,document_id,apartment_id,meter_id,actor_user_id,action,links_before,links_after)
+        SELECT ?,d.id,d.apartment_id,?,?,'delete_requested',?,0
+        FROM water_meter_documents d WHERE d.id=? AND d.delete_state='pending'
+      `).bind(crypto.randomUUID(),meterId,admin.user_id,count,documentId)
+    ]);
+    if (Number(result?.[0]?.meta?.changes)!==1 || Number(result?.[1]?.meta?.changes)!==1)
+      return {error:'document_links_changed'};
+  } else if (doc.delete_state!=='pending') {
+    return {error:'invalid_document_delete_state'};
+  }
+  // R2 deletion happens AFTER D1 access is revoked. Failures remain retryable with pending metadata.
+  if (!hasWaterCertificateStorage(ctx.env) || typeof ctx.env.WATER_CERTIFICATES.delete!=='function')
+    return {error:'water_document_storage_unavailable',cleanup:'pending'};
+  try {
+    await ctx.env.WATER_CERTIFICATES.delete(doc.r2_key);
+  } catch(error) {
+    console.error('PR-10K6N2 R2 cleanup pending',error);
+    return {error:'document_cleanup_pending',cleanup:'pending'};
+  }
+  try {
+    const finalized=await db.batch([
+      db.prepare(`DELETE FROM water_meter_document_links WHERE document_id=?`).bind(documentId),
+      db.prepare(`DELETE FROM water_meter_documents WHERE id=? AND delete_state='pending'`).bind(documentId),
+      db.prepare(`INSERT INTO water_meter_document_audit_events
+        (event_id,document_id,apartment_id,meter_id,actor_user_id,action,links_before,links_after)
+        VALUES (?,?,?,?,?,'delete_completed',?,0)
+      `).bind(crypto.randomUUID(),documentId,doc.apartment_id,meterId,admin.user_id,count)
+    ]);
+    if (Number(finalized?.[1]?.meta?.changes)!==1)
+      return {error:'document_cleanup_pending',cleanup:'pending'};
+  } catch(error) {
+    console.error('PR-10K6N2 D1 cleanup pending',error);
+    return {error:'document_cleanup_pending',cleanup:'pending'};
+  }
+  try {await SecurityAudit.recordSafe(ctx,{actorUserId:admin.user_id,action:'admin.water_meter_document_delete_all',
+    targetType:'water_meter_document',targetId:documentId,details:{apartment_id:doc.apartment_id,meter_id:meterId,links_before:count}});} catch(error) {
+    console.error('PR-10K6N2 security audit forwarding failed; D1 audit is durable',error);
+  }
+  return {ok:true,action:'delete_all',removed_links:count};
+});
+
 
 
 // =========================
