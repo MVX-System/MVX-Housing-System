@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Modal from './Modal';
+import { createPortal } from 'react-dom';
+import MeterDocumentWindow from './MeterDocumentWindow';
 import { api, apiFile } from '../services/api';
 import { meterDocumentPreviewFormat, meterDocumentPreviewSignatureMatches } from '../utils/meterDocumentPreview.mjs';
 
@@ -14,7 +16,7 @@ const I18N = {
     required:'Выберите файл.', size:'Файл превышает 20 МБ.', view:'Просмотр', download:'Скачать',
     closePreview:'Закрыть просмотр', previewLoading:'Открываем документ…',
     previewError:'Не удалось показать документ', previewUnsupported:'Предпросмотр этого формата в браузере недоступен. Для открытия используйте «Скачать».',
-    previewCorrupt:'Формат файла не соответствует документу.', meters:'Счётчиков в акте'},
+    previewCorrupt:'Формат файла не соответствует документу.', popupBlocked:'Браузер заблокировал отдельное окно просмотра. Разрешите всплывающие окна для MVX и повторите нажатие «Просмотр».', meters:'Счётчиков в акте'},
   en: {title:'Meter documents', upload:'Add document', act:'Replacement act',other:'Other attachment',
     recommended:'A replacement act is recommended, not required. You can attach it later.',
     noDocs:'No documents attached yet.',name:'Description (optional)',file:'File',
@@ -24,7 +26,7 @@ const I18N = {
     loading:'Loading…',uploaded:'Document uploaded',required:'Select a file.',size:'File exceeds 20 MB.',
     view:'Preview',download:'Download',closePreview:'Close preview',previewLoading:'Opening preview…',
     previewError:'Could not preview document',previewUnsupported:'Browser preview is not available for this format. Use Download to open it in an appropriate app.',
-    previewCorrupt:'File signature does not match document format.',meters:'Linked meters'},
+    previewCorrupt:'File signature does not match document format.',popupBlocked:'The browser blocked the separate reader window. Allow pop-ups for MVX and click Preview again.',meters:'Linked meters'},
   lv: {title:'Skaitītāja dokumenti',upload:'Pievienot dokumentu',act:'Skaitītāja nomaiņas akts',other:'Cits pielikums',
     recommended:'Nomaiņas akts ir vēlams, bet nav obligāts. To var pievienot vēlāk.',
     noDocs:'Dokumenti vēl nav pievienoti.',name:'Apraksts (nav obligāts)',file:'Fails',
@@ -35,7 +37,7 @@ const I18N = {
     required:'Izvēlieties failu.',size:'Fails ir lielāks par 20 MB.',view:'Skatīt',download:'Lejupielādēt',
     closePreview:'Aizvērt priekšskatījumu',previewLoading:'Atver dokumentu…',
     previewError:'Neizdevās apskatīt dokumentu',previewUnsupported:'Šī formāta priekšskatījums pārlūkā nav pieejams. Lai atvērtu failu, izmantojiet Lejupielādēt.',
-    previewCorrupt:'Faila saturs neatbilst deklarētajam formātam.',meters:'Saistītie skaitītāji'}
+    previewCorrupt:'Faila saturs neatbilst deklarētajam formātam.',popupBlocked:'Pārlūkprogramma bloķēja atsevišķo dokumenta logu. Atļaujiet MVX uznirstošos logus un mēģiniet vēlreiz.',meters:'Saistītie skaitītāji'}
 };
 const ALLOWED = '.pdf,.png,.jpg,.jpeg,.doc,.docx,.xls,.xlsx,.edoc,.asice';
 const MAX_BYTES=20*1024*1024;
@@ -52,6 +54,8 @@ export default function MeterDocumentsModal({meter, metersInApartment=[],languag
   const [selectedIds,setSelectedIds]=useState([]);
   const [preview,setPreview]=useState(null);
   const [previewBusyId,setPreviewBusyId]=useState(null);
+  const [viewerWindow,setViewerWindow]=useState(null);
+  const viewerRef=useRef(null);
   const previewUrl=useRef(null);
   const previewRequest=useRef(0);
   const meterId=meter?.id;
@@ -61,6 +65,8 @@ export default function MeterDocumentsModal({meter, metersInApartment=[],languag
     previewRequest.current += 1;
     if (previewUrl.current) URL.revokeObjectURL(previewUrl.current);
     previewUrl.current=null;setPreview(null);setPreviewBusyId(null);
+    const previous=viewerRef.current;viewerRef.current=null;setViewerWindow(null);
+    if (previous && !previous.closed) previous.close();
     if (!meterId) {setRows([]);setSelectedIds([]);setFile(null);setError('');return;}
     let cancelled=false;
     setSelectedIds([Number(meterId)]);
@@ -72,18 +78,51 @@ export default function MeterDocumentsModal({meter, metersInApartment=[],languag
     return ()=>{cancelled=true;};
   },[meterId]);
   useEffect(()=>()=>{
+    // Closing the parent modal/logging out also closes the private reader and revokes its blob URL.
     previewRequest.current += 1;
     if (previewUrl.current) URL.revokeObjectURL(previewUrl.current);
     previewUrl.current=null;
+    const child=viewerRef.current;viewerRef.current=null;
+    if (child && !child.closed) child.close();
   },[]);
+  useEffect(()=>{
+    if (!viewerWindow) return undefined;
+    const onClosed=()=>{
+      if (viewerRef.current!==viewerWindow) return;
+      previewRequest.current += 1;
+      if (previewUrl.current) URL.revokeObjectURL(previewUrl.current);
+      previewUrl.current=null;viewerRef.current=null;
+      setViewerWindow(null);setPreview(null);setPreviewBusyId(null);
+    };
+    viewerWindow.addEventListener('pagehide',onClosed);
+    return ()=>viewerWindow.removeEventListener('pagehide',onClosed);
+  },[viewerWindow]);
   function closePreview() {
     previewRequest.current += 1;
     if (previewUrl.current) URL.revokeObjectURL(previewUrl.current);
     previewUrl.current=null;setPreview(null);setPreviewBusyId(null);
+    const child=viewerRef.current;viewerRef.current=null;setViewerWindow(null);
+    if (child && !child.closed) child.close();
   }
   async function openPreview(doc) {
     const format=meterDocumentPreviewFormat(doc);
     if (!format) {setError(text.previewUnsupported);return;}
+    // Must be opened synchronously from the click event: Safari/iPhone blocks tabs created after await.
+    closePreview();
+    const child=window.open('', '_blank');
+    if (!child) {setError(text.popupBlocked);return;}
+    try {
+      child.opener=null; // No reverse access to the main MVX window from the reader.
+      child.document.title=doc.display_title||doc.original_filename||'MVX Document';
+      const viewport=child.document.createElement('meta');
+      viewport.setAttribute('name','viewport');viewport.setAttribute('content','width=device-width, initial-scale=1');
+      child.document.head.appendChild(viewport);
+    } catch {
+      child.close();setError(text.previewError);return;
+    }
+    viewerRef.current=child;
+    setViewerWindow(child);
+    setPreview({title:doc.display_title||doc.original_filename,type:format.type});
     const request=++previewRequest.current;
     setPreviewBusyId(doc.id);setError('');
     try {
@@ -92,14 +131,17 @@ export default function MeterDocumentsModal({meter, metersInApartment=[],languag
       const fileBlob=await response.blob();
       const header=new Uint8Array(await fileBlob.slice(0,8).arrayBuffer());
       if (!meterDocumentPreviewSignatureMatches(header,format.mime)) throw Error(text.previewCorrupt);
-      if (request!==previewRequest.current) return;
-      // Object URL belongs only to this authenticated browser session, never to R2/public links.
+      if (request!==previewRequest.current || child.closed) return;
+      // Never expose private R2 URLs, access tokens, or document bytes to third-party viewers.
       const url=URL.createObjectURL(new Blob([fileBlob],{type:format.mime}));
       if (previewUrl.current) URL.revokeObjectURL(previewUrl.current);
       previewUrl.current=url;
       setPreview({url,type:format.type,title:doc.display_title||doc.original_filename});
     } catch (err) {
-      if (request===previewRequest.current) setError(`${text.previewError}: ${err.message}`);
+      if (request===previewRequest.current) {
+        setPreview({type:format.type,title:doc.display_title||doc.original_filename,error:err.message});
+        setError(`${text.previewError}: ${err.message}`);
+      }
     } finally {
       if (request===previewRequest.current) setPreviewBusyId(null);
     }
@@ -136,7 +178,10 @@ export default function MeterDocumentsModal({meter, metersInApartment=[],languag
       window.setTimeout(()=>URL.revokeObjectURL(url),60000);
     } catch(err) {setError(`${text.downloadError}: ${err.message}`);}
   }
-  return <Modal open={Boolean(meter)} title={`${text.title} · ${meter?.serial_number||''}`} onClose={()=>{if(!busy) onClose?.();}}>
+  return <>{viewerWindow && !viewerWindow.closed && createPortal(
+    <MeterDocumentWindow win={viewerWindow} preview={preview} language={language} onClose={closePreview} />,
+    viewerWindow.document.body
+  )}<Modal open={Boolean(meter)} title={`${text.title} · ${meter?.serial_number||''}`} onClose={()=>{if(!busy) onClose?.();}}>
     <div style={{display:'grid',gap:14,maxWidth:680}}>
       <p style={{fontSize:13,color:'var(--text)',margin:0}}>{text.recommended}</p>
       {loading ? <p>{text.loading}</p> : rows.length ?
@@ -151,15 +196,6 @@ export default function MeterDocumentsModal({meter, metersInApartment=[],languag
             </div>
           </li>)}
         </ul> : <p style={{fontSize:13,margin:0}}>{text.noDocs}</p>}
-      {preview && <section aria-label={preview.title} style={{border:'1px solid var(--border)',borderRadius:8,padding:10,minWidth:0}}>
-        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,marginBottom:8}}>
-          <strong style={{overflowWrap:'anywhere'}}>{preview.title}</strong>
-          <button type="button" onClick={closePreview}>{text.closePreview}</button>
-        </div>
-        {preview.type==='image'
-          ? <img src={preview.url} alt={preview.title} style={{display:'block',maxWidth:'100%',maxHeight:'65vh',margin:'0 auto',objectFit:'contain'}} />
-          : <iframe title={preview.title} src={preview.url} referrerPolicy="no-referrer" style={{display:'block',width:'100%',height:'min(65vh, 630px)',minHeight:320,border:0}} />}
-      </section>}
       <form onSubmit={upload} style={{display:'grid',gap:10}}>
         <strong>{text.upload}</strong>
         <select value={kind} onChange={e=>setKind(e.target.value)} disabled={busy}>
@@ -178,5 +214,5 @@ export default function MeterDocumentsModal({meter, metersInApartment=[],languag
         </div>
       </form>
     </div>
-  </Modal>;
+  </Modal></>;
 }
