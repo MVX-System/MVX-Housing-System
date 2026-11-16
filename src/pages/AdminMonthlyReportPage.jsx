@@ -2491,7 +2491,8 @@ export default function AdminMonthlyReportPage() {
           period={reportingPeriods.find(
             (item) => String(item.id) === String(selectedPeriodId)
           ) || null}
-        />
+        registryReport={adminMonthlyReport}
+          />
       )}
 
           <div
