@@ -14,6 +14,7 @@ import {
 } from "react";
 
 import useWater from "../hooks/useWater";
+import ExternalWaterImportPreview from "../components/ExternalWaterImportPreview.jsx";
 
 import {
   useTranslation,
@@ -2481,6 +2482,17 @@ export default function AdminMonthlyReportPage() {
             </div>
 
           </section>
+
+
+      {!isLoading && !errorMessage && (
+        <ExternalWaterImportPreview
+          key={String(selectedPeriodId)}
+          language={language}
+          period={reportingPeriods.find(
+            (item) => String(item.id) === String(selectedPeriodId)
+          ) || null}
+        />
+      )}
 
           <div
             style={{
